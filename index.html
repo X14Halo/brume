@@ -51,9 +51,25 @@ button{cursor:pointer}
 .view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #glc{pointer-events:none}
 #ov{touch-action:none;cursor:default}
-.hint{position:absolute;left:10px;top:10px;max-width:min(620px,calc(100% - 20px));display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:rgba(16,20,26,.8);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.07);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--muted);pointer-events:none}
+.hint{position:absolute;left:10px;top:10px;max-width:min(560px,calc(100% - 450px));display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:rgba(16,20,26,.8);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.07);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--muted);pointer-events:none}
 .hint b{color:var(--fg);font-weight:600}
-.navkeys{position:absolute;right:10px;top:10px;font:11px var(--f-mono);color:rgba(220,226,232,.55);background:rgba(16,20,26,.6);border-radius:4px;padding:3px 7px;pointer-events:none;text-align:right;line-height:1.5}
+.vbar{position:absolute;right:10px;top:10px;display:flex;gap:6px;align-items:center;z-index:2}
+.vbar .seg{background:rgba(16,20,26,.82);backdrop-filter:blur(6px)}
+.vbtn{display:flex;align-items:center;gap:6px;background:rgba(16,20,26,.82);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:5px;padding:4px 10px;font:500 12px var(--f-ui);color:var(--fg);white-space:nowrap}
+.vbtn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vbtn:disabled{color:var(--faint);cursor:default}
+#qFinal[aria-pressed=true]{background:var(--sun);color:#1b1408}
+.shotpick{display:flex;gap:6px;align-items:center;flex:none}
+.shotpick select{width:auto;background:var(--well);border-color:var(--line);font:500 12px var(--f-mono);padding:4px 6px}
+.shotpick label{font:500 10px var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.presets{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 2px}
+.chip.pre{text-transform:none;letter-spacing:0;font-size:12px;padding:4px 9px}
+.note.new{color:var(--muted)} .note.new b{color:var(--sun)}
+.sec.flash{animation:flash 1.1s ease-out}
+@keyframes flash{0%{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun)}100%{border-color:var(--line);box-shadow:none}}
+.conv i.fin{background:var(--sun)}
+.navkeys{position:absolute;right:64px;bottom:10px;font:11px var(--f-mono);color:rgba(220,226,232,.55);background:rgba(16,20,26,.6);border-radius:4px;padding:3px 7px;pointer-events:none;text-align:right;line-height:1.5}
+@media (prefers-reduced-motion:reduce){.sec.flash{animation:none}}
 .hud{position:absolute;left:10px;bottom:10px;font:11px var(--f-mono);color:rgba(230,234,238,.78);background:rgba(16,20,26,.62);border-radius:4px;padding:3px 7px;font-variant-numeric:tabular-nums;pointer-events:none}
 .conv{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.06);pointer-events:none}
 .conv i{display:block;height:100%;width:0;background:var(--mist);transition:width .15s}
@@ -158,6 +174,8 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
   .insp{overflow:visible}
   .flow{grid-template-columns:1fr}
   .brand .sub,.navkeys{display:none}
+  .hint{top:auto;bottom:34px;max-width:calc(100% - 20px)}
+  .vbar{flex-wrap:wrap;justify-content:flex-end;left:10px}
 }
 @media (prefers-reduced-motion:reduce){.conv i,.loader .bar i{transition:none}}
 </style>
@@ -167,10 +185,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
 <div id="app">
   <header class="top">
     <div class="brand"><span class="word">Brume</span><span class="sub">fog layout from utility passes</span></div>
-    <div class="seg" id="viewSeg" role="group" aria-label="Camera">
-      <button id="vShot" aria-pressed="true" title="Look through the shot camera (C)">Shot cam</button>
-      <button id="vLayout" aria-pressed="false" title="Free layout camera over the reconstructed set (C)">Layout</button>
-    </div>
+    <div class="shotpick"><label for="seqSel">Seq</label><select id="seqSel" aria-label="Sequence"><option>tst · Brume test shots</option></select><label for="shotSel">Shot</label><select id="shotSel" aria-label="Shot"></select></div>
     <div class="seg aovs" id="aovs" role="tablist" aria-label="View pass"></div>
     <div class="top-r">
       <button class="tbtn" id="fogBtn" aria-pressed="true" title="Toggle fog (V)">Fog on</button>
@@ -182,7 +197,18 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <canvas id="glc"></canvas>
     <canvas id="ov" aria-label="Viewport"></canvas>
     <div class="hint" id="hint"></div>
-    <div class="navkeys" id="navkeys">Alt+LMB tumble · Alt+MMB track · Alt+RMB dolly<br>F frame · A all · C shot/layout</div>
+    <div class="vbar">
+      <div class="seg" id="viewSeg" role="group" aria-label="Camera">
+        <button id="vShot" aria-pressed="true" title="Look through the shot camera (C)">Shot cam</button>
+        <button id="vLayout" aria-pressed="false" title="Free layout camera over the reconstructed set (C)">Layout</button>
+      </div>
+      <button class="vbtn" id="camReset" title="Reset the view to the shot camera"><svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.6"/><path d="M3 2.5v2.8h2.8"/></svg>Reset to shot cam</button>
+      <div class="seg" role="group" aria-label="Render quality">
+        <button id="qDraft" aria-pressed="true" title="Fast interactive fog (G)">Draft</button>
+        <button id="qFinal" aria-pressed="false" title="Full resolution, every detail octave, keeps refining (G)">Final</button>
+      </div>
+    </div>
+    <div class="navkeys" id="navkeys"></div>
     <div class="hud" id="hud">starting</div>
     <div class="conv"><i id="convBar"></i></div>
     <div class="drop" id="drop" hidden>Drop EXR passes to load them</div>
@@ -196,15 +222,14 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <div class="meta">24 fps · 10 s loop</div>
   </footer>
   <aside class="insp" id="insp">
-    <details class="sec" id="secPlate" open><summary>Plate</summary><div class="body" id="plateBody"></div></details>
     <details class="sec" open><summary>Fog elements <span class="count" id="elCount"></span></summary><div class="body"><div class="vlist" id="elList"></div><div class="sub-h">Auto-place from the passes</div><div class="btns" id="autoBtns"></div></div></details>
-    <details class="sec" open><summary id="selTitle">Selected</summary><div class="body" id="selBody"></div></details>
+    <details class="sec" id="secCtx" open><summary id="ctxTitle">Selected</summary><div class="body" id="ctxBody"></div></details>
     <details class="sec"><summary>Look &amp; motion</summary><div class="body" id="lookBody"></div></details>
     <details class="sec"><summary>Light</summary><div class="body" id="lightBody"></div></details>
     <details class="sec"><summary>View &amp; render</summary><div class="body" id="rendBody"></div></details>
+    <details class="sec" id="secPlate"><summary>Plate</summary><div class="body" id="plateBody"></div></details>
   </aside>
 </div>
-<input type="file" id="fileIn" accept=".exr" multiple hidden>
 
 <div class="modal" id="modal" hidden>
   <div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -244,12 +269,13 @@ function fbm(x,z,o=5){ let s=0,a=0.5,f=1,t=0; for(let k=0;k<o;k++){ s+=a*vnoise(
 let rngS=1234567; const rnd=()=>{ rngS=(Math.imul(rngS,1664525)+1013904223)>>>0; return rngS/4294967296; };
 
 /* ---------------- state ---------------- */
-const MAX_E=16, NM=256;
+const MAX_E=12, NM=256;
 const S={
   view:'shot', pass:0, fogOn:true, tool:'select', sel:-1, els:[],
   sun:{el:14,az:165}, fogEV:0, wind:{dir:80,speed:1.2},
-  look:{noise:20,detail:3.5,billow:0.45,drop:12,ms:0.4,tint:[1,1,1],evolve:1},
-  ev:0, plateLook:1, stillScale:1, recon:'mesh', proxy:true, time:0, playing:false, brushR:6, steps:IS_MOBILE?64:96, frames:40,
+  look:{noise:20,drop:12,ms:0.4,tint:[1,1,1],evolve:1},
+  ev:0, plateLook:1, stillScale:1, recon:'mesh', proxy:true, time:0, playing:false, brushR:6, brushStr:0.35, paintType:'ground', steps:IS_MOBILE?64:96, frames:40,
+  quality:'draft', finalScale:1, finalFrames:256, shot:'village', next:{},
   lcam:{coi:[0,0,0],yaw:0,pitch:0,dist:10,tanY:0.3},
 };
 try{ if(window.__BRUME_TEST) Object.assign(S,window.__BRUME_TEST); }catch(_){}
@@ -292,7 +318,7 @@ const FS_EMPTY=`#version 300 es
 precision highp float; void main(){}`;
 
 const FS_NOISE=HEAD+`
-uniform float uZ; uniform float uN; out vec4 o;
+uniform float uZ; uniform float uN; uniform int uMode; out vec4 o;
 vec3 h33(vec3 p){ uvec3 q=uvec3(ivec3(p)+4096)*uvec3(1597334673u,3812015801u,2798796415u); q=(q.x^q.y^q.z)*uvec3(1597334673u,3812015801u,2798796415u); return vec3(q)*(1.0/4294967295.0); }
 float gd(vec3 i,vec3 c,vec3 f,float per){ vec3 g=h33(mod(i+c,per))*2.0-1.0; return dot(normalize(g+1e-5),f-c); }
 float perlin(vec3 p,float per){ vec3 i=floor(p),f=fract(p); vec3 u=f*f*f*(f*(f*6.-15.)+10.);
@@ -305,6 +331,7 @@ float pfbm(vec3 p,float f0,int oct){ float a=0.5,s=0.,t=0.,f=f0; for(int k=0;k<5
 float wfbm(vec3 p,float f0){ return worley(p*f0,f0)*0.625+worley(p*f0*2.,f0*2.)*0.25+worley(p*f0*4.,f0*4.)*0.125; }
 void main(){
   vec3 p=vec3(gl_FragCoord.xy/uN,uZ);
+  if(uMode==1){ o=vec4(worley(p*3.,3.),worley(p*6.,6.),worley(p*12.,12.),pfbm(p,4.,3)); return; }
   float pf=pfbm(p,4.,3), wf=wfbm(p,4.);
   float pw=clamp((pf-(wf-1.0))/(2.0-wf),0.,1.); pw=smoothstep(0.28,0.95,pw);
   o=vec4(pw, wfbm(p,6.), wfbm(p,8.), pfbm(p,3.,4));
@@ -357,112 +384,121 @@ vec3 plateColor(vec2 uv, vec3 rd){
 
 /* ---- the fog raymarcher ---- */
 const FS_MARCH=HEAD+`
+#define NE ${MAX_E}
 uniform sampler2D uDP; uniform int uDFlip; uniform vec2 uDRes;
 uniform sampler2D uGT; uniform vec2 uWC; uniform float uWS,uWK,uWSK;
 uniform sampler2D uAna; uniform sampler2D uAna2; uniform sampler2D uAna3; uniform vec2 uBMin,uBSize; uniform float uCanH;
 uniform sampler2DArray uMasks;
-uniform sampler3D uNT;
-uniform int uNE; uniform vec4 uE0[16]; uniform vec4 uE1[16]; uniform vec4 uE2[16]; uniform vec4 uE3[16]; uniform vec4 uE4[16]; uniform vec4 uE5[16]; uniform vec4 uE6[16]; uniform vec4 uEB[16];
-uniform vec3 uWind; uniform float uTime, uEvolve; uniform vec4 uNoise;
+uniform sampler3D uNT; uniform sampler3D uND;
+uniform int uNE; uniform vec4 uE0[NE]; uniform vec4 uE1[NE]; uniform vec4 uE2[NE]; uniform vec4 uE3[NE]; uniform vec4 uE4[NE]; uniform vec4 uE5[NE]; uniform vec4 uE6[NE]; uniform vec4 uE7[NE]; uniform vec4 uE8[NE]; uniform vec4 uEB[NE];
+uniform vec3 uWind; uniform float uTime, uEvolve;
 uniform vec3 uCam,uR,uU,uF; uniform vec4 uIntr; uniform vec2 uRes;
-uniform int uSteps; uniform float uFrame, uMaxD;
+uniform int uSteps; uniform float uFrame, uMaxD, uPixAng; uniform int uHQ;
 uniform vec3 uSunDir, uSunE, uSkyAvg, uAlb; uniform float uMS, uGain; uniform vec4 uPh;
 uniform sampler2D uFS; uniform mat4 uFLM; uniform float uFBiasV, uFPen, uFTexel; uniform int uSunOn;
-uniform sampler2D uPrev; uniform float uBlend; uniform float uLS; uniform int uDbg;
+uniform sampler2D uPrev; uniform float uBlend; uniform float uLS;
 out vec4 o;
-vec2 WD=vec2(1.,0.), WP=vec2(0.,1.); float WSP=0.;
+vec2 WD=vec2(1.,0.), WP=vec2(0.,1.); float WSP=0.; float gFoot=0.1;
 vec2 w2t(vec2 xz){ vec2 d=(xz-uWC)*(uWSK/uWS); return asinh(d)/uWK*0.5+0.5; }
-float erode(float c,float n,float k){ if(c<=0.) return 0.; float t=k*(1.-n); return clamp((c-t)/max(1.-t,0.05),0.,1.)*mix(1.,0.55+0.9*n,0.3*k); }
 vec2 rot2(vec2 v,float a){ float c=cos(a), s=sin(a); return vec2(c*v.x-s*v.y, s*v.x+c*v.y); }
-/* per-element noise: own scale, flattened (stratiform) or stretched (columns), streaked along the wind, advected and evolving */
-void elNoise(vec3 p,vec4 e5,vec4 e6,out float nl,out float nh,out float nb){
-  vec3 q=p-uWind*(uTime*e6.x)-vec3(0.,e5.w*uTime,0.);
-  vec3 qa=vec3(dot(q.xz,WD)/e5.z, q.y/e5.y, dot(q.xz,WP))/e5.x;
-  float ev=uTime*uEvolve*e6.y;
-  vec2 w=vec2(textureLod(uNT,qa*0.31+vec3(0.,ev*0.004,0.),0.).a, textureLod(uNT,qa*0.31+vec3(.37,.11+ev*0.003,.73),0.).a)-0.5;
-  nb=clamp(w.x*1.6+0.5,0.,1.);
-  vec4 a=textureLod(uNT,qa+vec3(w.x,0.,w.y)*0.85+vec3(0.,ev*0.012,0.),0.); nl=mix(a.a,a.r,uNoise.z);
-  vec3 qh=vec3(dot(q.xz,WD)/sqrt(e5.z), q.y/sqrt(e5.y), dot(q.xz,WP))/uNoise.y;
-  vec4 b=textureLod(uNT,qh+vec3(w.x,w.y,-w.x)*2.2+vec3(0.,ev*0.045,0.),0.); nh=b.g*0.75+b.r*0.25;
-}
-float density(vec3 p,bool det){
+/* Each element: a physical shape model (type) gives a smooth body c; it becomes a signed field that detail octaves push
+   in and out — Worley billows or fBm wisps, each octave warped by the one before (the Spectral Sky cloud method) —
+   with octaves faded out once they are smaller than a few pixels so distance never turns into speckle. */
+float density(vec3 p,int lvl){
   float d=0.; bool got=false; float g=0.; vec4 a1=vec4(0.), a2=vec4(0.), a3=vec4(0.5,0.5,0.,1.);
-  for(int i=0;i<16;i++){ if(i>=uNE) break;
+  for(int i=0;i<NE;i++){ if(i>=uNE) break;
     vec4 eb=uEB[i]; vec3 rr=p-eb.xyz; if(dot(rr,rr)>eb.w*eb.w) continue;
     if(!got){ got=true; g=textureLod(uGT,w2t(p.xz),0.).r; vec2 bu=(p.xz-uBMin)/uBSize; a1=textureLod(uAna,bu,0.); a2=textureLod(uAna2,bu,0.); a3=textureLod(uAna3,bu,0.); }
-    vec4 e0=uE0[i], e1=uE1[i], e2=uE2[i], e3=uE3[i], e4=uE4[i];
+    vec4 e0=uE0[i], e1=uE1[i], e2=uE2[i], e3=uE3[i], e4=uE4[i], e5=uE5[i], e6=uE6[i], e7=uE7[i], e8=uE8[i];
     int ty=int(e0.w+0.5); float h=p.y-g;
-    float nl=0.55, nh=0.55, nb=0.5; if(det&&(uDbg&4)==0) elNoise(p,uE5[i],uE6[i],nl,nh,nb);
-    float n=mix(nl,nh,0.45), k=e2.z, c=0.;
-    if(ty==4){
-      vec3 l=p-e0.xyz; l.xz=rot2(l.xz,e1.w); l/=max(e1.xyz,vec3(0.05));
-      c=1.-smoothstep(1.-e2.y,1.,length(l)+(n-0.5)*e2.z*0.7);
-    } else {
-      vec2 off= ty==3 ? uWind.xz*uTime*e4.z : vec2(0.);
-      vec2 pl=rot2(p.xz-off-e0.xz,e1.w);
-      float fp=0.;
-      if(e3.z>0.5){
-        if(ty==5){ vec2 q=abs(pl)/vec2(e1.x,e1.z); fp=(1.-smoothstep(1.-e2.y,1.,q.x+(nl-0.5)*e2.z*0.25))*(1.-smoothstep(0.35,1.,q.y)); }
-        else { float q=length(pl/vec2(e1.x,e1.z)); fp=1.-smoothstep(1.-e2.y,1.,q+(nl-0.5)*e2.y*0.8); }
-      }
-      if(e3.y>-0.5){ vec2 m=textureLod(uMasks,vec3((p.xz-off-e4.xy-uBMin)/uBSize,e3.y),0.).rg; fp=clamp(fp*(1.-m.g)+m.r*(1.+(nl-0.5)*0.6),0.,1.); }
-      if(fp<=0.002) continue;
-      float pool=a1.r, hol=a1.g, warm=a1.b, slope=a1.a, can=a2.r, shade=a2.g, drain=a2.b, wet=a2.a;
-      vec2 gr=(a3.xy*2.-1.)*0.5; float up=dot(gr,WD);
-      float grd=smoothstep(-0.25,0.25,h); float burn=e3.w;
-      if(ty==0){ /* radiation (ground) fog */
-        float site=0.25+1.2*hol+0.7*pool+0.9*drain+0.5*wet-0.8*warm-0.7*can-2.*max(slope-0.08,0.);
-        float tm=mix(1.,clamp(site,0.03,1.7),e2.w);
-        float bs=burn*(0.5+0.8*(1.-shade)+0.6*warm+1.2*slope-0.6*pool-0.4*drain);
-        float D=e1.y*tm*min(fp*2.,1.)*clamp(1.-bs-(0.5-nb)*e2.z*0.8,0.,1.); if(D<0.02) continue;
-        float base=burn*D*0.45*(1.-0.6*shade);
-        float hn=h+(mix(nl,nh,0.6)-0.5)*D*0.9;
-        float z=clamp((hn-base)/D,0.,1.);
-        c=pow(1.-z,0.55)*smoothstep(base-D*0.05,base+D*0.2,h)*grd*min(1.,fp*3.);
-        k=clamp(k+burn*0.35,0.,1.);
-      } else if(ty==1){ /* valley fog: cold-air pool under a flat inversion top */
-        float depth=max(e3.x-g,0.);
-        float wl=max(e1.y*8.,6.); float wave=e4.z*e1.y*0.9*sin(dot(p.xz,WD)*6.2831853/wl+nl*5.)*clamp(WSP/2.,0.,1.);
-        float top=e3.x+(nl-0.5)*e1.y*1.5+(nh-0.5)*e1.y*0.45+wave-burn*depth*0.3*(1.-0.5*shade);
-        float lift=max(e4.w,burn*0.9)*depth*0.85;
-        float ad=clamp(h/max(depth,0.5),0.,1.);
-        float bsoft=max(e1.y*0.8,0.4);
-        c=fp*mix(0.45,1.,ad)*smoothstep(top,top-e1.y,p.y)*smoothstep(g+lift,g+lift+bsoft,p.y+(nh-0.5)*bsoft*1.2)*grd;
-        k=clamp(k+(1.-smoothstep(0.,e1.y*3.,depth))*0.45+burn*0.3,0.,1.);
-      } else if(ty==2){ /* thin mist */
-        float tm=mix(1.,clamp(0.5+0.8*pool+0.6*hol+0.4*drain-0.5*warm,0.1,1.5),e2.w);
-        c=fp*tm*exp(-max(h,0.)/max(e1.y,0.05))*grd*mix(1.,smoothstep(0.15,0.75,nb),e2.z);
-        if(det&&e4.z>0.&&h<e1.y*5.){
-          vec3 qw=(p-uWind*uTime*0.4)*vec3(1./(uNoise.y*1.4),1./(uNoise.y*7.),1./(uNoise.y*1.4))-vec3(0.,uTime*0.05*uEvolve,0.);
-          float nw=textureLod(uNT,qw,0.).g;
-          d+=e2.x*4.*e4.z*fp*smoothstep(0.58,0.86,nw)*exp(-max(h,0.)/(e1.y*1.2))*smoothstep(0.,e1.y*0.3,h);
-        }
-      } else if(ty==3){ /* advection fog bank */
-        float H=e1.y, top=max(e0.y+H,g+H*0.4), s=max(H*0.35,0.3);
-        float lee=smoothstep(0.,0.25,-up);
-        c=fp*smoothstep(top,top-s,p.y+(nl-0.5)*s*1.8)*grd*(1.-0.55*lee*(1.-shade*0.5));
-        k=clamp(k+lee*0.2,0.,1.);
-      } else if(ty==5){ /* veil */
-        c=fp*(1.-smoothstep(e1.y*(1.-0.75*e2.y),e1.y,h+(n-0.5)*e1.y*0.3))*grd;
-      } else if(ty==6){ /* low cloud / hill fog: condensation-level base, adiabatic density, scud below */
-        float H=e1.y, lower=e4.z*up*H*2.5*clamp(WSP/3.,0.,1.);
-        float base=e3.x-lower+(nl-0.5)*H*0.3, top=e3.x+H+(nl-0.5)*H*0.6;
-        float ab=clamp((p.y-base)/H,0.,1.);
-        c=fp*(0.3+0.7*ab)*smoothstep(base-H*0.08,base+H*0.3,p.y+(nh-0.5)*H*0.25)*smoothstep(top,top-H*0.35,p.y)*grd;
-        if(e4.w>0.){ float sc=smoothstep(0.58,0.8,nh*0.6+nl*0.4)*smoothstep(base-H*0.9,base-H*0.1,p.y)*(1.-smoothstep(base-H*0.1,base+H*0.1,p.y)); c=max(c,sc*e4.w*fp*0.8*grd); }
-        float leeC=smoothstep(0.,0.3,-up)*e4.z; c*=1.-0.6*leeC; k=clamp(k+leeC*0.3,0.,1.);
-      } else { /* rising mist: wisps and puffs off canopy, water or wet ground */
-        float src=g+uCanH*a3.z*e4.z, hs=p.y-src;
-        float cover=mix(clamp(0.35+wet+drain+pool*0.5,0.,1.),smoothstep(0.08,0.4,can)*clamp(0.45+1.2*drain+0.8*hol+0.4*pool+0.3*shade,0.,1.),e4.z);
-        float pl2=smoothstep(0.38-0.25*e4.w,0.82,nl*0.9+nh*0.1)*smoothstep(0.1,0.6,nb+e4.w*0.2);
-        c=fp*cover*pl2*exp(-max(hs,0.)/max(e1.y,0.05))*smoothstep(-e1.y*0.3,e1.y*0.1,hs)*grd;
-      }
+    vec2 off= ty==3 ? uWind.xz*uTime*e4.z : vec2(0.);
+    /* noise frame: drifts with the wind, rises, leans downwind with height when windswept, stretched along the flow */
+    float ws=e7.w, S=e5.x;
+    vec3 q=p-uWind*(uTime*e6.x)-vec3(0.,e5.w*uTime,0.);
+    q.xz-=WD*ws*max(h,0.)*1.6;
+    vec3 qa=vec3(dot(q.xz,WD)/(e5.z*(1.+ws*2.5)), q.y/e5.y, dot(q.xz,WP))/S+vec3(e8.w*0.37,e8.w*0.11,e8.w*0.73);
+    float ev=uTime*uEvolve*e6.y;
+    float big=0.5, sh=0.5; vec3 wv=vec3(0.);
+    if(lvl>0){
+      float lodS=log2(gFoot*128./S);
+      big=textureLod(uNT,qa*0.23+vec3(0.13,ev*0.002,0.71),max(lodS-2.1,0.)).a;
+      wv=textureLod(uNT,qa*0.5+vec3(0.37,0.11+ev*0.004,0.73),max(lodS-1.,0.)).gba-vec3(0.56,0.56,0.5);
+      vec4 s=textureLod(uNT,qa+wv*e6.w*0.9+vec3(0.,ev*0.01,0.),max(lodS,0.));
+      sh=mix(s.a,s.r,e6.z);
     }
-    d+=e2.x*erode(c,n,k);
+    vec2 pl=rot2(p.xz-off-e0.xz,e1.w);
+    float fp=0.;
+    if(e3.z>0.5){ float qq=length(pl/vec2(e1.x,e1.z)); fp=1.-smoothstep(1.-e2.y,1.,qq+(big-0.5)*e2.y*1.4+(sh-0.5)*e2.y*0.6); }
+    float hm=1.;
+    if(e3.y>-0.5){ vec2 mp=e7.xy+rot2(p.xz-off-e4.xy-e7.xy,e1.w)/e7.z; vec3 m=textureLod(uMasks,vec3((mp-uBMin)/uBSize,e3.y),0.).rgb; fp=clamp(fp*(1.-m.g)+m.r,0.,1.); hm=m.b*2.; }
+    if(fp<=0.002) continue;
+    float pool=a1.r, hol=a1.g, warm=a1.b, slope=a1.a, can=a2.r, shade=a2.g, drain=a2.b, wet=a2.a;
+    vec2 gr=(a3.xy*2.-1.)*0.5; float up=dot(gr,WD);
+    float grd=smoothstep(-0.25,0.25,h); float burn=e3.w; float c=0.;
+    if(ty==0){ /* ground (radiation) fog: densest at the ground, flat defined top, collects low; burns off thin/sunlit/warm first */
+      float site=0.35+1.2*hol+0.7*pool+0.9*drain+0.5*wet-0.45*warm-0.7*can-2.*max(slope-0.08,0.);
+      float tm=mix(1.,clamp(site,0.2,1.7),e2.w);
+      float bs=burn*(0.5+0.8*(1.-shade)+0.6*warm+1.2*slope-0.6*pool-0.4*drain);
+      float D=e1.y*hm*tm*clamp(1.-bs,0.,1.); if(D<0.02) continue;
+      float base=burn*D*0.45*(1.-0.6*shade);
+      float hn=h+(sh-0.5)*D*0.8;
+      c=pow(clamp(1.-(hn-base)/D,0.,1.),0.6)*1.25*smoothstep(base-D*0.05,base+D*0.2,h)*grd*min(1.,fp*2.5);
+    } else if(ty==1){ /* valley fog: fills the basin under the inversion; denser towards the top; waves when wind runs over it */
+      float soft=e1.y, depth=max(e3.x-g,0.);
+      float wl=max(soft*10.,6.); float wave=e4.z*soft*1.2*sin(dot(p.xz,WD)*6.2831853/wl+sh*5.+big*3.)*clamp(WSP/2.,0.3,1.);
+      float top=e3.x+(sh-0.5)*soft*2.+(big-0.5)*soft*1.5+wave-burn*depth*0.3*(1.-0.5*shade)+(hm-1.)*max(soft*3.,depth*0.4);
+      float lift=max(e4.w,burn*0.9)*depth*0.85, ad=clamp(h/max(depth,0.5),0.,1.), bsoft=max(soft,0.4);
+      c=fp*mix(0.6,1.15,ad)*smoothstep(top,top-soft*1.6,p.y)*smoothstep(g+lift,g+lift+bsoft,p.y+(sh-0.5)*bsoft)*grd;
+    } else if(ty==2){ /* thin mist */
+      float H=e1.y*hm; float tm=mix(1.,clamp(0.5+0.8*pool+0.6*hol+0.4*drain-0.5*warm,0.1,1.5),e2.w);
+      c=fp*tm*exp(-max(h,0.)/max(H,0.05))*grd*1.1;
+    } else if(ty==3){ /* advection fog bank: rides over rising ground, thins pouring down lee slopes */
+      float H=e1.y*hm, top=max(e0.y+H,g+H*0.4)+(sh-0.5)*H*0.5+(big-0.5)*H*0.4, s=max(H*0.4,0.3);
+      float lee=smoothstep(0.,0.25,-up);
+      c=fp*smoothstep(top,top-s,p.y)*grd*(1.-0.55*lee*(1.-shade*0.5))*1.2;
+    } else if(ty==6){ /* low cloud / hill fog: ragged condensation-level base, lower on windward slopes and in gullies, clears in the lee */
+      float H=e1.y*(0.7+0.3*hm); float lower=e4.z*up*H*2.5*clamp(WSP/3.,0.,1.);
+      float base=e3.x-lower-drain*H*0.6+(big-0.5)*H*1.1+(sh-0.5)*H*0.45-(hm-1.)*H*1.3;
+      float top=e3.x+H*(0.55+0.9*big)+(sh-0.5)*H*0.6;
+      float ab=clamp((p.y-base)/max(top-base,0.1),0.,1.);
+      c=fp*(0.4+0.75*ab)*smoothstep(base-H*0.06,base+H*0.3,p.y)*smoothstep(top,top-H*0.35,p.y)*grd;
+      if(e4.w>0.){ float sc=smoothstep(0.55,0.8,sh)*smoothstep(base-H*1.1,base-H*0.2,p.y)*(1.-smoothstep(base-H*0.1,base+H*0.1,p.y)); c=max(c,sc*e4.w*fp*0.9*grd); }
+      c*=1.-0.6*smoothstep(0.,0.3,-up)*e4.z;
+    } else { /* rising mist off canopy or wet ground */
+      float H=e1.y*hm; float src=g+uCanH*a3.z*e4.z, hs=p.y-src;
+      float cover=mix(clamp(0.35+wet+drain+pool*0.5,0.,1.),smoothstep(0.08,0.4,can)*clamp(0.45+1.2*drain+0.8*hol+0.4*pool+0.3*shade,0.,1.),e4.z);
+      c=fp*cover*smoothstep(0.32-0.25*e4.w,0.78,sh)*exp(-max(hs,0.)/max(H,0.05))*smoothstep(-H*0.3,H*0.1,hs)*grd*1.3;
+    }
+    /* coverage: large clear holes and clumps */
+    float cov=e8.y; c*=smoothstep(0.6-cov*0.8,0.82-cov*0.8,big*0.8+sh*0.2+0.1);
+    float th=(ty==2)?0.06:0.25, f0=c-th, amp=e8.x*0.42;
+    if(f0+amp*0.6<=0.) continue;
+    float f=f0, rimW=mix(0.05,0.45,e8.z);
+    if(lvl>1&&amp>0.){
+      vec3 qd=vec3(dot(q.xz,WD)/(1.+ws*3.), q.y/max(e5.y,0.4), dot(q.xz,WP))+wv*S*e6.w*0.3;
+      float billow=0., wisp=0., aw=0.5; vec3 pv=vec3(0.5);
+      for(int k=0;k<4;k++){
+        if(k==3&&uHQ==0) break;
+        float L=S*0.42*pow(0.34,float(k));
+        float wk=smoothstep(2.5,7.,L*0.25/gFoot)*smoothstep(0.06,0.2,L*0.25); if(wk<=0.) break;
+        float lod=max(log2(gFoot*64./L),0.);
+        vec4 dn=textureLod(uND,(qd+(pv-0.5)*L*0.35)/L+vec3(0.13*float(k),ev*0.05*float(k+1),0.29*float(k)),lod);
+        pv=dn.rgb;
+        float kw=k==0?0.55:k==1?0.3:k==2?0.16:0.1;
+        billow+=((dn.r*0.625+dn.g*0.25+dn.b*0.125)-0.56)*kw*wk;
+        wisp+=(dn.a-0.5)*kw*wk;
+        if(k==1) aw=mix(0.5,dn.a,wk);
+      }
+      float disp=mix(wisp,billow,e6.z)*amp*2.4;
+      disp= disp<0.? disp : disp*0.45*smoothstep(-0.1*amp,0.03,f0);
+      f+=disp;
+      f-=amp*0.5*(1.-smoothstep(0.,0.25,f))*max(aw-0.38,0.);
+    } else f-=amp*0.12;
+    float dv=smoothstep(0.,rimW,f)*(0.55+0.45*clamp(c,0.,1.2))*smoothstep(-amp*0.7,rimW*0.5,f0);
+    d+=e2.x*dv;
   }
   return d;
 }
-/* sun visibility with a penumbra that widens with distance from the blocker (multiple scattering blurs shafts) */
 float sunVis(vec3 p,float jit){ vec4 c=uFLM*vec4(p,1.); vec3 s=c.xyz/c.w*0.5+0.5; if(s.x<0.||s.y<0.||s.x>1.||s.y>1.||s.z>1.) return 1.;
   float bz=textureLod(uFS,s.xy,0.).r; float dz=max(s.z-bz,0.); float rad=uFTexel*1.5+dz*uFPen; float a=0.;
   for(int i=0;i<4;i++){ float ang=(float(i)+jit)*1.5707963+jit*2.4; vec2 of=vec2(cos(ang),sin(ang))*rad*sqrt((float(i)+0.5)*0.25); a+= s.z-uFBiasV>textureLod(uFS,s.xy+of,0.).r?0.:1.; }
@@ -479,33 +515,35 @@ void main(){
   vec4 P=texelFetch(uDP,di,0);
   float tEnd=P.w>0.5?length(P.xyz-uCam):uMaxD;
   float t0=1e9, t1=-1.;
-  for(int i=0;i<16;i++){ if(i>=uNE) break; vec4 eb=uEB[i]; vec3 oc=uCam-eb.xyz; float b=dot(oc,rd), c=dot(oc,oc)-eb.w*eb.w, h=b*b-c; if(h<0.) continue; h=sqrt(h); t0=min(t0,-b-h); t1=max(t1,-b+h); }
-  t0=max(t0,0.); t1=min(t1,tEnd);
+  for(int i=0;i<NE;i++){ if(i>=uNE) break; vec4 eb=uEB[i]; vec3 oc=uCam-eb.xyz; float b=dot(oc,rd), c=dot(oc,oc)-eb.w*eb.w, h=b*b-c; if(h<0.) continue; h=sqrt(h); t0=min(t0,-b-h); t1=max(t1,-b+h); }
+  t0=max(t0,0.); t1=min(t1,min(tEnd,uMaxD));
   vec3 L=vec3(0.); float T=1.;
   if(t1>t0){
-    float j=(uDbg&1)!=0?fract(uFrame*0.618034):hash13(vec3(fc,uFrame+1.));
+    float j=hash13(vec3(fc,uFrame+1.));
     float cosT=dot(rd,uSunDir), ph0=phaseMie(cosT);
     /* samples sit on fixed distance shells around the camera (quadratic in distance), so neighbouring pixels sample alike */
     float s0=sqrt(t0/uMaxD), s1=sqrt(t1/uMaxD), base=1./float(uSteps*6);
     float lv=exp2(ceil(log2(max((s1-s0)/float(uSteps)/base,1.)))), ds=base*lv;
     float k0=floor(s0/ds);
-    for(int i=0;i<300;i++){ if(i>uSteps+2) break;
+    for(int i=0;i<400;i++){ if(i>uSteps+2) break;
       float s=(k0+float(i)+j)*ds; if(s<s0) continue; if(s>s1) break;
       float t=uMaxD*s*s, dt=uMaxD*2.*s*ds;
       vec3 p=uCam+rd*t;
-      float d=density(p,true);
+      gFoot=max(t*uPixAng,1e-3);
+      float d=density(p,2);
       if(d<1e-7) continue;
       float tauS=0.;
       if(uSunOn==1){ float sl=uLS;
-        tauS=density(p+uSunDir*(1.*sl),false)*2.*sl+density(p+uSunDir*(3.5*sl),false)*3.*sl+density(p+uSunDir*(8.*sl),false)*6.*sl
-            +density(p+uSunDir*(17.*sl),false)*12.*sl+density(p+uSunDir*(36.*sl),false)*26.*sl+density(p+uSunDir*(75.*sl),false)*52.*sl; }
-      float tauU=density(p+vec3(0.,1.5*uLS,0.),false)*3.*uLS+density(p+vec3(0.,7.*uLS,0.),false)*9.*uLS+density(p+vec3(0.,22.*uLS,0.),false)*22.*uLS;
+        int l1=uHQ==1?2:1;
+        tauS=density(p+uSunDir*(0.6*sl),l1)*1.2*sl+density(p+uSunDir*(2.*sl),l1)*2.*sl+density(p+uSunDir*(5.*sl),1)*4.*sl+density(p+uSunDir*(11.*sl),1)*8.*sl
+            +density(p+uSunDir*(24.*sl),0)*18.*sl+density(p+uSunDir*(52.*sl),0)*38.*sl+density(p+uSunDir*(110.*sl),0)*76.*sl; }
+      float tauU=density(p+vec3(0.,1.5*uLS,0.),1)*3.*uLS+density(p+vec3(0.,7.*uLS,0.),0)*9.*uLS+density(p+vec3(0.,22.*uLS,0.),0)*22.*uLS;
       float vis=uSunOn==1?sunVis(p,fract(j*7.31+float(i)*0.618034)):0.;
       float Ls=ph0*exp(-tauS)*vis; float a=0.45, b=uMS, cc=0.55;
       for(int k=1;k<4;k++){ Ls+=b*hg(cosT,0.7*cc)*exp(-a*tauS)*mix(vis,1.,0.6); a*=0.45; b*=uMS; cc*=0.55; }
-      vec3 S=uSunE*Ls + uSkyAvg*(0.55*exp(-0.55*tauU)+0.12);
+      vec3 Sv=uSunE*Ls + uSkyAvg*(0.55*exp(-0.55*tauU)+0.12);
       float tr=exp(-d*dt);
-      L+=T*S*uAlb*(1.-tr);
+      L+=T*Sv*uAlb*(1.-tr);
       T*=tr;
       if(T<0.004) break;
     }
@@ -514,6 +552,7 @@ void main(){
   vec4 prev=texelFetch(uPrev,ivec2(fc),0);
   o=mix(prev,cur,uBlend);
 }`;
+
 
 /* ---- final display ---- */
 const FS_DISP=HEAD+SKY_GLSL+PLATE_GLSL+`
@@ -610,23 +649,42 @@ const VS_ST=`#version 300 es
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aN; uniform mat4 uVP; out vec3 vP; out vec3 vN;
 void main(){ vP=aPos; vN=aN; gl_Position=uVP*vec4(aPos,1.); }`;
 const FS_ST=HEAD+SL_GLSL+`
-uniform sampler2D uRoads; uniform float uWater; in vec3 vP; in vec3 vN;
+uniform sampler2D uRoads; uniform float uWater; uniform int uKind; uniform vec2 uRC; uniform float uRX; in vec3 vP; in vec3 vN;
 void main(){
   vec3 n=normalize(vN); float slope=1.-n.y; vec3 p=vP;
-  vec2 q=mat2(0.95,0.31,-0.31,0.95)*p.xz; vec2 cs=vec2(88.,62.); vec2 cell=floor(q/cs); float r=h21(cell);
-  vec3 fc= r<0.3? vec3(0.07,0.10,0.032) : r<0.55? vec3(0.10,0.115,0.042) : r<0.78? vec3(0.15,0.13,0.065) : vec3(0.12,0.085,0.055);
-  vec3 meadow=vec3(0.07,0.09,0.034);
   float n1=vn(p.xz*0.07), n2=vn(p.xz*0.55);
-  vec3 c=mix(fc,meadow,clamp(smoothstep(0.06,0.18,slope)+smoothstep(45.,110.,p.y),0.,1.));
-  c*=0.78+0.4*n1; c*=0.9+0.2*n2;
-  vec2 fq=fract(q/cs); float edge=min(min(fq.x,1.-fq.x)*cs.x,min(fq.y,1.-fq.y)*cs.y);
-  c*=mix(0.72,1.,smoothstep(0.6,2.8,edge));
+  vec3 c;
+  if(uKind==0){
+    vec2 q=mat2(0.95,0.31,-0.31,0.95)*p.xz; vec2 cs=vec2(88.,62.); vec2 cell=floor(q/cs); float r=h21(cell);
+    vec3 fc= r<0.3? vec3(0.07,0.10,0.032) : r<0.55? vec3(0.10,0.115,0.042) : r<0.78? vec3(0.15,0.13,0.065) : vec3(0.12,0.085,0.055);
+    vec3 meadow=vec3(0.07,0.09,0.034);
+    c=mix(fc,meadow,clamp(smoothstep(0.06,0.18,slope)+smoothstep(45.,110.,p.y),0.,1.));
+    c*=0.78+0.4*n1; c*=0.9+0.2*n2;
+    vec2 fq=fract(q/cs); float edge=min(min(fq.x,1.-fq.x)*cs.x,min(fq.y,1.-fq.y)*cs.y);
+    c*=mix(0.72,1.,smoothstep(0.6,2.8,edge));
+  } else {
+    float g=vn(p.xz*0.16+3.), b=vn(p.xz*1.7);
+    c=mix(vec3(0.06,0.085,0.03),vec3(0.11,0.11,0.05),g)*(0.75+0.5*b);
+    c=mix(c,vec3(0.13,0.12,0.06)*(0.8+0.4*n2),smoothstep(0.6,0.8,vn(p.xz*0.03+9.))*0.7);
+    c=mix(c,vec3(0.07,0.09,0.035),smoothstep(0.1,0.3,slope));
+  }
   c=mix(c,vec3(0.15,0.13,0.11)*(0.8+0.4*n2),smoothstep(0.38,0.6,slope));
   c=mix(vec3(0.085,0.07,0.05),c,smoothstep(uWater+0.15,uWater+1.3,p.y));
-  vec2 ruv=(p.xz+800.)/1600.;
-  if(ruv.x>0.&&ruv.y>0.&&ruv.x<1.&&ruv.y<1.){ float rd=texture(uRoads,ruv).r; c=mix(c,vec3(0.25,0.235,0.2)*(0.85+0.3*n2),rd); }
+  vec2 ruv=(p.xz-uRC+uRX)/(2.*uRX);
+  if(ruv.x>0.&&ruv.y>0.&&ruv.x<1.&&ruv.y<1.){ vec4 rd=texture(uRoads,ruv);
+    if(uKind==0) c=mix(c,vec3(0.25,0.235,0.2)*(0.85+0.3*n2),rd.r);
+    else {
+      // old tarmac: fine aggregate, patches, worn grey edges; gravel drives and verges
+      float ag=h21(floor(p.xz*28.)), pt=vn(p.xz*0.4+2.), fw=fwidth(p.x*28.);
+      vec3 tar=vec3(0.075,0.074,0.072)*(0.8+0.35*mix(ag,0.5,smoothstep(0.5,2.,fw)))*(0.85+0.3*pt);
+      tar=mix(tar,vec3(0.12,0.115,0.105),smoothstep(0.62,0.8,vn(p.xz*1.3))*0.6);
+      vec3 grav=vec3(0.24,0.22,0.19)*(0.75+0.45*mix(h21(floor(p.xz*16.)),0.5,smoothstep(0.5,2.,fwidth(p.x*16.))))*(0.85+0.3*n2);
+      c=mix(c,grav,smoothstep(0.35,0.65,rd.g));
+      c=mix(c,tar,smoothstep(0.35,0.7,rd.r)); c=mix(c,vec3(0.16,0.15,0.13),smoothstep(0.35,0.5,rd.r)*(1.-smoothstep(0.5,0.75,rd.r))*0.5);
+    } }
   outAll(shadeS(c,n,p,1.),p,n,c);
 }`;
+
 const VS_SB=`#version 300 es
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC; layout(location=3) in vec4 aA;
 uniform mat4 uVP; out vec3 vP; out vec3 vN; out vec3 vC; out vec4 vA;
@@ -740,8 +798,9 @@ function camRay(c,px,py){ return norm(add(c.f,add(mul(c.r,(px-c.cx)/c.fx),mul(c.
 function camProj(c,p){ const v=sub(p,c.pos); const z=dot(v,c.f); if(z<1e-4) return null; return [c.cx+c.fx*dot(v,c.r)/z, c.cy-c.fy*dot(v,c.u)/z, z]; }
 
 /* =====================================================================
-   SAMPLE FRAME — a generated hill village, rendered once to beauty,
-   P, N and surface colour, then treated exactly like loaded passes.
+   TEST SHOTS — generated sets, rendered once to beauty, P, N and
+   surface colour, then treated exactly like a loaded utility pass.
+   tst_0010: wide on a hill village · tst_0020: medium down a street
    ===================================================================== */
 const RIVER=z=>70*Math.sin(z*0.0024+0.5)+35*Math.sin(z*0.0061+1.3)-40;
 const VC=[220,20], WATER=1.0;
@@ -757,34 +816,36 @@ function HV(x,z){
   y-=3.3*(1-sstep(5,15,ad));
   return y;
 }
+/* the lane: a narrow road winding up a hillside through spread-out houses, a valley dropping away to the left, wooded hills beyond */
+const LX=z=>13*Math.sin(z*0.027+0.5)+5*Math.sin(z*0.061+1.9);
+const ST={half:2.9};
+function LT(x,z){ // hillside before the road is cut in
+  let y=0.13*Math.max(x,-40)-30*sstep(-40,-190,x)+150*sstep(-280,-820,x)+65*sstep(220,700,x);
+  y+=0.055*clamp(z,-150,320)+150*sstep(380,1150,z);
+  y+=(fbm(x*0.012+4.1,z*0.012-2.2,4)-0.5)*14;
+  y+=(fbm(x*0.0035+1.3,z*0.0035-0.4,5)-0.5)*130*sstep(250,750,Math.hypot(x+60,z-120));
+  return y; }
+function HS(x,z){ const rx=LX(z), ad=Math.abs(x-rx); const w=1-sstep(ST.half+0.4,ST.half+7,ad); const y=LT(x,z); return w>0?lerp(y,LT(rx,z),w):y; }
+const SHOTDEF={
+  village:{H:HV,sun:{el:14,az:165},W:2600,WK:3,WC:[60,0],eye:[-170,40,-330],target:[205,34,10],tan:Math.tan(27*D2R),water:WATER,kind:0,rc:[0,0],rx:800,
+    shadow:[[-1700,-5,-1700],[1700,420,1700]],name:'tst_0010 · Valley village (wide)'},
+  street:{H:HS,sun:{el:13,az:218},W:1500,WK:4.2,WC:[0,60],eye:[0.8,1.7,-28],target:[-5,2.4,60],tan:Math.tan(26*D2R),water:-1e4,kind:1,rc:[0,110],rx:300,
+    shadow:[[-170,-45,-80],[170,75,300]],name:'tst_0020 · Hillside lane (medium)'},
+};
 function catmull(pts,step){ const out=[]; for(let i=0;i<pts.length-1;i++){ const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)]; const L=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]); const n=Math.max(1,Math.ceil(L/step)); for(let k=0;k<n;k++){ const t=k/n,t2=t*t,t3=t2*t; out.push([0,1].map(a=>0.5*((2*p1[a])+(-p0[a]+p2[a])*t+(2*p0[a]-5*p1[a]+4*p2[a]-p3[a])*t2+(-p0[a]+3*p1[a]-3*p2[a]+p3[a])*t3))); } } out.push(pts[pts.length-1]); return out; }
-async function buildSampleScene(prog){
-  rngS=987654;
-  const roads=[];
-  { const p=[]; for(let z=-1500;z<=1500;z+=150) p.push([RIVER(z)+115+18*Math.sin(z*0.011),z]); roads.push({pts:catmull(p,3),w:7}); }
-  { const p=[[RIVER(-131)+115+18*Math.sin(-1.44),-131]]; for(let i=0;i<=14;i++){ const s=i/14, r=160-135*s, th=-1.9+s*5.2; p.push([VC[0]+r*Math.cos(th)+Math.sin(i*2.1)*7,VC[1]+r*Math.sin(th)+Math.cos(i*1.7)*7]); } roads.push({pts:catmull(p,3),w:5.5}); }
-  { const z0=200, x0=RIVER(z0)+115+18*Math.sin(z0*0.011); roads.push({pts:catmull([[x0,z0],[80,215],[RIVER(222)+4,222],[-60,232],[-150,205],[-230,252],[-300,214],[-385,272],[-470,250],[-570,302]],3),w:5}); }
-  { roads.push({pts:catmull([[VC[0]+75,VC[1]+45],[370,110],[455,92],[545,150],[610,140]],3),w:4.5}); }
-  const RH=new Map(), rk=(x,z)=>Math.floor(x/16)+','+Math.floor(z/16);
-  for(const r of roads) for(const p of r.pts){ const k=rk(p[0],p[1]); if(!RH.has(k)) RH.set(k,[]); RH.get(k).push([p[0],p[1],r.w/2]); }
-  const roadD=(x,z)=>{ let m=1e9; const i0=Math.floor(x/16),j0=Math.floor(z/16); for(let j=j0-1;j<=j0+1;j++) for(let i=i0-1;i<=i0+1;i++){ const a=RH.get(i+','+j); if(a) for(const q of a) m=Math.min(m,Math.hypot(x-q[0],z-q[1])-q[2]); } return m; };
-  // terrain mesh
-  const NV=IS_MOBILE?256:384, WS=2600, WK=3, WSK=Math.sinh(3), WC=[60,0];
-  const wx=i=>WC[0]+WS*Math.sinh(WK*(i/(NV-1)*2-1))/WSK, wz=j=>WC[1]+WS*Math.sinh(WK*(j/(NV-1)*2-1))/WSK;
-  const tp=new Float32Array(NV*NV*3), tn=new Float32Array(NV*NV*3);
-  for(let j=0;j<NV;j++){ const z=wz(j); for(let i=0;i<NV;i++){ const x=wx(i), y=HV(x,z), k=(j*NV+i)*3; tp[k]=x; tp[k+1]=y; tp[k+2]=z; const e=1.5; const nx=HV(x-e,z)-HV(x+e,z), nz=HV(x,z-e)-HV(x,z+e); const nn=norm([nx,2*e,nz]); tn[k]=nn[0]; tn[k+1]=nn[1]; tn[k+2]=nn[2]; } if(j%24===0){ prog('Shaping the sample terrain',j/NV*0.5); await yieldUI(); } }
-  const ti=new Uint32Array((NV-1)*(NV-1)*6); let q=0; for(let j=0;j<NV-1;j++) for(let i=0;i<NV-1;i++){ const a=j*NV+i,b=a+1,c=a+NV,d=c+1; ti[q++]=a;ti[q++]=c;ti[q++]=b;ti[q++]=b;ti[q++]=c;ti[q++]=d; }
-  // buildings
+const WALLS=[[0.6,0.56,0.48],[0.52,0.4,0.27],[0.43,0.41,0.38],[0.58,0.48,0.43],[0.5,0.47,0.38],[0.62,0.6,0.55]];
+const ROOFS=[[0.085,0.085,0.095],[0.3,0.1,0.055],[0.17,0.1,0.065],[0.11,0.1,0.1]];
+const DECC=[[0.055,0.085,0.03],[0.07,0.09,0.035],[0.05,0.07,0.03],[0.08,0.085,0.04]];
+/* building geometry: walls carry a window pattern, roofs and props are plain */
+function geom(HF){
   const B={p:[],n:[],c:[],a:[]}, bl=[];
   const quad=(p0,p1,p2,p3,n,c,a0,a1,a2,a3)=>{ for(const [p,a] of [[p0,a0],[p1,a1],[p2,a2],[p0,a0],[p2,a2],[p3,a3]]){ B.p.push(...p); B.n.push(...n); B.c.push(...c); B.a.push(...a); } };
   const tri=(p0,p1,p2,n,c,a0,a1,a2)=>{ for(const [p,a] of [[p0,a0],[p1,a1],[p2,a2]]){ B.p.push(...p); B.n.push(...n); B.c.push(...c); B.a.push(...a); } };
-  const WALLS=[[0.6,0.56,0.48],[0.52,0.4,0.27],[0.43,0.41,0.38],[0.58,0.48,0.43],[0.5,0.47,0.38],[0.62,0.6,0.55]];
-  const ROOFS=[[0.085,0.085,0.095],[0.3,0.1,0.055],[0.17,0.1,0.065],[0.11,0.1,0.1]];
-  function house(cx,cz,tx,tz,w,d,eave,pitch,wc,rc){
+  function house(cx,cz,tx,tz,w,d,eave,pitch,wc,rc,flat){
     const t=[tx,0,tz], nn=[-tz,0,tx]; const P=(a,b,y)=>[cx+t[0]*a+nn[0]*b,y,cz+t[2]*a+nn[2]*b];
-    let ymin=1e9,ymax=-1e9; for(const [a,b] of [[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]){ const p=P(a,b,0); const y=HV(p[0],p[2]); ymin=Math.min(ymin,y); ymax=Math.max(ymax,y); }
+    let ymin=1e9,ymax=-1e9; for(const [a,b] of [[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2],[0,-d/2],[0,d/2]]){ const p=P(a,b,0); const y=HF(p[0],p[2]); ymin=Math.min(ymin,y); ymax=Math.max(ymax,y); }
     if(ymax-ymin>4.5) return false;
-    const y0=ymin-0.6, y1=ymax, ye=y1+eave, ov=0.45, yr=ye+(d/2)*Math.tan(pitch);
+    const y0=ymin-0.6, y1=ymax, ye=y1+eave, ov=flat?0.25:0.45, yr=ye+(d/2)*Math.tan(pitch);
     const A=(u,y)=>[u,y-y1,eave,0];
     quad(P(-w/2,d/2,y0),P(w/2,d/2,y0),P(w/2,d/2,ye),P(-w/2,d/2,ye),nn,wc,A(0,y0),A(w,y0),A(w,ye),A(0,ye));
     quad(P(w/2,-d/2,y0),P(-w/2,-d/2,y0),P(-w/2,-d/2,ye),P(w/2,-d/2,ye),mul(nn,-1),wc,A(0,y0),A(w,y0),A(w,ye),A(0,ye));
@@ -797,12 +858,41 @@ async function buildSampleScene(prog){
       if(s===1) quad(e0,e1,r1,r0,rr,rc,R(0),R(0),R(d/2),R(d/2)); else quad(e1,e0,r0,r1,rr,rc,R(0),R(0),R(d/2),R(d/2)); }
     return {y1,yr};
   }
+  // axis-aligned-ish box (rotated by tx,tz), plain material
+  function box(cx,cz,y0,tx,tz,w,d,h,c){ const t=[tx,0,tz], nn=[-tz,0,tx]; const P=(a,b,y)=>[cx+t[0]*a+nn[0]*b,y,cz+t[2]*a+nn[2]*b]; const y1=y0+h, A=y=>[0,y-y0,0,2];
+    quad(P(-w/2,d/2,y0),P(w/2,d/2,y0),P(w/2,d/2,y1),P(-w/2,d/2,y1),nn,c,A(y0),A(y0),A(y1),A(y1));
+    quad(P(w/2,-d/2,y0),P(-w/2,-d/2,y0),P(-w/2,-d/2,y1),P(w/2,-d/2,y1),mul(nn,-1),c,A(y0),A(y0),A(y1),A(y1));
+    quad(P(w/2,d/2,y0),P(w/2,-d/2,y0),P(w/2,-d/2,y1),P(w/2,d/2,y1),t,c,A(y0),A(y0),A(y1),A(y1));
+    quad(P(-w/2,-d/2,y0),P(-w/2,d/2,y0),P(-w/2,d/2,y1),P(-w/2,-d/2,y1),mul(t,-1),c,A(y0),A(y0),A(y1),A(y1));
+    quad(P(-w/2,-d/2,y1),P(-w/2,d/2,y1),P(w/2,d/2,y1),P(w/2,-d/2,y1),[0,1,0],c,A(y1),A(y1),A(y1),A(y1)); }
+  return {B,bl,quad,tri,house,box};
+}
+async function terrainMesh(def,prog){
+  const HF=def.H, NV=IS_MOBILE?256:384, WS=def.W, WK=def.WK, WSK=Math.sinh(WK), WC=def.WC;
+  const wx=i=>WC[0]+WS*Math.sinh(WK*(i/(NV-1)*2-1))/WSK, wz=j=>WC[1]+WS*Math.sinh(WK*(j/(NV-1)*2-1))/WSK;
+  const tp=new Float32Array(NV*NV*3), tn=new Float32Array(NV*NV*3);
+  for(let j=0;j<NV;j++){ const z=wz(j); for(let i=0;i<NV;i++){ const x=wx(i), y=HF(x,z), k=(j*NV+i)*3; tp[k]=x; tp[k+1]=y; tp[k+2]=z; const e=Math.max(0.25,Math.abs(wx(Math.min(i+1,NV-1))-x)*0.5); const nx=HF(x-e,z)-HF(x+e,z), nz=HF(x,z-e)-HF(x,z+e); const nn=norm([nx,2*e,nz]); tn[k]=nn[0]; tn[k+1]=nn[1]; tn[k+2]=nn[2]; } if(j%24===0){ prog('Shaping the terrain',j/NV*0.5); await yieldUI(); } }
+  const ti=new Uint32Array((NV-1)*(NV-1)*6); let q=0; for(let j=0;j<NV-1;j++) for(let i=0;i<NV-1;i++){ const a=j*NV+i,b=a+1,c=a+NV,d=c+1; ti[q++]=a;ti[q++]=c;ti[q++]=b;ti[q++]=b;ti[q++]=c;ti[q++]=d; }
+  return {tp,tn,ti};
+}
+async function buildVillage(def,prog){
+  rngS=987654; const HF=def.H;
+  const roads=[];
+  { const p=[]; for(let z=-1500;z<=1500;z+=150) p.push([RIVER(z)+115+18*Math.sin(z*0.011),z]); roads.push({pts:catmull(p,3),w:7}); }
+  { const p=[[RIVER(-131)+115+18*Math.sin(-1.44),-131]]; for(let i=0;i<=14;i++){ const s=i/14, r=160-135*s, th=-1.9+s*5.2; p.push([VC[0]+r*Math.cos(th)+Math.sin(i*2.1)*7,VC[1]+r*Math.sin(th)+Math.cos(i*1.7)*7]); } roads.push({pts:catmull(p,3),w:5.5}); }
+  { const z0=200, x0=RIVER(z0)+115+18*Math.sin(z0*0.011); roads.push({pts:catmull([[x0,z0],[80,215],[RIVER(222)+4,222],[-60,232],[-150,205],[-230,252],[-300,214],[-385,272],[-470,250],[-570,302]],3),w:5}); }
+  { roads.push({pts:catmull([[VC[0]+75,VC[1]+45],[370,110],[455,92],[545,150],[610,140]],3),w:4.5}); }
+  const RH=new Map(), rk=(x,z)=>Math.floor(x/16)+','+Math.floor(z/16);
+  for(const r of roads) for(const p of r.pts){ const k=rk(p[0],p[1]); if(!RH.has(k)) RH.set(k,[]); RH.get(k).push([p[0],p[1],r.w/2]); }
+  const roadD=(x,z)=>{ let m=1e9; const i0=Math.floor(x/16),j0=Math.floor(z/16); for(let j=j0-1;j<=j0+1;j++) for(let i=i0-1;i<=i0+1;i++){ const a=RH.get(i+','+j); if(a) for(const q of a) m=Math.min(m,Math.hypot(x-q[0],z-q[1])-q[2]); } return m; };
+  const {tp,tn,ti}=await terrainMesh(def,prog);
+  const G=geom(HF), {B,bl,house,tri}=G;
   // church on the hilltop
   { const cx=VC[0]+4, cz=VC[1]-6, tx=Math.cos(0.3), tz=Math.sin(0.3); const st=[0.5,0.48,0.44];
-    const res=house(cx,cz,tx,tz,26,11,10,40*D2R,st,[0.09,0.09,0.1]); bl.push([cx,cz,16]);
-    const tc=[cx-tx*15,cz-tz*15], y0=HV(tc[0],tc[1])-1, th=26, hw=3.2; const nn=[-tz,0,tx], t=[tx,0,tz];
+    house(cx,cz,tx,tz,26,11,10,40*D2R,st,[0.09,0.09,0.1]); bl.push([cx,cz,16]);
+    const tc=[cx-tx*15,cz-tz*15], y0=HF(tc[0],tc[1])-1, th=26, hw=3.2; const nn=[-tz,0,tx], t=[tx,0,tz];
     const P=(a,b,y)=>[tc[0]+t[0]*a+nn[0]*b,y,tc[1]+t[2]*a+nn[2]*b]; const A=(u,y)=>[u,y-y0,0,2];
-    for(const [n,a0,b0,a1,b1] of [[nn,-hw,hw,hw,hw],[mul(nn,-1),hw,-hw,-hw,-hw],[t,hw,hw,hw,-hw],[mul(t,-1),-hw,-hw,-hw,hw]]) quad(P(a0,b0,y0),P(a1,b1,y0),P(a1,b1,y0+th),P(a0,b0,y0+th),n,st,A(0,y0),A(6,y0),A(6,y0+th),A(0,y0+th));
+    for(const [n,a0,b0,a1,b1] of [[nn,-hw,hw,hw,hw],[mul(nn,-1),hw,-hw,-hw,-hw],[t,hw,hw,hw,-hw],[mul(t,-1),-hw,-hw,-hw,hw]]) G.quad(P(a0,b0,y0),P(a1,b1,y0),P(a1,b1,y0+th),P(a0,b0,y0+th),n,st,A(0,y0),A(6,y0),A(6,y0+th),A(0,y0+th));
     const top=[tc[0],y0+th+14,tc[1]]; const cs=[P(-hw-0.3,hw+0.3,y0+th),P(hw+0.3,hw+0.3,y0+th),P(hw+0.3,-hw-0.3,y0+th),P(-hw-0.3,-hw-0.3,y0+th)];
     for(let i=0;i<4;i++){ const a=cs[i],b=cs[(i+1)%4]; let n=norm(cross(sub(b,a),sub(top,a))); if(n[1]<0) n=mul(n,-1); tri(a,b,top,n,[0.08,0.085,0.09],[0,0,0,1],[0,0,0,1],[0,4,0,1]); }
     bl.push([tc[0],tc[1],6]); }
@@ -818,60 +908,98 @@ async function buildSampleScene(prog){
         if(house(cx,cz,tx,tz,w,d,4.6+rnd()*3.4,(34+rnd()*12)*D2R,WALLS[Math.floor(rnd()*WALLS.length)],ROOFS[Math.floor(rnd()*ROOFS.length)])) bl.push([cx,cz,Math.max(w,d)*0.55]); } } }
   for(let k=0;k<26;k++){ const x=(rnd()-0.5)*1700, z=(rnd()-0.5)*1900; if(Math.abs(x-RIVER(z))<60||roadD(x,z)<8||nearB(x,z,14)) continue; const a=rnd()*Math.PI; const w=9+rnd()*6,d=7+rnd()*3; if(house(x,z,Math.cos(a),Math.sin(a),w,d,5+rnd()*2,38*D2R,WALLS[k%WALLS.length],ROOFS[k%ROOFS.length])) bl.push([x,z,w*0.6]); }
   prog('Placing trees',0.6); await yieldUI();
-  // trees
-  const dec=[], con=[]; const DECC=[[0.055,0.085,0.03],[0.07,0.09,0.035],[0.05,0.07,0.03],[0.08,0.085,0.04]];
+  const dec=[], con=[];
   const okT=(x,z,r)=>roadD(x,z)>r*0.7+1&&!nearB(x,z,r*0.6+1.5)&&Math.abs(x-RIVER(z))>9;
-  const addT=(arr,x,z,r,h,c)=>{ if(arr.length/8>(IS_MOBILE?6000:11000)) return; arr.push(x,HV(x,z)-0.3,z,r,h,c[0],c[1],c[2]); };
+  const addT=(arr,x,z,r,h,c)=>{ if(arr.length/8>(IS_MOBILE?6000:11000)) return; arr.push(x,HF(x,z)-0.3,z,r,h,c[0],c[1],c[2]); };
   for(let z=-1500;z<1500;z+=10) for(const s of [1,-1]){ if(rnd()>0.55) continue; const x=RIVER(z)+s*(13+rnd()*18); const r=3.5+rnd()*2.5; if(okT(x,z,r)) addT(dec,x,z,r,9+rnd()*6,DECC[Math.floor(rnd()*4)]); }
   for(let k=0;k<420;k++){ const a=rnd()*Math.PI*2, d=Math.sqrt(rnd())*300; const x=VC[0]+Math.cos(a)*d, z=VC[1]+Math.sin(a)*d; const r=2.5+rnd()*2.5; if(okT(x,z,r)) addT(dec,x,z,r,6+rnd()*6,DECC[Math.floor(rnd()*4)]); }
   for(let k=0;k<34;k++){ const x0=(rnd()-0.5)*1400, z0=(rnd()-0.5)*2000, a=rnd()*Math.PI, L=120+rnd()*220; for(let s=0;s<L;s+=8){ const x=x0+Math.cos(a)*s, z=z0+Math.sin(a)*s; if(Math.abs(x-RIVER(z))>290) continue; const r=2.6+rnd()*2; if(okT(x,z,r)&&rnd()<0.8) addT(dec,x,z,r,6+rnd()*5,DECC[Math.floor(rnd()*4)]); } }
-  { const cand=[]; for(let z=-1500;z<1500;z+=11) for(let x=-1500;x<1600;x+=11){ const jx=x+(rnd()-0.5)*8, jz=z+(rnd()-0.5)*8; const ad=Math.abs(jx-RIVER(jz)); if(ad<300) continue; const f=fbm(jx*0.004+7,jz*0.004-3,3); if(f<(jx>RIVER(jz)?0.42:0.53)) continue; const y=HV(jx,jz); if(y>360) continue; cand.push([jx,jz,y,Math.hypot(jx-450,jz-150)]); }
+  { const cand=[]; for(let z=-1500;z<1500;z+=11) for(let x=-1500;x<1600;x+=11){ const jx=x+(rnd()-0.5)*8, jz=z+(rnd()-0.5)*8; const ad=Math.abs(jx-RIVER(jz)); if(ad<300) continue; const f=fbm(jx*0.004+7,jz*0.004-3,3); if(f<(jx>RIVER(jz)?0.42:0.53)) continue; const y=HF(jx,jz); if(y>360) continue; cand.push([jx,jz,y,Math.hypot(jx-450,jz-150)]); }
     cand.sort((a,b)=>a[3]-b[3]);
     for(const [jx,jz,y] of cand){ if(!okT(jx,jz,4)) continue; if(y>110&&rnd()<0.7) addT(con,jx,jz,2.6+rnd()*1.2,13+rnd()*8,[0.035,0.055,0.03]); else addT(dec,jx,jz,3.8+rnd()*2.4,10+rnd()*6,DECC[Math.floor(rnd()*4)]); } }
-  // roads canvas
-  const cv=document.createElement('canvas'); cv.width=cv.height=2048; const c2=cv.getContext('2d'); c2.fillStyle='#000'; c2.fillRect(0,0,2048,2048); c2.lineCap='round'; c2.lineJoin='round'; const sc=2048/1600;
-  for(const r of roads){ c2.strokeStyle='rgba(255,255,255,1)'; c2.lineWidth=r.w*sc; c2.beginPath(); r.pts.forEach((p,i)=>{ const X=(p[0]+800)*sc, Y=(p[1]+800)*sc; i?c2.lineTo(X,Y):c2.moveTo(X,Y); }); c2.stroke(); }
+  const cv=document.createElement('canvas'); cv.width=cv.height=2048; const c2=cv.getContext('2d'); c2.fillStyle='#000'; c2.fillRect(0,0,2048,2048); c2.lineCap='round'; c2.lineJoin='round'; const sc=2048/(2*def.rx);
+  for(const r of roads){ c2.strokeStyle='#f00'; c2.lineWidth=r.w*sc; c2.beginPath(); r.pts.forEach((p,i)=>{ const X=(p[0]-def.rc[0]+def.rx)*sc, Y=(p[1]-def.rc[1]+def.rx)*sc; i?c2.lineTo(X,Y):c2.moveTo(X,Y); }); c2.stroke(); }
   return {tp,tn,ti,B,dec:new Float32Array(dec),con:new Float32Array(con),roadsCanvas:cv};
+}
+async function buildStreet(def,prog){
+  rngS=424242; const HF=def.H;
+  const {tp,tn,ti}=await terrainMesh(def,prog);
+  const G=geom(HF), {bl,house,box}=G;
+  prog('Building the village',0.55); await yieldUI();
+  const tanAt=z=>{ const e=0.5, dx=LX(z+e)-LX(z-e); const l=Math.hypot(dx,2*e); return [dx/l,2*e/l]; };
+  const free=(x,z,r)=>!bl.some(q=>Math.hypot(x-q[0],z-q[1])<r+q[2]);
+  const roadD=(x,z)=>Math.abs(x-LX(z))*0.95;
+  // detached houses along the lane, a little apart, set back behind gardens; a second row higher and lower on the slope
+  const cam=[LX(-28),-28];
+  for(const side of [1,-1]) for(const [z0,z1,gap,set] of (side===1?[[-40,240,[13,24],[5,10]],[-20,260,[22,40],[22,38]]]:[[-10,240,[18,32],[4,8]]])){ let z=z0+rnd()*8;
+    while(z<z1){ const [tx,tz]=tanAt(z); const w=7+rnd()*3.5, d=6+rnd()*3, off=ST.half+set[0]+rnd()*(set[1]-set[0])+d/2;
+      const cx=LX(z)+tz*off*side, cz=z-tx*off*side; const a=Math.atan2(tz,tx)+(rnd()-0.5)*0.35; const ux=Math.cos(a), uz=Math.sin(a);
+      if(free(cx,cz,Math.max(w,d)*0.6+2)&&roadD(cx,cz)>ST.half+d*0.5+2&&Math.hypot(cx-cam[0],cz-cam[1])>30){ const st=rnd()<0.6?1:2;
+        if(house(cx,cz,ux,uz,w,d,st*2.8+0.9+rnd()*0.6,(36+rnd()*12)*D2R,WALLS[Math.floor(rnd()*WALLS.length)],ROOFS[Math.floor(rnd()*ROOFS.length)])){ bl.push([cx,cz,Math.max(w,d)*0.6]);
+          if(rnd()<0.6){ const q=(rnd()-0.5)*w*0.5; box(cx+ux*q,cz+uz*q,HF(cx,cz)+st*2.8+1+d*0.3,ux,uz,0.6,0.8,2.4,[0.33,0.25,0.2]); } } }
+      z+=gap[0]+rnd()*(gap[1]-gap[0]); } }
+  // dry-stone walls along stretches of the lane and wooden poles carrying a line up the hill
+  for(const side of [1,-1]){ let z=-40; while(z<240){ const run=rnd()<0.55; const L=8+rnd()*22; if(run) for(let q=0;q<L;q+=1.6){ const zz=z+q, [tx,tz]=tanAt(zz); if(Math.abs(zz-cam[1])<14) continue; const off=ST.half+1.1; const x=LX(zz)+tz*off*side, k=zz-tx*off*side; box(x,k,HF(x,k)-0.2,tx,tz,1.65,0.55,0.95+rnd()*0.15,[0.24,0.23,0.21]); } z+=L+3+rnd()*10; } }
+  for(let z=-30;z<260;z+=34){ const [tx,tz]=tanAt(z); const off=ST.half+2.2; const x=LX(z)+tz*off, k=z-tx*off; const y=HF(x,k); box(x,k,y,tx,tz,0.24,0.24,7.2,[0.14,0.1,0.07]); box(x,k,y+6.6,tz,-tx,1.6,0.12,0.12,[0.14,0.1,0.07]); }
+  prog('Planting trees',0.65); await yieldUI();
+  const dec=[], con=[]; const addT=(arr,x,z,r,h,c)=>{ if(arr.length/8>(IS_MOBILE?6000:10000)) return; arr.push(x,HF(x,z)-0.3,z,r,h,c[0],c[1],c[2]); };
+  // garden and hedge trees around the houses, an orchard, the lane edges
+  for(let k=0;k<1500;k++){ const z=-60+rnd()*340, x=LX(z)+(rnd()-0.5)*140; if(roadD(x,z)<ST.half+2.5||!free(x,z,2.5)||Math.hypot(x-cam[0],z-cam[1])<26||(x>LX(z)&&z<cam[1]+45&&rnd()<0.8)) continue; const r=rnd(); if(r<0.35) addT(dec,x,z,2+rnd()*2.6,5+rnd()*6,DECC[Math.floor(rnd()*4)]); else if(r<0.42) addT(con,x,z,1.6+rnd(),8+rnd()*6,[0.035,0.055,0.03]); }
+  for(let i=0;i<6;i++) for(let j=0;j<5;j++){ const x=-48+i*7+(rnd()-0.5), z=110+j*7+(rnd()-0.5); if(roadD(x,z)>ST.half+3&&free(x,z,2)) addT(dec,x,z,2+rnd()*0.5,4.2+rnd(),DECC[1]); }
+  // woods down into the valley and over the far hills
+  { const cand=[]; for(let z=-300;z<1400;z+=9) for(let x=-1000;x<900;x+=9){ const jx=x+(rnd()-0.5)*7, jz=z+(rnd()-0.5)*7; const dc=Math.hypot(jx-LX(jz)*0.5,jz-100); if(dc<110) continue; if(fbm(jx*0.005+2,jz*0.005+5,3)<(jx<-60?0.4:0.47)) continue; cand.push([jx,jz,Math.hypot(jx,jz-60)]); }
+    cand.sort((a,b)=>a[2]-b[2]); for(const [x,z] of cand){ if(rnd()<0.55) addT(con,x,z,2.3+rnd()*1.1,12+rnd()*8,[0.035,0.055,0.03]); else addT(dec,x,z,3.4+rnd()*2.2,9+rnd()*6,DECC[Math.floor(rnd()*4)]); } }
+  // lane canvas: R = tarmac, G = gravel drives and verges
+  const cv=document.createElement('canvas'); cv.width=cv.height=2048; const c2=cv.getContext('2d'); c2.fillStyle='#000'; c2.fillRect(0,0,2048,2048); c2.lineCap='round'; c2.lineJoin='round'; const sc=2048/(2*def.rx);
+  const P=p=>[(p[0]-def.rc[0]+def.rx)*sc,(p[1]-def.rc[1]+def.rx)*sc];
+  const line=(pts,w,col)=>{ c2.strokeStyle=col; c2.lineWidth=w*sc; c2.beginPath(); pts.forEach((p,i)=>{ const [X,Y]=P(p); i?c2.lineTo(X,Y):c2.moveTo(X,Y); }); c2.stroke(); };
+  const sp=[]; for(let z=-120;z<=420;z+=2) sp.push([LX(z),z]);
+  line(sp,2*ST.half+1.4,'#0f0');
+  for(const b of bl){ if(roadD(b[0],b[1])>ST.half+14) continue; const z=b[1]; const x0=LX(z); const s1=Math.sign(b[0]-x0)||1; line([[x0+s1*ST.half,z],[b[0]-s1*b[2]*0.8,z+(rnd()-0.5)*4]],2.6,'#0f0'); }
+  line(sp,2*ST.half,'#f00');
+  return {tp,tn,ti,B:G.B,dec:new Float32Array(dec),con:new Float32Array(con),roadsCanvas:cv};
 }
 function sphereMesh(sl,st){ const p=[],n=[],pa=[],idx=[]; for(let j=0;j<=st;j++){ const th=j/st*Math.PI; for(let i=0;i<=sl;i++){ const ph=i/sl*Math.PI*2; const v=[Math.sin(th)*Math.cos(ph),Math.cos(th),Math.sin(th)*Math.sin(ph)]; p.push(...v); n.push(...v); pa.push(0); } }
   for(let j=0;j<st;j++) for(let i=0;i<sl;i++){ const a=j*(sl+1)+i,b=a+1,c=a+sl+1,d=c+1; idx.push(a,c,b,b,c,d); } return {p,n,pa,idx}; }
 function addTrunk(m,h0){ const b=m.p.length/3; const v=[[-1,0,-1],[1,0,-1],[1,0,1],[-1,0,1],[-1,h0,-1],[1,h0,-1],[1,h0,1],[-1,h0,1]]; for(const q of v){ m.p.push(...q); m.n.push(q[0]*0.7,0,q[2]*0.7); m.pa.push(1); } for(const [a,c,d,e] of [[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]) m.idx.push(b+a,b+c,b+d,b+a,b+d,b+e); return m; }
 function coneMesh(sides){ const p=[],n=[],pa=[],idx=[]; for(const [y0,y1,r0] of [[0.12,0.7,1],[0.42,1,0.7]]){ const b=p.length/3; for(let i=0;i<=sides;i++){ const a=i/sides*Math.PI*2, c=Math.cos(a), s=Math.sin(a); const nn=norm([c*(y1-y0),r0*0.6,s*(y1-y0)]); p.push(c*r0,y0,s*r0, 0,y1,0); n.push(...nn,...nn); pa.push(0,0); } for(let i=0;i<sides;i++){ const a=b+i*2; idx.push(a,a+1,a+2,a+2,a+1,a+3); } } return addTrunk({p,n,pa,idx},0.2); }
 
-async function renderSampleFrame(prog){
+async function renderSampleFrame(kind,prog){
+  const def=SHOTDEF[kind]; S.sun={...def.sun}; updateSunCPU(); renderSkyTex();
   const W=IS_MOBILE?960:1280, H=IS_MOBILE?540:720, SS=2;
-  const sc=await buildSampleScene(prog);
-  prog('Rendering the sample frame',0.75); await yieldUI();
-  const eye=[-170,0,-330]; eye[1]=HV(eye[0],eye[2])+40; const target=[205,34,10];
-  const cam=camFromLook(eye,target,W*SS,H*SS,Math.tan(27*D2R));
+  const sc=kind==='street'?await buildStreet(def,prog):await buildVillage(def,prog);
+  prog('Rendering the plate',0.75); await yieldUI();
+  const eye=def.eye.slice(), target=def.target.slice(); if(kind==='village') eye[1]=HV(eye[0],eye[2])+40;
+  else { eye[0]+=LX(eye[2]); eye[1]=HS(eye[0],eye[2])+def.eye[1]; target[0]+=LX(target[2]); target[1]=HS(target[0],target[2])+def.target[1]; }
+  const cam=camFromLook(eye,target,W*SS,H*SS,def.tan);
   const vT=mkVAO([{loc:0,size:3,data:sc.tp},{loc:1,size:3,data:sc.tn}],sc.ti);
   const nB=sc.B.p.length/3; const vB=mkVAO([{loc:0,size:3,data:new Float32Array(sc.B.p)},{loc:1,size:3,data:new Float32Array(sc.B.n)},{loc:2,size:3,data:new Float32Array(sc.B.c)},{loc:3,size:4,data:new Float32Array(sc.B.a)}]);
   const sm=addTrunk(sphereMesh(9,6),0.4), cm=coneMesh(9);
-  const treeVAO=(m,inst)=>{ const v=mkVAO([{loc:0,size:3,data:new Float32Array(m.p)},{loc:1,size:3,data:new Float32Array(m.n)},{loc:2,size:1,data:new Float32Array(m.pa)}],new Uint16Array(m.idx)); gl.bindVertexArray(v); const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,inst,gl.STATIC_DRAW);
-    for(const [loc,size,off] of [[4,3,0],[5,2,3],[6,3,5]]){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,off*4); gl.vertexAttribDivisor(loc,1); } gl.bindVertexArray(null); return {v,n:m.idx.length,count:inst.length/8}; };
+  const treeVAO=(m,inst)=>{ const v=mkVAO([{loc:0,size:3,data:new Float32Array(m.p)},{loc:1,size:3,data:new Float32Array(m.n)},{loc:2,size:1,data:new Float32Array(m.pa)}],new Uint16Array(m.idx)); gl.bindVertexArray(v); const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,inst.length?inst:new Float32Array(8),gl.STATIC_DRAW);
+    for(const [loc,size,off] of [[4,3,0],[5,2,3],[6,3,5]]){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,off*4); gl.vertexAttribDivisor(loc,1); } gl.bindVertexArray(null); return {v,n:m.idx.length,count:inst.length/8,buf:b}; };
   const tD=treeVAO(sm,sc.dec), tC=treeVAO(cm,sc.con);
-  const vW=mkVAO([{loc:0,size:3,data:new Float32Array([-2600,WATER,-2600, 2600,WATER,-2600, 2600,WATER,2600, -2600,WATER,-2600, 2600,WATER,2600, -2600,WATER,2600])}]);
+  const WY=def.water; const vW=mkVAO([{loc:0,size:3,data:new Float32Array([-2600,WY,-2600, 2600,WY,-2600, 2600,WY,2600, -2600,WY,-2600, 2600,WY,2600, -2600,WY,2600])}]);
   const roadsT=tex2D(2048,2048,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.CLAMP_TO_EDGE,sc.roadsCanvas);
   // sun shadow map
   const SMS=IS_MOBILE?2048:4096; const sDT=depthTex(SMS,SMS); const sF=mkFBO([],sDT); drawBufs(0); fbCheck('the sample shadow map');
-  const LM=lightVP(sunDir(),[-1700,-5,-1700],[1700,420,1700]);
+  const LM=lightVP(sunDir(),def.shadow[0],def.shadow[1]);
   gl.viewport(0,0,SMS,SMS); gl.enable(gl.DEPTH_TEST); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2,4);
   let pr=use('sD'); uM4(pr,'uVP',LM.VP); gl.bindVertexArray(vT); gl.drawElements(gl.TRIANGLES,sc.ti.length,gl.UNSIGNED_INT,0); gl.bindVertexArray(vB); gl.drawArrays(gl.TRIANGLES,0,nB);
-  pr=use('sTreeD'); uM4(pr,'uVP',LM.VP); for(const [t,ty] of [[tD,0],[tC,1]]){ u1i(pr,'uType',ty); gl.bindVertexArray(t.v); gl.drawElementsInstanced(gl.TRIANGLES,t.n,gl.UNSIGNED_SHORT,0,t.count); }
+  pr=use('sTreeD'); uM4(pr,'uVP',LM.VP); for(const [t,ty] of [[tD,0],[tC,1]]){ if(!t.count) continue; u1i(pr,'uType',ty); gl.bindVertexArray(t.v); gl.drawElementsInstanced(gl.TRIANGLES,t.n,gl.UNSIGNED_SHORT,0,t.count); }
   gl.disable(gl.POLYGON_OFFSET_FILL);
   // 2x render targets
   const RW=W*SS, RH=H*SS;
   const rt=[tex2D(RW,RH,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.NEAREST,gl.CLAMP_TO_EDGE),tex2D(RW,RH,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST,gl.CLAMP_TO_EDGE),tex2D(RW,RH,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.NEAREST,gl.CLAMP_TO_EDGE),tex2D(RW,RH,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.NEAREST,gl.CLAMP_TO_EDGE)];
   const rF=mkFBO(rt,'rb'); attachRB(rF,RW,RH); drawBufs(4); fbCheck('the sample frame targets');
   gl.viewport(0,0,RW,RH); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  const VP=camVP(cam,0.5,9000);
-  const lit=pr=>{ u3v(pr,'uSunDir',sunDir()); u3v(pr,'uSunE',SUN_E); u3v(pr,'uSkyAvg',SKY_AVG); u3v(pr,'uSunL',SUN_L); u1f(pr,'uSunCos',SUN_COS); u3v(pr,'uCam',cam.pos); bindTex(0,gl.TEXTURE_2D,sDT); u1i(pr,'uShadow',0); uM4(pr,'uLM',LM.VP); u1f(pr,'uSB',0.5/LM.range); bindTex(1,gl.TEXTURE_2D,T.sky); u1i(pr,'uSky',1); uM4(pr,'uVP',VP); };
+  const VP=camVP(cam,kind==='street'?0.1:0.5,9000);
+  const lit=pr=>{ u3v(pr,'uSunDir',sunDir()); u3v(pr,'uSunE',SUN_E); u3v(pr,'uSkyAvg',SKY_AVG); u3v(pr,'uSunL',SUN_L); u1f(pr,'uSunCos',SUN_COS); u3v(pr,'uCam',cam.pos); bindTex(0,gl.TEXTURE_2D,sDT); u1i(pr,'uShadow',0); uM4(pr,'uLM',LM.VP); u1f(pr,'uSB',(kind==='street'?0.05:0.5)/LM.range); bindTex(1,gl.TEXTURE_2D,T.sky); u1i(pr,'uSky',1); uM4(pr,'uVP',VP); };
   gl.disable(gl.DEPTH_TEST); pr=use('sSky'); lit(pr); u3v(pr,'uR',cam.r); u3v(pr,'uU',cam.u); u3v(pr,'uF',cam.f); u4f(pr,'uIntr',cam.fx,cam.fy,cam.cx,cam.cy); u2f(pr,'uRes',RW,RH); fullscreen();
   gl.enable(gl.DEPTH_TEST);
-  pr=use('sTerrain'); lit(pr); bindTex(2,gl.TEXTURE_2D,roadsT); u1i(pr,'uRoads',2); u1f(pr,'uWater',WATER); gl.bindVertexArray(vT); gl.drawElements(gl.TRIANGLES,sc.ti.length,gl.UNSIGNED_INT,0);
+  pr=use('sTerrain'); lit(pr); bindTex(2,gl.TEXTURE_2D,roadsT); u1i(pr,'uRoads',2); u1f(pr,'uWater',WY); u1i(pr,'uKind',def.kind); u2f(pr,'uRC',def.rc[0],def.rc[1]); u1f(pr,'uRX',def.rx); gl.bindVertexArray(vT); gl.drawElements(gl.TRIANGLES,sc.ti.length,gl.UNSIGNED_INT,0);
   pr=use('sBld'); lit(pr); gl.bindVertexArray(vB); gl.drawArrays(gl.TRIANGLES,0,nB);
-  pr=use('sTree'); lit(pr); for(const [t,ty] of [[tD,0],[tC,1]]){ u1i(pr,'uType',ty); gl.bindVertexArray(t.v); gl.drawElementsInstanced(gl.TRIANGLES,t.n,gl.UNSIGNED_SHORT,0,t.count); }
-  pr=use('sWater'); lit(pr); gl.bindVertexArray(vW); gl.drawArrays(gl.TRIANGLES,0,6);
+  pr=use('sTree'); lit(pr); for(const [t,ty] of [[tD,0],[tC,1]]){ if(!t.count) continue; u1i(pr,'uType',ty); gl.bindVertexArray(t.v); gl.drawElementsInstanced(gl.TRIANGLES,t.n,gl.UNSIGNED_SHORT,0,t.count); }
+  if(WY>-1e3){ pr=use('sWater'); lit(pr); gl.bindVertexArray(vW); gl.drawArrays(gl.TRIANGLES,0,6); }
   gl.disable(gl.DEPTH_TEST);
   // downsample + read back
   const dt=[0,1,2,3].map(()=>tex2D(W,H,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST,gl.CLAMP_TO_EDGE)); const dF=mkFBO(dt); drawBufs(4); fbCheck('the readback targets');
@@ -879,10 +1007,18 @@ async function renderSampleFrame(prog){
   fullscreen();
   const out=[]; for(let i=0;i<4;i++){ gl.readBuffer(gl.COLOR_ATTACHMENT0+i); const a=new Float32Array(W*H*4); gl.readPixels(0,0,W,H,gl.RGBA,gl.FLOAT,a); out.push(flipRows(a,W,H,4)); }
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-  // free sample-only GPU memory
+  // free set-only GPU memory
   for(const t of [...rt,...dt,roadsT,sDT]) gl.deleteTexture(t); gl.deleteFramebuffer(rF.fb); gl.deleteRenderbuffer(rF.rb); gl.deleteFramebuffer(dF.fb); gl.deleteFramebuffer(sF.fb);
+  for(const v of [vT,vB,vW,tD.v,tC.v]) gl.deleteVertexArray(v);
   const [beauty,P,N,alb]=out;
-  return {name:'Sample frame · hill village',w:W,h:H,beauty,P,N,albedo:alb,units:1,meta:null,sample:true,truthCam:scaleCam(cam,W,H)};
+  return {name:def.name,w:W,h:H,beauty,P,N,albedo:alb,units:1,meta:null,sample:true,truthCam:scaleCam(cam,W,H)};
+}
+/* a starting set for the lane: valley fog in the valley below, a thin ground fog drifting across the lane ahead */
+function streetDefaults(){
+  const p=runAutoQuiet('bank'); if(p){ applyPreset(p,'bank',PRESETS.bank[0][1]); p.preset='Rolling'; p.name='Fog bank · down the valley'; }
+  const z=30, x=LX(z)-3; const g=groundAt(x,z); const [tx,tz]=[LX(z+1)-LX(z-1),2]; const yaw=-Math.atan2(tz,tx)+Math.PI/2;
+  const e=mkEl('ground',{name:'Ground fog · on the lane',c:[x,g,z],r:[13,0.9,22],yaw});
+  applyPreset(e,'ground',PRESETS.ground[2][1]); e.r[1]=1.1; e.terrain=0.4; e.preset='Wispy'; S.els.push(e);
 }
 function flipRows(a,w,h,c){ const o=new Float32Array(a.length), rl=w*c; for(let y=0;y<h;y++) o.set(a.subarray(y*rl,(y+1)*rl),(h-1-y)*rl); return o; }
 
@@ -1189,7 +1325,7 @@ async function ingest(pl,prog){
   // default view setup
   S.plateLook= pl.beauty?0:(pl.albedo?1:2);
   S.fogGain= pl.sample?1:1;
-  S.look.noise=clamp(SC.scale*0.05,1.5,60); S.look.detail=clamp(S.look.noise/6,0.25,10);
+  S.look.noise=clamp(SC.scale*0.05,4,60);
   S.brushR=clamp(SC.scale*0.06,0.5,120);
   initLayoutCam(); S.view='shot';
   S.els=[]; S.sel=-1; masksInit();
@@ -1197,109 +1333,146 @@ async function ingest(pl,prog){
 }
 
 /* =====================================================================
-   FOG ELEMENTS — each type follows how that kind of fog actually forms
+   FOG ELEMENTS — each type follows how that kind of fog actually forms;
+   its look (billows, wisps, holes, wind) is set per element
    ===================================================================== */
 const TYPES={
-  ground:{id:0,label:'Ground fog',col:'#a7cbdc',desc:'Radiation fog. Forms on still, clear nights as the ground cools. Densest at the ground with a flat, well-defined top. Collects in hollows, drainage lines and open wet ground; thin under trees, beside walls and on slopes. Burns off first where it is thin, sunlit or warm, lifting off the ground and lingering in shade.'},
-  pool:{id:1,label:'Valley fog',col:'#8fb6cf',desc:'Cold air drains downhill and pools under the inversion, filling the basin like water with a flat top. Deep, mature fog gets denser towards its top. Wind above sets slow waves along the top. As the sun gets in it lifts off the ground into low cloud and tears open over warm ground.'},
-  cloud:{id:6,label:'Low cloud',col:'#c2cbe0',desc:'Stratus or hill fog. The base sits at the condensation level and drops on windward slopes where air is pushed uphill; the lee side clears as the air sinks and warms. Denser towards the top, with ragged scud hanging under the base. Hills rise up into it.'},
-  bank:{id:3,label:'Fog bank',col:'#b9c6cf',desc:'Advection fog carried in on the wind. A thick mass with a lumpy top and long streaks along the flow. It rides up over rising ground and thins as it pours down lee slopes into warmer air.'},
-  rising:{id:7,label:'Rising mist',col:'#d8e6d4',desc:'Forest steam and evaporation mist. After rain, or when cold air sits over warm water, moisture rises off the canopy or wet ground in ragged wisps and small puffs that drift and break apart.'},
-  mist:{id:2,label:'Mist',col:'#d3dee5',desc:'A thin, light layer, visibility over a kilometre, hanging over low ground. Softens depth without hiding shapes.'},
-  pocket:{id:4,label:'Fog pocket',col:'#c8d4de',desc:'A free-floating local volume you can put exactly where you want it.'},
-  veil:{id:5,label:'Veil',col:'#e2cfa8',desc:'A ground-hugging sheet across the view, set just behind or in front of a subject to separate its values.'},
+  ground:{id:0,label:'Ground fog',col:'#a7cbdc',desc:'Radiation fog. Forms on still, clear nights as the ground cools. Densest at the ground with a defined top. Collects in hollows, drainage lines and open wet ground; thin under trees, beside walls and on slopes. Burns off first where it is thin, sunlit or warm.'},
+  pool:{id:1,label:'Valley fog',col:'#8fb6cf',desc:'Cold air drains downhill and pools under the inversion, filling the basin under a soft top. Wind above sets slow waves along the top. As the sun gets in it lifts off the ground and tears open over warm ground.'},
+  cloud:{id:6,label:'Low cloud',col:'#c2cbe0',desc:'Stratus or hill fog. A ragged base near the condensation level that dips into gullies and drops on windward slopes; the lee side clears. Denser towards the top, with scud hanging below. Hills rise up into it.'},
+  bank:{id:3,label:'Fog bank',col:'#b9c6cf',desc:'Advection fog carried in on the wind. A thick mass with a lumpy top and long streaks along the flow. It rides up over rising ground and thins as it pours down lee slopes.'},
+  rising:{id:7,label:'Rising mist',col:'#d8e6d4',desc:'Forest steam and evaporation mist. After rain, or when cold air sits over warm water, moisture rises off the canopy or wet ground in ragged wisps and puffs that drift and break apart.'},
+  mist:{id:2,label:'Mist',col:'#d3dee5',desc:'A thin, light layer hanging over low ground. Softens depth without hiding shapes.'},
 };
-/* per-type noise character: structure size, vertical squash (flat layers <1, columns >1), stretch along the wind, noise drift, evolution */
-const TK={ ground:{st:0.5,sq:0.4,str:1.7,dr:0.6,ev:0.6}, pool:{st:1.1,sq:0.55,str:2.2,dr:0.3,ev:0.5}, mist:{st:1.8,sq:0.5,str:2.2,dr:0.8,ev:1}, bank:{st:1.1,sq:0.75,str:2.6,dr:1,ev:1.2},
-  pocket:{st:0.5,sq:1,str:1,dr:1,ev:1}, veil:{st:1.4,sq:0.7,str:1.5,dr:0.8,ev:1}, cloud:{st:1.4,sq:0.7,str:2,dr:1,ev:1.2}, rising:{st:1.6,sq:1.8,str:1.2,dr:0.7,ev:2} };
+/* per-type noise frame: vertical squash (flat layers <1, columns >1), stretch along the wind, noise drift, evolution */
+const TK={ ground:{sq:0.42,str:1.6,dr:0.6,ev:0.6}, pool:{sq:0.5,str:1.9,dr:0.3,ev:0.5}, mist:{sq:0.5,str:2.2,dr:0.8,ev:1}, bank:{sq:0.7,str:2.2,dr:1,ev:1.2}, cloud:{sq:0.65,str:1.7,dr:1,ev:1.2}, rising:{sq:1.8,str:1.1,dr:0.7,ev:2} };
 const vis2s=v=>3.912/Math.max(v,1e-3);
-function mkEl(type,props={}){
-  const s=SC.scale||50;
-  const base={id:++uid,type,on:true,name:'',c:[0,0,0],r:[s*0.12,1,s*0.12],yaw:0,feather:0.6,breakup:0.55,terrain:0.8,vis:s*0.2,level:0,aux:0,aux2:0,burn:0,rise:0,streak:1,struct:TK[type].st,mask:-1,shape:true,mo:[0,0]};
-  const D={
-    ground:{r:[s*0.14,clamp(s*0.014,0.4,4),s*0.14],vis:clamp(s*0.25,8,160),breakup:0.5,feather:0.7,terrain:0.85},
-    pool:{r:[s*0.2,clamp(s*0.012,0.3,14),s*0.2],vis:clamp(s*0.25,8,220),breakup:0.5,feather:0.5,terrain:0,aux:0.5},
-    cloud:{r:[s*0.35,clamp(s*0.06,3,120),s*0.35],vis:clamp(s*0.2,6,180),breakup:0.6,feather:0.6,terrain:0,aux:0.6,aux2:0.5},
-    bank:{r:[s*0.16,clamp(s*0.06,2,80),s*0.09],vis:clamp(s*0.14,6,120),breakup:0.62,feather:0.55,terrain:0,aux:0.6},
-    rising:{r:[s*0.15,clamp(s*0.025,0.6,25),s*0.15],vis:clamp(s*0.15,6,160),breakup:0.3,feather:0.7,terrain:0,aux:1,aux2:0.5,rise:clamp(s*0.0012,0.05,0.8)},
-    mist:{r:[s*0.2,clamp(s*0.03,1,30),s*0.2],vis:clamp(s*1.6,40,2500),breakup:0.35,feather:0.8,terrain:0.6,aux:0.35},
-    pocket:{r:[s*0.05,s*0.03,s*0.05],vis:clamp(s*0.2,4,150),breakup:0.6,feather:0.7,terrain:0},
-    veil:{r:[s*0.4,s*0.1,s*0.04],vis:clamp(s*0.7,15,600),breakup:0.35,feather:0.5,terrain:0},
-  }[type];
-  const e=Object.assign(base,D,props); if(!e.name) e.name=autoName(type); return e;
-}
+/* the attributes an artist sets before placing, and edits after */
+const STYLE_KEYS=['vis','h','struct','billow','detail','breakup','swept','turb','edge','feather','terrain','burn','aux','aux2','rise'];
+function typeDefaults(type){ const s=SC.scale||50;
+  const C={vis:clamp(s*0.45,15,220),h:1,struct:1,billow:0.4,detail:0.6,breakup:0.3,swept:0.15,turb:0.5,edge:0.6,feather:0.65,terrain:0.8,burn:0,aux:0,aux2:0,rise:0};
+  return Object.assign(C,{
+    ground:{h:clamp(s*0.014,0.3,4),billow:0.25,breakup:0.35,edge:0.65,feather:0.7,terrain:0.85},
+    pool:{vis:clamp(s*0.5,40,450),h:clamp(s*0.03,0.6,36),struct:1.2,billow:0.45,detail:0.55,breakup:0.15,swept:0.1,turb:0.45,edge:0.8,feather:0.65,aux:0.5},
+    cloud:{vis:clamp(s*0.22,6,180),h:clamp(s*0.06,2,120),struct:1.4,billow:0.6,detail:0.7,breakup:0.45,swept:0.3,turb:0.6,edge:0.45,aux:0.6,aux2:0.5},
+    bank:{vis:clamp(s*0.16,6,140),h:clamp(s*0.06,1.5,80),struct:1.1,billow:0.55,detail:0.65,breakup:0.3,swept:0.5,edge:0.5,feather:0.55,aux:0.6},
+    rising:{vis:clamp(s*0.35,6,260),h:clamp(s*0.04,0.6,35),struct:1.5,billow:0.2,detail:0.7,breakup:0.3,swept:0.2,turb:0.7,edge:0.65,feather:0.7,aux:1,aux2:0.5,rise:clamp(s*0.0012,0.05,0.8)},
+    mist:{vis:clamp(s*1.6,30,2500),h:clamp(s*0.03,0.8,30),struct:1.8,billow:0.2,detail:0.3,breakup:0.2,turb:0.4,edge:0.9,feather:0.8,terrain:0.6},
+  }[type]); }
+/* style presets; hk / vk scale the type's default height / visibility */
+const PRESETS={
+  ground:[['Calm layer',{billow:0.2,detail:0.45,breakup:0.15,swept:0.05,turb:0.3,edge:0.7,hk:1,vk:1}],['Patchy',{billow:0.35,detail:0.6,breakup:0.65,turb:0.55,swept:0.15,edge:0.6,hk:1,vk:1}],['Wispy',{billow:0.05,detail:0.9,breakup:0.45,swept:0.5,turb:0.85,edge:0.45,hk:1.2,vk:1.4}],['Thick & soft',{billow:0.3,detail:0.35,breakup:0.1,swept:0.1,turb:0.4,edge:0.9,hk:1.9,vk:0.6}]],
+  pool:[['Still lake',{aux:0.1,aux2:0,billow:0.4,detail:0.4,breakup:0.05,swept:0,turb:0.35,edge:0.85,vk:1}],['Rolling top',{aux:1.1,aux2:0,billow:0.8,detail:0.7,breakup:0.15,turb:0.6,swept:0.25,edge:0.6,vk:1}],['Lifting',{aux:0.4,aux2:0.5,burn:0.2,billow:0.5,breakup:0.35,detail:0.65,edge:0.7,vk:1.2}],['Thin & torn',{aux:0.3,aux2:0.1,breakup:0.6,billow:0.15,detail:0.85,swept:0.4,turb:0.8,edge:0.5,vk:2.2}]],
+  cloud:[['Stratus deck',{billow:0.35,detail:0.5,breakup:0.15,swept:0.1,turb:0.45,edge:0.55,aux2:0.2,vk:1}],['Windswept',{swept:0.9,billow:0.2,detail:0.85,breakup:0.45,turb:0.8,edge:0.45,aux:1,aux2:0.7,vk:1.2}],['Wispy',{billow:0.05,detail:0.9,breakup:0.6,swept:0.35,turb:0.9,edge:0.5,aux2:0.5,vk:1.7}],['Billowing',{billow:0.95,detail:0.85,breakup:0.35,swept:0.15,turb:0.45,edge:0.3,aux2:0.3,vk:0.9}]],
+  bank:[['Rolling',{billow:0.85,detail:0.75,breakup:0.25,swept:0.3,turb:0.5,edge:0.45,hk:1}],['Windswept',{swept:0.9,billow:0.25,detail:0.85,breakup:0.35,turb:0.85,edge:0.5,hk:1}],['Low & flat',{billow:0.35,detail:0.5,breakup:0.2,swept:0.3,turb:0.4,edge:0.75,hk:0.5}]],
+  rising:[['Forest steam',{billow:0.15,detail:0.75,breakup:0.3,turb:0.75,aux2:0.4,swept:0.2,hk:1,vk:1}],['Thin wisps',{billow:0,detail:0.9,breakup:0.5,turb:0.9,swept:0.45,aux2:0.2,hk:1.8,vk:1.6}],['Puffs',{billow:0.85,detail:0.7,breakup:0.25,aux2:0.9,turb:0.5,edge:0.4,hk:0.9,vk:0.8}]],
+  mist:[['Even',{breakup:0.05,detail:0.2,edge:0.95,swept:0.1,billow:0.2}],['Patchy',{breakup:0.55,detail:0.4,edge:0.85,swept:0.15,billow:0.3}],['Streaky',{swept:0.85,detail:0.55,turb:0.6,billow:0.1,breakup:0.3,edge:0.8}]],
+};
+function applyPreset(t,type,vals){ const D=typeDefaults(type);
+  for(const [k,v] of Object.entries(vals)){
+    if(k==='hk'){ if(t.r){ t.r[1]=t.r[1]/(t.hk||1)*v; t.hk=v; } else t.h=D.h*v; }   // placed elements keep their own size, scaled by the preset
+    else if(k==='vk'){ if(t.r){ t.vis=t.vis/(t.vk||1)*v; t.vk=v; } else t.vis=D.vis*v; }
+    else t[k]=v; } t.preset=null; }
+function newTemplates(){ S.next={}; for(const t of Object.keys(TYPES)){ S.next[t]=typeDefaults(t); S.next[t].preset=null; } }
+function mkEl(type,props={},tpl=true){
+  const s=SC.scale||50, T0=tpl&&S.next&&S.next[type]?S.next[type]:typeDefaults(type);
+  const e={id:++uid,type,on:true,name:'',c:[0,0,0],r:[s*0.12,T0.h,s*0.12],yaw:0,level:0,mask:-1,shape:true,mo:[0,0],mc:[0,0],ms:1,hmax:1,seed:Math.floor(rnd()*1000)};
+  for(const k of STYLE_KEYS) if(k!=='h') e[k]=T0[k]; if(tpl&&T0.preset) e.preset=T0.preset;
+  Object.assign(e,props); if(!props.mc) e.mc=[e.c[0],e.c[2]];
+  if(!e.name) e.name=autoName(type); return e; }
 function autoName(type){ const b=TYPES[type].label; const n=S.els.filter(x=>x.type===type).length; return n?b+' '+(n+1):b; }
-/* masks: one RG layer per element (add, erase) over the scene bounds */
+/* masks: one RGBA layer per element over the scene bounds — R add, G erase, B height (0.5 = as placed) */
 const MASK={free:[],data:new Map()};
 function masksInit(){ MASK.free=Array.from({length:MAX_E},(_,i)=>i); MASK.data.clear();
-  if(!T.masks){ T.masks=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY,T.masks); gl.texImage3D(gl.TEXTURE_2D_ARRAY,0,gl.RG8,NM,NM,MAX_E,0,gl.RG,gl.UNSIGNED_BYTE,null); for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D_ARRAY,k,v); } }
-function maskFor(e){ if(e.mask>=0&&MASK.data.has(e.mask)) return MASK.data.get(e.mask); if(!MASK.free.length) return null; const l=MASK.free.shift(); e.mask=l; const m={add:new Float32Array(NM*NM),erase:new Float32Array(NM*NM)}; MASK.data.set(l,m); return m; }
+  if(!T.masks){ T.masks=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY,T.masks); gl.texImage3D(gl.TEXTURE_2D_ARRAY,0,gl.RGBA8,NM,NM,MAX_E,0,gl.RGBA,gl.UNSIGNED_BYTE,null); for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D_ARRAY,k,v); } }
+function maskFor(e){ if(e.mask>=0&&MASK.data.has(e.mask)) return MASK.data.get(e.mask); if(!MASK.free.length) return null; const l=MASK.free.shift(); e.mask=l; const m={add:new Float32Array(NM*NM),erase:new Float32Array(NM*NM),ht:new Float32Array(NM*NM).fill(0.5)}; MASK.data.set(l,m); return m; }
 function releaseMask(e){ if(e.mask>=0){ MASK.data.delete(e.mask); MASK.free.push(e.mask); e.mask=-1; } }
-function uploadMask(e){ const m=MASK.data.get(e.mask); if(!m) return; const u=new Uint8Array(NM*NM*2); for(let k=0;k<NM*NM;k++){ u[k*2]=clamp(m.add[k],0,1)*255; u[k*2+1]=clamp(m.erase[k],0,1)*255; }
-  gl.bindTexture(gl.TEXTURE_2D_ARRAY,T.masks); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1); gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,e.mask,NM,NM,1,gl.RG,gl.UNSIGNED_BYTE,u);
+function uploadMask(e){ const m=MASK.data.get(e.mask); if(!m) return; const u=new Uint8Array(NM*NM*4); let hmax=0.5;
+  for(let k=0;k<NM*NM;k++){ u[k*4]=clamp(m.add[k],0,1)*255; u[k*4+1]=clamp(m.erase[k],0,1)*255; u[k*4+2]=clamp(m.ht[k],0,1)*255+0.5; u[k*4+3]=255; if(m.ht[k]>hmax) hmax=m.ht[k]; }
+  e.hmax=hmax*2;
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY,T.masks); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1); gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,e.mask,NM,NM,1,gl.RGBA,gl.UNSIGNED_BYTE,u);
   let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9,sx=0,sz=0,sw=0; for(let j=0;j<NM;j++) for(let i=0;i<NM;i++){ const a=m.add[j*NM+i]; if(a>0.02){ const x=SC.bmin[0]+(i+0.5)/NM*SC.bsize[0], z=SC.bmin[1]+(j+0.5)/NM*SC.bsize[1]; x0=Math.min(x0,x); x1=Math.max(x1,x); z0=Math.min(z0,z); z1=Math.max(z1,z); sx+=x*a; sz+=z*a; sw+=a; } }
   e.mext= sw>0?{x0,z0,x1,z1,cx:sx/sw,cz:sz/sw}:null; }
+/* mask space <-> world: rotate and scale about the element pivot, then offset */
+const rot2=(x,z,a)=>{ const c=Math.cos(a), s=Math.sin(a); return [c*x-s*z, s*x+c*z]; };
+function maskToWorld(e,x,z){ const q=rot2((x-e.mc[0])*e.ms,(z-e.mc[1])*e.ms,-e.yaw); return [e.mc[0]+e.mo[0]+q[0], e.mc[1]+e.mo[1]+q[1]]; }
+function worldToMask(e,x,z){ const q=rot2(x-e.mo[0]-e.mc[0],z-e.mo[1]-e.mc[1],e.yaw); return [e.mc[0]+q[0]/e.ms, e.mc[1]+q[1]/e.ms]; }
+function pivotW(e){ return [e.mc[0]+e.mo[0], e.mc[1]+e.mo[1]]; }
+function centerW(e){ if(e.shape||!e.mext) return [e.c[0],e.c[2]]; return maskToWorld(e,e.mext.cx,e.mext.cz); }
+function footR(e){ if(e.shape) return Math.max(e.r[0],e.r[2]); if(!e.mext) return SC.scale*0.05; const m=e.mext; return Math.hypot(m.x1-m.x0,m.z1-m.z0)/2*e.ms; }
 function elBounds(e){
   let cx=e.c[0], cz=e.c[2], R=0;
-  if(e.type==='pocket'){ return {c:e.c.slice(),r:Math.max(...e.r)*1.35+0.1}; }
   if(e.shape) R=Math.max(e.r[0],e.r[2])*1.25;
-  if(e.mext&&e.mask>=0){ const m=e.mext, mx=m.x0+e.mo[0], Mx=m.x1+e.mo[0], mz=m.z0+e.mo[1], Mz=m.z1+e.mo[1]; const ux=e.shape?Math.min(cx-R,mx):mx, uX=e.shape?Math.max(cx+R,Mx):Mx, uz=e.shape?Math.min(cz-R,mz):mz, uZ=e.shape?Math.max(cz+R,Mz):Mz; cx=(ux+uX)/2; cz=(uz+uZ)/2; R=Math.hypot(uX-ux,uZ-uz)/2+SC.cellA; }
+  if(e.mext&&e.mask>=0){ const m=e.mext; let ux=1e9,uz=1e9,uX=-1e9,uZ=-1e9; for(const [a,b] of [[m.x0,m.z0],[m.x1,m.z0],[m.x0,m.z1],[m.x1,m.z1]]){ const w=maskToWorld(e,a,b); ux=Math.min(ux,w[0]); uX=Math.max(uX,w[0]); uz=Math.min(uz,w[1]); uZ=Math.max(uZ,w[1]); }
+    if(e.shape){ ux=Math.min(ux,cx-R); uX=Math.max(uX,cx+R); uz=Math.min(uz,cz-R); uZ=Math.max(uZ,cz+R); } cx=(ux+uX)/2; cz=(uz+uZ)/2; R=Math.hypot(uX-ux,uZ-uz)/2+SC.cellA*e.ms; }
   if(e.type==='bank') R+=S.wind.speed*10*e.aux;
   if(R<=0) return null;
-  let gmin=1e9,gmax=-1e9; for(let k=0;k<25;k++){ const a=k/25*Math.PI*2, f=k%2?0.5:1; const g=groundAt(cx+Math.cos(a)*R*f,cz+Math.sin(a)*R*f); gmin=Math.min(gmin,g); gmax=Math.max(gmax,g); } gmin=Math.min(gmin,groundAt(cx,cz)); gmax=Math.max(gmax,groundAt(cx,cz));
-  let top;
-  if(e.type==='ground') top=gmax+e.r[1]*2.2;
-  else if(e.type==='pool') top=e.level+e.r[1]*1.6;
-  else if(e.type==='cloud'){ top=e.level+e.r[1]*1.4; gmin=Math.max(gmin,e.level-e.r[1]*3.5); }
-  else if(e.type==='mist') top=gmax+e.r[1]*5;
-  else if(e.type==='rising') top=gmax+(SC.canHmax||0)+e.r[1]*5;
-  else if(e.type==='bank') top=Math.max(e.c[1],gmax*0.6+e.c[1]*0.4)+e.r[1]*1.3;
-  else top=gmax+e.r[1]*1.2;
+  let gmin=1e9,gmax=-1e9; for(let k=0;k<33;k++){ const a=k/33*Math.PI*2, f=k%3===0?0.33:k%3===1?0.66:1; const g=groundAt(cx+Math.cos(a)*R*f,cz+Math.sin(a)*R*f); gmin=Math.min(gmin,g); gmax=Math.max(gmax,g); } gmin=Math.min(gmin,groundAt(cx,cz)); gmax=Math.max(gmax,groundAt(cx,cz));
+  const H=e.r[1]*Math.max(e.hmax||1,1); let top;
+  if(e.type==='ground') top=gmax+H*2;
+  else if(e.type==='pool') top=e.level+H*2.2+Math.max(0,(e.hmax||1)-1)*Math.max(H*3,(e.level-gmin)*0.4);
+  else if(e.type==='cloud'){ top=e.level+H*2; gmin=Math.max(gmin,e.level-H*4.5); }
+  else if(e.type==='mist') top=gmax+H*5;
+  else if(e.type==='rising') top=gmax+(SC.canHmax||0)+H*5;
+  else top=Math.max(e.c[1],gmax*0.6+e.c[1]*0.4)+H*1.8;
   const lo=gmin-0.5, mid=(lo+top)/2;
   return {c:[cx,mid,cz],r:Math.hypot(R,(top-lo)/2)};
 }
-const ELK=['E0','E1','E2','E3','E4','E5','E6','EB'];
-const ELU={n:0}; ELK.forEach(k=>ELU[k]=new Float32Array(64));
+const ELK=['E0','E1','E2','E3','E4','E5','E6','E7','E8','EB'];
+const ELU={n:0}; ELK.forEach(k=>ELU[k]=new Float32Array(MAX_E*4));
 function packEls(){
   let n=0; for(const k of ELK) ELU[k].fill(0);
-  for(const e of S.els){ if(!e.on||n>=16) continue; const b=elBounds(e); if(!b) continue; const o=n*4, tk=TK[e.type];
+  for(const e of S.els){ if(!e.on||n>=MAX_E) continue; const b=elBounds(e); if(!b) continue; const o=n*4, tk=TK[e.type];
     ELU.E0.set([e.c[0],e.c[1],e.c[2],TYPES[e.type].id],o); ELU.E1.set([e.r[0],e.r[1],e.r[2],e.yaw],o);
-    ELU.E2.set([vis2s(e.vis),e.feather,e.breakup,e.terrain],o); ELU.E3.set([e.level,e.mask,e.shape?1:0,e.burn||0],o);
+    ELU.E2.set([vis2s(e.vis),e.feather,0,e.terrain],o); ELU.E3.set([e.level,e.mask,e.shape?1:0,e.burn||0],o);
     ELU.E4.set([e.mo[0],e.mo[1],e.aux||0,e.aux2||0],o);
-    ELU.E5.set([S.look.noise*e.struct,tk.sq,tk.str*(e.type==='bank'?e.streak:1),e.type==='rising'?e.rise:e.type==='mist'?0.02:0],o);
-    ELU.E6.set([tk.dr,tk.ev,0,0],o);
+    ELU.E5.set([S.look.noise*e.struct,tk.sq,tk.str,e.type==='rising'?e.rise:e.type==='mist'?0.02:0],o);
+    ELU.E6.set([tk.dr,tk.ev,e.billow,e.turb],o);
+    ELU.E7.set([e.mc[0],e.mc[1],e.ms,e.swept],o);
+    ELU.E8.set([e.detail,1-e.breakup*0.8,e.edge,(e.seed%997)*0.137],o);
     ELU.EB.set([b.c[0],b.c[1],b.c[2],b.r],o); n++; }
   ELU.n=n;
 }
 function markEl(){ dirty.el=true; resetAccum(); }
 /* auto-placement from the analysis */
-function maskFromField(e,fn,blur=1){ const m=maskFor(e); if(!m){ toast(MAX_E+' painted elements is the limit'); return false; } e.shape=false; e.mo=[0,0];
-  for(let j=0;j<NM;j++) for(let i=0;i<NM;i++){ const k=j*NM+i; m.add[k]=fn(k,i,j); m.erase[k]=0; }
-  m.add.set(boxBlur(m.add,NM,blur,2)); uploadMask(e); if(!e.mext){ releaseMask(e); return false; } e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; return true; }
+function maskFromField(e,fn,blur=1){ const m=maskFor(e); if(!m){ toast(MAX_E+' elements is the limit'); return false; } e.shape=false; e.mo=[0,0]; e.ms=1; e.yaw=0;
+  for(let j=0;j<NM;j++) for(let i=0;i<NM;i++){ const k=j*NM+i; m.add[k]=fn(k,i,j); m.erase[k]=0; m.ht[k]=0.5; }
+  m.add.set(boxBlur(m.add,NM,blur,2)); uploadMask(e); if(!e.mext){ releaseMask(e); return false; } e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; e.mc=[e.mext.cx,e.mext.cz]; return true; }
 function floodPool(e,level,seedX,seedZ){
   const m=maskFor(e); if(!m) return; const H=SC.H; const N=NA; const seen=new Uint8Array(N*N);
-  let si=clamp(Math.floor((seedX-SC.bmin[0])/SC.bsize[0]*N),0,N-1), sj=clamp(Math.floor((seedZ-SC.bmin[1])/SC.bsize[1]*N),0,N-1);
+  e.mo=[0,0]; e.ms=1; e.yaw=0; e.mc=[seedX,seedZ]; const sm=[seedX,seedZ]; let si=clamp(Math.floor((sm[0]-SC.bmin[0])/SC.bsize[0]*N),0,N-1), sj=clamp(Math.floor((sm[1]-SC.bmin[1])/SC.bsize[1]*N),0,N-1);
   if(H[sj*N+si]>=level){ let best=1e9; for(let j=Math.max(0,sj-6);j<=Math.min(N-1,sj+6);j++) for(let i=Math.max(0,si-6);i<=Math.min(N-1,si+6);i++) if(H[j*N+i]<best){ best=H[j*N+i]; si=i; sj=j; } }
   const st=[sj*N+si]; m.add.fill(0); if(H[st[0]]<level){ seen[st[0]]=1; while(st.length){ const k=st.pop(); m.add[k]=1; const i=k%N, j=(k/N)|0; for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ii=i+a,jj=j+b; if(ii<0||jj<0||ii>=N||jj>=N) continue; const kk=jj*N+ii; if(seen[kk]||H[kk]>=level) continue; seen[kk]=1; st.push(kk); } } }
-  m.add.set(boxBlur(m.add,N,1,1)); m.erase.fill(0); e.shape=false; e.mo=[0,0]; e.level=level; uploadMask(e);
-  if(e.mext) e.c=[e.mext.cx,level,e.mext.cz];
+  // soft edges where the fog meets the slopes: blur wider, then fade by depth below the top
+  const soft=boxBlur(m.add,N,3,2); for(let k=0;k<N*N;k++) m.add[k]=soft[k]*sstep(0,Math.max(e.r[1]*0.6,0.2),level-H[k]+e.r[1]*0.35);
+  m.erase.fill(0); e.shape=false; e.level=level; uploadMask(e);
+  if(e.mext){ e.c=[e.mext.cx,level,e.mext.cz]; e.mc=[e.mext.cx,e.mext.cz]; }
 }
 const seenK=k=>clamp(SC.seenA[k]*2,0,1);
+const cellXZ=k=>[SC.bmin[0]+((k%NA)+0.5)*SC.cellA, SC.bmin[1]+(((k/NA)|0)+0.5)*SC.cellA];
+/* big-scale patchiness so auto fog breaks into separate masses instead of one sheet */
+const patch=(k,sz,seed,lo,hi)=>{ const [x,z]=cellXZ(k); return sstep(lo,hi,fbm(x/sz+seed,z/sz-seed*0.7,4)); };
 const AUTO={
-  ground:()=>{ const e=mkEl('ground',{name:'Ground fog · hollows & drainage'}); if(!maskFromField(e,k=>clamp((SC.hol[k]*1.1+SC.pool[k]*0.8+SC.drain[k]*0.8+SC.wet[k]*0.4-SC.warm[k]*0.8-SC.canopy[k]*0.7-0.3)*1.6,0,1)*(1-sstep(0.06,0.2,SC.slope[k]))*seenK(k),2)) return null; return e; },
-  pool:()=>{ let mi=0; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2&&SC.H[k]<SC.H[mi]) mi=k; const i=mi%NA, j=(mi/NA)|0; const x=SC.bmin[0]+(i+0.5)*SC.cellA, z=SC.bmin[1]+(j+0.5)*SC.cellA;
-    const e=mkEl('pool',{name:'Valley fog · basin'}); if(!maskFor(e)) return null; floodPool(e,SC.floor+SC.range*0.04,x,z); if(!e.mext){ releaseMask(e); return null; } return e; },
-  cloud:()=>{ const hs=[]; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2) hs.push(SC.H[k]); hs.sort((a,b)=>a-b); const base=hs.length?hs[Math.floor(hs.length*0.62)]:SC.floor+SC.range*0.5; const th=clamp(SC.range*0.3,2,150);
-    const e=mkEl('cloud',{name:'Low cloud · high ground',level:base,r:[0,th,0]}); if(!maskFromField(e,k=>sstep(base-th*1.5,base+th*0.3,SC.H[k]+SC.canopy[k]*(SC.canHmax||0))*clamp(SC.seenA[k]*3+0.3,0,1),3)) return null; e.c[1]=base; return e; },
+  ground:()=>{ const e=mkEl('ground',{name:'Ground fog · hollows & drainage'}); const sz=SC.scale*0.08;
+    if(!maskFromField(e,k=>clamp((SC.hol[k]*1.1+SC.pool[k]*0.8+SC.drain[k]*0.8+SC.wet[k]*0.4-SC.warm[k]*0.8-SC.canopy[k]*0.7-0.3)*1.6,0,1)*(1-sstep(0.06,0.2,SC.slope[k]))*seenK(k)*patch(k,sz,3.1,0.3,0.55),2)) return null; return e; },
+  pool:()=>{ let mi=0; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2&&SC.H[k]<SC.H[mi]) mi=k; const [x,z]=cellXZ(mi);
+    const e=mkEl('pool',{name:'Valley fog · basin'}); if(!maskFor(e)) return null; e.r[1]=clamp(SC.range*0.045*0.55,Math.max(0.4,SC.scale*0.03),30); floodPool(e,Math.min(SC.floor+SC.range*0.045,PL.cam.pos[1]-Math.max(1.5,SC.d50*0.08)),x,z); if(!e.mext){ releaseMask(e); return null; } return e; },
+  cloud:()=>{ const hs=[]; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2) hs.push(SC.H[k]); hs.sort((a,b)=>a-b); const base=hs.length?hs[Math.floor(hs.length*0.55)]:SC.floor+SC.range*0.5; const th=clamp(SC.range*0.3,2,150); const sz=SC.scale*0.12;
+    const e=mkEl('cloud',{name:'Low cloud · high ground',level:base,r:[0,th,0]});
+    // a broken deck over the far ground: hills rise up into it, the base wanders lower in gullies, gaps open between masses
+    const C=PL.cam.pos; if(!maskFromField(e,k=>{ const [x,z]=cellXZ(k); const wob=(fbm(x/(sz*1.6)+7.7,z/(sz*1.6)-2.3,4)-0.5)*th*2.2; const far=sstep(SC.d50*0.45,SC.d50*1.1,Math.hypot(x-C[0],z-C[2]));
+      return sstep(base-th*4,base-th*1.2,SC.H[k]+SC.canopy[k]*(SC.canHmax||0)+wob+SC.drain[k]*th*0.6)*clamp(SC.seenA[k]*3+0.4,0,1)*far*patch(k,sz,5.3,0.22,0.46); },3)) return null;
+    { const m=MASK.data.get(e.mask), big=SC.scale*0.4; for(let k=0;k<NM*NM;k++){ const [x,z]=cellXZ(k); m.ht[k]=clamp(0.5+(fbm(x/big+2.9,z/big-6.1,3)-0.5)*1.1+(fbm(x/(big*0.35)-4.2,z/(big*0.35)+1.3,3)-0.5)*0.45,0.1,0.9); } uploadMask(e); }
+    e.c[1]=base; return e; },
   bank:()=>{ const c=PL.cam, f=norm([c.f[0],0,c.f[2]]), r=norm([c.r[0],0,c.r[2]]);
     // fog banks lie over the farthest low ground the camera can see
     let best=null; for(let y=Math.floor(PL.h*0.25);y<PL.h;y+=6) for(let x=8;x<PL.w;x+=12){ const k=(y*PL.w+x)*4; if(PL.P[k+3]<0.5) continue; const px=PL.P[k], pz=PL.P[k+2]; const dd=Math.hypot(px-c.pos[0],pz-c.pos[2]); if(dd<SC.d50*0.9) continue; const sc=dd/SC.d90-(groundAt(px,pz)-SC.floor)/SC.range*2.5; if(!best||sc>best.s) best={s:sc,x:px,z:pz,d:dd}; }
     const d=best?best.d:SC.d90*0.8; const x=best?best.x:c.pos[0]+f[0]*d, z=best?best.z:c.pos[2]+f[2]*d; const g=groundAt(x,z);
     const w=d*Math.tan(Math.atan(c.w/2/c.fx))*0.9; S.wind.dir=((Math.atan2(r[0],-r[2])/D2R)+360)%360;
-    return mkEl('bank',{name:'Fog bank · background',c:[x,g,z],r:[w,clamp(SC.range*0.25+SC.scale*0.03,2,120),w*0.35],yaw:-Math.atan2(r[2],r[0])}); },
-  rising:()=>{ let cs=0,n=0; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2){ cs+=SC.canopy[k]; n++; } const fromCan=n&&cs/n>0.02;
+    return mkEl('bank',{name:'Fog bank · background',c:[x,g,z],r:[w,clamp(Math.max(SC.range*0.25+SC.scale*0.03,d*0.07),1.5,150),w*0.35],yaw:-Math.atan2(r[2],r[0])}); },
+  rising:()=>{ let cs=0,n=0; for(let k=0;k<NA*NA;k++) if(SC.seenA[k]>0.2){ cs+=SC.canopy[k]; n++; } const fromCan=n&&cs/n>0.02; const sz=SC.scale*0.06;
     const e=mkEl('rising',{name:fromCan?'Rising mist · forest canopy':'Rising mist · wet ground',aux:fromCan?1:0});
-    if(!maskFromField(e,k=>(fromCan?sstep(0.3,0.65,SC.canopy[k]):clamp(SC.wet[k]+SC.drain[k]*0.6,0,1))*seenK(k),1)) return null; return e; },
+    if(!maskFromField(e,k=>(fromCan?sstep(0.3,0.65,SC.canopy[k]):clamp(SC.wet[k]+SC.drain[k]*0.6,0,1))*seenK(k)*patch(k,sz,1.7,0.25,0.5),1)) return null; return e; },
   mist:()=>{ const e=mkEl('mist',{name:'Mist · open low ground'}); if(!maskFromField(e,k=>clamp((0.35+SC.pool[k]*0.8+SC.drain[k]*0.3-SC.warm[k]*0.6)*1.2,0,1)*clamp(SC.seenA[k]*3,0,1))) return null; return e; },
 };
 function runAuto(k){ if(!PL) return; if(S.els.length>=MAX_E){ toast(MAX_E+' elements is the limit'); return; } const e=AUTO[k](); if(!e){ toast('Nothing in this frame suits that fog type'); return; } S.els.push(e); select(S.els.length-1); markEl(); pushUndo(); toast(e.name+' added'); }
@@ -1353,22 +1526,22 @@ function renderLayout(V){
   gl.disable(gl.DEPTH_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
 }
 function expo(){ const base=S.plateLook===0&&PL.beautyExpo?PL.beautyExpo:LIT_EXPO; return base*Math.pow(2,S.ev); }
-function marchPass(V,vw,vh,steps,blend){
+function marchPass(V,vw,vh,steps,blend,hq){
   ensureAccum(vw,vh);
   const pr=use('march'); const src=accum.cur, dst=1-src; gl.bindFramebuffer(gl.FRAMEBUFFER,accum.fb[dst]); drawBufs(1); gl.viewport(0,0,vw,vh);
   const c=scaleCam(V.cam,vw,vh);
   bindTex(0,gl.TEXTURE_2D,V.layout?F.lay.texs[1]:T.pp); u1i(pr,'uDP',0); u1i(pr,'uDFlip',V.layout?1:0); u2f(pr,'uDRes',V.w,V.h);
   proxyUniforms(pr,1); bindTex(2,gl.TEXTURE_2D,T.ana); u1i(pr,'uAna',2); u2f(pr,'uBMin',SC.bmin[0],SC.bmin[1]); u2f(pr,'uBSize',SC.bsize[0],SC.bsize[1]);
-  bindTex(3,gl.TEXTURE_2D_ARRAY,T.masks); u1i(pr,'uMasks',3); bindTex(4,gl.TEXTURE_3D,T.noise); u1i(pr,'uNT',4);
+  bindTex(3,gl.TEXTURE_2D_ARRAY,T.masks); u1i(pr,'uMasks',3); bindTex(4,gl.TEXTURE_3D,T.noise); u1i(pr,'uNT',4); bindTex(9,gl.TEXTURE_3D,T.detail); u1i(pr,'uND',9);
   bindTex(5,gl.TEXTURE_2D,T.fs); u1i(pr,'uFS',5); bindTex(6,gl.TEXTURE_2D,accum.tex[src]); u1i(pr,'uPrev',6);
   bindTex(7,gl.TEXTURE_2D,T.ana2); u1i(pr,'uAna2',7); bindTex(8,gl.TEXTURE_2D,T.ana3); u1i(pr,'uAna3',8); u1f(pr,'uCanH',SC.canHmax);
   u1i(pr,'uNE',ELU.n); for(const k of ELK) gl.uniform4fv(U(pr,'u'+k+'[0]'),ELU[k]);
-  u3v(pr,'uWind',mul(windDir(),S.wind.speed)); u1f(pr,'uTime',S.time); u1f(pr,'uEvolve',S.look.evolve); gl.uniform4f(U(pr,'uNoise'),S.look.noise,S.look.detail,S.look.billow,0);
+  u3v(pr,'uWind',mul(windDir(),S.wind.speed)); u1f(pr,'uTime',S.time); u1f(pr,'uEvolve',S.look.evolve);
   u3v(pr,'uCam',c.pos); u3v(pr,'uR',c.r); u3v(pr,'uU',c.u); u3v(pr,'uF',c.f); u4f(pr,'uIntr',c.fx,c.fy,c.cx,c.cy); u2f(pr,'uRes',vw,vh);
-  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40);
+  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40); u1f(pr,'uPixAng',1/c.fx); u1i(pr,'uHQ',hq?1:0);
   u3v(pr,'uSunDir',sunDir()); u3v(pr,'uSunE',SUN_E); u3v(pr,'uSkyAvg',SKY_AVG); u3v(pr,'uAlb',S.look.tint.map(v=>v*0.985)); gl.uniform4fv(U(pr,'uPh'),mieParams(S.look.drop)); u1f(pr,'uMS',S.look.ms);
   u1f(pr,'uGain',S.fogGain*Math.pow(2,S.fogEV)); uM4(pr,'uFLM',F.flm.VP); { const tw=F.flm.extent/F.fsSize; u1f(pr,'uFBiasV',window.__dbgNoShadow?1e3:(tw*2.5+SC.scale*0.002)/F.flm.range); u1f(pr,'uFTexel',1/F.fsSize); u1f(pr,'uFPen',F.flm.range*0.02/F.flm.extent); } u1i(pr,'uSunOn',S.sun.el>-1?1:0);
-  u1f(pr,'uBlend',blend); u1i(pr,'uDbg',window.__dbg|0); u1f(pr,'uLS',clamp(S.look.noise*0.07,0.03,6));
+  u1f(pr,'uBlend',blend); u1f(pr,'uLS',clamp(S.look.noise*0.07,0.03,6));
   fullscreen(); accum.cur=dst; gl.bindFramebuffer(gl.FRAMEBUFFER,null);
 }
 function displayPass(V){
@@ -1398,12 +1571,13 @@ function frame(now){
     const V=viewInfo(); lastV=V;
     if(V.layout&&dirty.layout){ renderLayout(V); dirty.layout=false; }
     const moving=interacting||S.playing;
-    const sc= moving? Math.min(volScale,S.stillScale) : S.stillScale*(IS_MOBILE?0.75:1);
+    const fin=S.quality==='final'&&!moving;
+    const sc= moving? Math.min(volScale,S.stillScale) : fin? S.finalScale : S.stillScale*(IS_MOBILE?0.75:1);
     const vw=Math.max(16,Math.round(V.w*sc)), vh=Math.max(16,Math.round(V.h*sc));
-    let drew=false;
-    if(S.fogOn&&ELU.n>0&&(frames<S.frames||S.playing)){
+    let drew=false; const tgt=fin?S.finalFrames:S.frames;
+    if(S.fogOn&&ELU.n>0&&(frames<tgt||S.playing)){
       const blend= S.playing? Math.max(1/(frames+1),0.45) : 1/(frames+1);
-      marchPass(V,vw,vh,moving?Math.round(S.steps*0.45):S.steps,blend); frames++; drew=true;
+      marchPass(V,vw,vh,moving?Math.round(S.steps*0.45):fin?Math.round(S.steps*2):S.steps,blend,fin); frames++; drew=true;
       if(moving){ if(ftAvg>40) volScale=Math.max(0.3,volScale*0.92); else if(ftAvg<22) volScale=Math.min(0.75,volScale*1.04); }
     }
     if(drew||dirty.display||V.layout&&frames<=1){ displayPass(V); dirty.display=false; }
@@ -1437,26 +1611,53 @@ function rayPlaneY(ro,rd,y){ if(Math.abs(rd[1])<1e-6) return null; const t=(y-ro
 function mouseRay(mx,my){ const cc=cssCam(lastV); return {ro:cc.pos,rd:camRay(cc,mx,my)}; }
 
 /* =====================================================================
-   OVERLAY
+   OVERLAY — footprints, the transform gizmo, brush rings
    ===================================================================== */
-let hoverHit=null, hoverEl=null;
+let hoverHit=null, hoverEl=null, hoverK=null;
+const GOLD='#efb24d';
 function projC(cc,p){ const q=camProj(cc,p); return q&&q[2]>SC.scale*0.002?q:null; }
 function poly(cc,pts,closed){ octx.beginPath(); let pen=false; const n=pts.length; for(let i=0;i<n+(closed?1:0);i++){ const q=projC(cc,pts[i%n]); if(!q){ pen=false; continue; } if(!pen){ octx.moveTo(q[0],q[1]); pen=true; } else octx.lineTo(q[0],q[1]); } octx.stroke(); }
-function footprint(e,n=56){ const pts=[]; const cs=Math.cos(e.yaw), sn=Math.sin(e.yaw);
-  for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; const lx=Math.cos(a)*e.r[0], lz=Math.sin(a)*e.r[2]; const x=e.c[0]+cs*lx+sn*lz, z=e.c[2]-sn*lx+cs*lz; pts.push([x,(e.type==='pool'||e.type==='cloud'?e.level:groundAt(x,z))+0.02*SC.scale*0.05,z]); } return pts; }
-function handlePos(e){ if(e.type==='pocket') return e.c.slice(); const x=e.shape?e.c[0]:(e.mext?e.mext.cx+e.mo[0]:e.c[0]), z=e.shape?e.c[2]:(e.mext?e.mext.cz+e.mo[1]:e.c[2]);
-  if(e.type==='pool'||e.type==='cloud') return [x,e.level,z]; if(e.type==='bank') return [x,e.c[1]+e.r[1],z]; return [x,groundAt(x,z)+e.r[1]*(e.type==='veil'?0.5:0.6),z]; }
+const lift=()=>Math.max(0.02,SC.scale*0.0008);
+function baseY(e,x,z){ return e.type==='cloud'||e.type==='pool'?e.level:groundAt(x,z)+lift(); }
+function topY(e,x,z){ const g=groundAt(x,z);
+  if(e.type==='pool') return e.level; if(e.type==='cloud') return e.level+e.r[1]; if(e.type==='bank') return Math.max(e.c[1],g)+e.r[1];
+  if(e.type==='rising') return g+(e.aux?SC.canHmax*clamp(anaAt(SC.canopy,x,z),0,1):0)+e.r[1]*1.2; if(e.type==='mist') return g+e.r[1]*1.5; return g+e.r[1]; }
+/* local frame of the element: shape centre, or the mask pivot */
+function localToWorld(e,lx,lz){ const q=rot2(lx,lz,-e.yaw); if(e.shape) return [e.c[0]+q[0],e.c[2]+q[1]]; const p=pivotW(e); return [p[0]+q[0],p[1]+q[1]]; }
+function worldToLocal(e,x,z){ const o=e.shape?[e.c[0],e.c[2]]:pivotW(e); return rot2(x-o[0],z-o[1],e.yaw); }
+function extLocal(e){ // half extents of the footprint in the local frame
+  if(e.shape) return [e.r[0],e.r[2],0,0]; const m=e.mext; if(!m) return [SC.scale*0.05,SC.scale*0.05,0,0];
+  return [(m.x1-m.x0)/2*e.ms,(m.z1-m.z0)/2*e.ms,((m.x0+m.x1)/2-e.mc[0])*e.ms,((m.z0+m.z1)/2-e.mc[1])*e.ms]; }
+function outline(e,n=56){ const pts=[]; const [ax,az,ox,oz]=extLocal(e);
+  if(e.shape){ for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; const w=localToWorld(e,Math.cos(a)*ax,Math.sin(a)*az); pts.push([w[0],baseY(e,w[0],w[1]),w[1]]); } }
+  else { const c=[[-1,-1],[1,-1],[1,1],[-1,1]]; for(let s=0;s<4;s++){ const a=c[s], b=c[(s+1)%4]; for(let k=0;k<12;k++){ const t=k/12; const w=localToWorld(e,ox+lerp(a[0],b[0],t)*ax,oz+lerp(a[1],b[1],t)*az); pts.push([w[0],baseY(e,w[0],w[1]),w[1]]); } } }
+  return pts; }
+function handles(e){ const [cx,cz]=centerW(e); const H={};
+  const my= e.type==='cloud'?e.level: groundAt(cx,cz)+lift();
+  H.move=[cx,my,cz]; H.height=[cx,Math.max(topY(e,cx,cz),my+SC.scale*0.004),cz];
+  if(e.type!=='pool'){ const [ax,az,ox,oz]=extLocal(e);
+    if(e.shape){ let w=localToWorld(e,ax,0); H.sx=[w[0],baseY(e,w[0],w[1]),w[1]]; w=localToWorld(e,0,az); H.sz=[w[0],baseY(e,w[0],w[1]),w[1]]; }
+    else { const w=localToWorld(e,ox+ax,oz+az); H.scale=[w[0],baseY(e,w[0],w[1]),w[1]]; }
+    const w=localToWorld(e,ox-ax*1.08,oz); H.rot=[w[0],baseY(e,w[0],w[1]),w[1]]; }
+  return H; }
+function handlePos(e){ return handles(e).move; }
+function dot2(x,y,r,fill){ octx.beginPath(); octx.arc(x,y,r,0,Math.PI*2); octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.stroke(); octx.fillStyle=fill; octx.fill(); }
+function label(x,y,t,col){ octx.font='500 11px "IBM Plex Mono", monospace'; const w=octx.measureText(t).width; octx.fillStyle='rgba(14,17,20,.82)'; octx.fillRect(x,y-9,w+10,18); octx.fillStyle=col; octx.fillText(t,x+5,y+4); }
 function drawEl(cc,e,sel){
-  const col=sel?'#efb24d':TYPES[e.type].col; octx.strokeStyle=col; octx.lineWidth=sel?1.6:1; octx.globalAlpha=sel?0.95:(e.on?0.55:0.25); octx.setLineDash([]);
-  if(e.type==='pocket'){ const cs=Math.cos(e.yaw), sn=Math.sin(e.yaw); const ring=[]; for(let i=0;i<48;i++){ const a=i/48*Math.PI*2; const lx=Math.cos(a)*e.r[0], lz=Math.sin(a)*e.r[2]; ring.push([e.c[0]+cs*lx+sn*lz,e.c[1],e.c[2]-sn*lx+cs*lz]); } poly(cc,ring,true); octx.setLineDash([3,4]); poly(cc,[e.c,[e.c[0],groundAt(e.c[0],e.c[2]),e.c[2]]],false); }
-  else if(e.shape){
-    if(e.type==='veil'){ const cs=Math.cos(e.yaw), sn=Math.sin(e.yaw); const pts=[]; for(let i=0;i<=24;i++){ const lx=(i/24*2-1)*e.r[0]; const x=e.c[0]+cs*lx, z=e.c[2]-sn*lx; pts.push([x,groundAt(x,z),z]); } poly(cc,pts,false); octx.setLineDash([4,4]); poly(cc,pts.map(p=>[p[0],p[1]+e.r[1],p[2]]),false); }
-    else { if(e.type==='bank'){ octx.setLineDash([5,4]); } poly(cc,footprint(e),true); if(e.type==='bank'){ octx.setLineDash([2,4]); poly(cc,footprint(e,40).map(p=>[p[0],e.c[1]+e.r[1],p[2]]),true); } }
-  }
-  octx.setLineDash([]); octx.globalAlpha=1;
-  const h=projC(cc,handlePos(e)); if(!h) return;
-  octx.fillStyle=sel?'#efb24d':col; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.beginPath(); octx.arc(h[0],h[1],sel?6:4.5,0,Math.PI*2); octx.stroke(); octx.fill();
-  if(sel||hoverEl===e){ octx.font='500 11px "IBM Plex Mono", monospace'; const w=octx.measureText(e.name).width; octx.fillStyle='rgba(14,17,20,.82)'; octx.fillRect(h[0]+10,h[1]-9,w+10,18); octx.fillStyle=sel?'#efb24d':'#dce2e8'; octx.fillText(e.name,h[0]+15,h[1]+4); }
+  const col=sel?GOLD:TYPES[e.type].col; octx.strokeStyle=col; octx.lineWidth=sel?1.5:1; octx.globalAlpha=sel?0.9:(e.on?0.5:0.22);
+  if(e.shape||sel){ octx.setLineDash(e.shape?[]:[5,4]); poly(cc,outline(e),true); octx.setLineDash([]); }
+  if(e.type==='bank'&&sel){ octx.setLineDash([2,4]); poly(cc,outline(e,40).map(p=>[p[0],e.c[1]+e.r[1],p[2]]),true); octx.setLineDash([]); }
+  octx.globalAlpha=1;
+  const H=handles(e); const m=projC(cc,H.move); if(!m) return;
+  if(!sel){ dot2(m[0],m[1],hoverEl===e?5.5:4.5,col); if(hoverEl===e) label(m[0]+10,m[1],e.name,'#dce2e8'); return; }
+  const ht=projC(cc,H.height);
+  if(ht){ octx.strokeStyle='rgba(239,178,77,.8)'; octx.lineWidth=1.2; octx.setLineDash([3,3]); octx.beginPath(); octx.moveTo(m[0],m[1]); octx.lineTo(ht[0],ht[1]); octx.stroke(); octx.setLineDash([]);
+    const hv=hoverK==='height'; octx.beginPath(); octx.moveTo(ht[0],ht[1]-(hv?9:7)); octx.lineTo(ht[0]-(hv?7:6),ht[1]+4); octx.lineTo(ht[0]+(hv?7:6),ht[1]+4); octx.closePath(); octx.fillStyle=hv?'#fff2d6':GOLD; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.stroke(); octx.fill(); }
+  for(const k of ['sx','sz','scale']){ if(!H[k]) continue; const q=projC(cc,H[k]); if(!q) continue; const s=hoverK===k?6:4.5; octx.fillStyle=hoverK===k?'#fff2d6':GOLD; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.strokeRect(q[0]-s,q[1]-s,s*2,s*2); octx.fillRect(q[0]-s,q[1]-s,s*2,s*2); }
+  if(H.rot){ const q=projC(cc,H.rot); if(q){ const r=hoverK==='rot'?8:6.5; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=4; octx.beginPath(); octx.arc(q[0],q[1],r,0.3,Math.PI*1.75); octx.stroke(); octx.strokeStyle=hoverK==='rot'?'#fff2d6':GOLD; octx.lineWidth=2; octx.beginPath(); octx.arc(q[0],q[1],r,0.3,Math.PI*1.75); octx.stroke();
+    const a=Math.PI*1.75; octx.fillStyle=octx.strokeStyle; octx.beginPath(); octx.moveTo(q[0]+Math.cos(a)*r+3,q[1]+Math.sin(a)*r+3); octx.lineTo(q[0]+Math.cos(a)*r-4,q[1]+Math.sin(a)*r+1); octx.lineTo(q[0]+Math.cos(a)*r+1,q[1]+Math.sin(a)*r-5); octx.fill(); } }
+  dot2(m[0],m[1],hoverK==='move'?7:6,GOLD);
+  label(m[0]+12,m[1],e.name,GOLD);
 }
 function drawOverlay(V){
   octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); const cc=cssCam(V);
@@ -1465,12 +1666,13 @@ function drawOverlay(V){
     const c=PL.cam, d=SC.d50*0.35; const cor=[[0,0],[c.w,0],[c.w,c.h],[0,c.h]].map(([x,y])=>add(c.pos,mul(camRay(c,x,y),d)));
     octx.strokeStyle='rgba(239,178,77,.75)'; octx.lineWidth=1; for(const q of cor) poly(cc,[c.pos,q],false); poly(cc,cor,true);
     const lab=projC(cc,c.pos); if(lab){ octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(239,178,77,.9)'; octx.fillText('shot cam',lab[0]+6,lab[1]-6); } }
-  if(hoverHit&&!drag&&['brush','ground','mist','bank','pocket','pool','veil'].includes(S.tool)){
-    const p=hoverHit.p; const r=S.tool==='brush'?S.brushR:SC.scale*0.012; octx.strokeStyle='rgba(239,178,77,.9)'; octx.lineWidth=1.2; octx.setLineDash(S.tool==='brush'&&brushErase?[3,3]:[]);
-    const ring=[]; for(let i=0;i<48;i++){ const a=i/48*Math.PI*2; const x=p[0]+Math.cos(a)*r, z=p[2]+Math.sin(a)*r; ring.push([x,S.tool==='brush'?groundAt(x,z)+0.02:p[1]+0.02,z]); } poly(cc,ring,true); octx.setLineDash([]);
-    if(S.tool==='pool'){ const s=projC(cc,p); if(s){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='#efb24d'; octx.fillText('fog top '+(p[1]-SC.floor).toFixed(2)+' m above floor',s[0]+12,s[1]-8); } } }
-  if(drag&&drag.label){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='#efb24d'; octx.fillText(drag.label,drag.lx+14,drag.ly-10); }
-  if(S.tool==='sun'){ const s=projC(cc,add(cc.pos,mul(sunDir(),SC.scale*20))); if(s){ octx.strokeStyle='#efb24d'; octx.lineWidth=1.5; octx.beginPath(); octx.arc(s[0],s[1],13,0,Math.PI*2); octx.stroke(); octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='#efb24d'; octx.fillText(`el ${S.sun.el.toFixed(1)}°  az ${S.sun.az.toFixed(0)}°`,s[0]+22,s[1]+4); } }
+  const brush=S.tool==='paint'||S.tool==='sculpt';
+  if(hoverHit&&!drag&&(brush||TYPES[S.tool])&&hoverK==null){
+    const p=hoverHit.p; const r=brush?S.brushR:SC.scale*0.012; octx.strokeStyle='rgba(239,178,77,.9)'; octx.lineWidth=1.2; octx.setLineDash(brush&&modKey?[3,3]:[]);
+    const ring=[]; for(let i=0;i<48;i++){ const a=i/48*Math.PI*2; const x=p[0]+Math.cos(a)*r, z=p[2]+Math.sin(a)*r; ring.push([x,brush?groundAt(x,z)+lift():p[1]+lift(),z]); } poly(cc,ring,true); octx.setLineDash([]);
+    if(S.tool==='sculpt'){ const s=projC(cc,p); if(s){ octx.strokeStyle='rgba(239,178,77,.9)'; octx.lineWidth=1.5; octx.beginPath(); const u=modKey?1:-1; octx.moveTo(s[0],s[1]+u*7); octx.lineTo(s[0],s[1]-u*7); octx.moveTo(s[0]-4,s[1]-u*3); octx.lineTo(s[0],s[1]-u*7); octx.lineTo(s[0]+4,s[1]-u*3); octx.stroke(); } }
+    if(S.tool==='pool'){ const s=projC(cc,p); if(s) label(s[0]+12,s[1]-8,'fog top '+(p[1]-SC.floor).toFixed(2)+' m above floor',GOLD); } }
+  if(drag&&drag.label) label(drag.lx+14,drag.ly-10,drag.label,GOLD);
   // wind arrow
   const B=V.layout?lcamBasis():{f:PL.cam.f}; const camYaw=Math.atan2(B.f[0],-B.f[2]); const x0=cssW-34,y0=cssH-34,a=S.wind.dir*D2R-camYaw;
   octx.globalAlpha=0.85; octx.strokeStyle='rgba(220,226,232,.35)'; octx.lineWidth=1; octx.beginPath(); octx.arc(x0,y0,18,0,Math.PI*2); octx.stroke();
@@ -1480,12 +1682,13 @@ function drawOverlay(V){
 }
 
 /* =====================================================================
-   INTERACTION — Maya navigation + tools
+   INTERACTION — Maya navigation, placing, the gizmo, paint and sculpt
    ===================================================================== */
-let drag=null, brushErase=false, bKey=false; const pointers=new Map();
+let drag=null, modKey=false, bKey=false; const pointers=new Map();
 function enterLayout(){ if(S.view==='layout') return; S.view='layout'; dirty.layout=true; resetAccum(); syncViewSeg(); }
 function setView(v){ if(v==='layout'&&S.view!=='layout'){ initLayoutCam(); } S.view=v; dirty.layout=true; resetAccum(); dirty.display=true; syncViewSeg(); }
-function navStart(mode,mx,my){ if(S.view==='shot'){ initLayoutCam(); enterLayout(); toast('Layout camera · press C to look through the shot camera'); } drag={mode,x:mx,y:my,x0:mx,y0:my}; }
+function resetShotCam(){ initLayoutCam(); setView('shot'); toast('Back on the shot camera'); }
+function navStart(mode,mx,my){ if(S.view==='shot'){ initLayoutCam(); enterLayout(); toast('Layout camera · the button at the top returns to the shot camera'); } drag={mode,x:mx,y:my,x0:mx,y0:my}; }
 function navMove(dx,dy){ const L=S.lcam, B=lcamBasis();
   if(drag.mode==='tumble'){ L.yaw+=dx*0.005; L.pitch=clamp(L.pitch-dy*0.005,-1.5,1.5); }
   else if(drag.mode==='track'){ const s=2*L.dist*L.tanY/cssH; L.coi=add(L.coi,add(mul(B.r,-dx*s),mul(B.u,dy*s))); }
@@ -1500,77 +1703,105 @@ ov.addEventListener('pointerdown',ev=>{
   if(ev.altKey){ ev.preventDefault(); navStart(ev.button===0?((ev.buttons&4)?'dolly':'tumble'):ev.button===1?'track':'dolly',mx,my); return; }
   if(ev.button===1){ navStart('track',mx,my); return; }
   if(ev.button===2){ navStart('dolly',mx,my); return; }
-  if(bKey){ drag={mode:'brushsize',x:mx,y:my,r0:S.brushR}; return; }
+  if(bKey){ drag={mode:'brushsize',x:mx,y:my,x0:mx,r0:S.brushR}; return; }
   toolDown(mx,my,ev);
 });
 ov.addEventListener('pointermove',ev=>{
-  const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
-  if(!drag){ if(ready&&PL&&lastV){ hoverHit=['select','sun'].includes(S.tool)?null:pickAt(mx,my); const hi=pickHandle(mx,my); hoverEl=hi!=null?S.els[hi]:null; if(S.tool==='pool') dirty.display=true; } return; }
+  const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my}); modKey=ev.ctrlKey||ev.metaKey;
+  if(!drag){ if(ready&&PL&&lastV){ const h=pickHandle(mx,my); hoverK=h&&h.i===S.sel?h.k:null; hoverEl=h?S.els[h.i]:null; hoverHit=S.tool==='select'?null:pickAt(mx,my); if(S.tool==='pool') dirty.display=true; ov.style.cursor=hoverK?(hoverK==='move'?'move':'grab'):S.tool==='select'?'default':'crosshair'; } return; }
   if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); drag.mode='track'; navMove(cx-drag.cx,cy-drag.cy); drag.mode='pinch'; drag.d=d; drag.cx=cx; drag.cy=cy; return; }
   const dx=mx-drag.x, dy=my-drag.y; drag.x=mx; drag.y=my;
   if(['tumble','track','dolly'].includes(drag.mode)){ navMove(dx,dy); return; }
-  if(drag.mode==='brushsize'){ S.brushR=clamp(drag.r0*Math.exp((mx-drag.x0)*0.01),SC.scale*0.004,SC.scale*0.6); buildHint(); return; }
+  if(drag.mode==='brushsize'){ S.brushR=clamp(drag.r0*Math.exp((mx-drag.x0)*0.01),SC.scale*0.002,SC.scale*0.6); buildHint(); return; }
   toolMove(mx,my,ev);
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; } if(drag.commit) pushUndo(); drag=null; resetAccum(); }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; } if(drag.commit){ pushUndo(); if(drag.e) refreshCtx(); } drag=null; resetAccum(); }
 ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
-ov.addEventListener('pointerleave',()=>{ if(!drag){ hoverHit=null; hoverEl=null; } });
+ov.addEventListener('pointerleave',()=>{ if(!drag){ hoverHit=null; hoverEl=null; hoverK=null; } });
 ov.addEventListener('wheel',ev=>{ ev.preventDefault(); if(!PL) return; if(S.view==='shot'){ initLayoutCam(); enterLayout(); } dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
-function pickHandle(mx,my){ if(!lastV) return null; const cc=cssCam(lastV); let best=null,bd=14; S.els.forEach((e,i)=>{ const h=projC(cc,handlePos(e)); if(!h) return; const d=Math.hypot(h[0]-mx,h[1]-my); if(d<bd){ bd=d; best=i; } }); return best; }
-function select(i){ S.sel=(i==null||i<0)?-1:i; buildList(); buildSel(); dirty.display=true; }
+/* handles of the selected element first, then the centre dots of the rest */
+function pickHandle(mx,my){ if(!lastV) return null; const cc=cssCam(lastV); let best=null,bd=13;
+  const e=S.els[S.sel]; if(e&&S.gizmos!==false){ const H=handles(e); for(const k of ['height','sx','sz','scale','rot','move']){ if(!H[k]) continue; const q=projC(cc,H[k]); if(!q) continue; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={i:S.sel,k}; } } if(best) return best; }
+  S.els.forEach((e,i)=>{ const q=projC(cc,handles(e).move); if(!q) return; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={i,k:'move'}; } }); return best; }
+/* which element covers this ground point: shape footprint or mask, the most solid wins */
+function elAtPoint(p){ let best=-1, bv=0.15;
+  S.els.forEach((e,i)=>{ if(!e.on) return; let v=0;
+    if(e.shape){ const l=worldToLocal(e,p[0],p[2]); const q=Math.hypot(l[0]/e.r[0],l[1]/e.r[2]); v=1-sstep(1-e.feather,1,q); }
+    if(e.mask>=0){ const m=MASK.data.get(e.mask); if(m){ const w=worldToMask(e,p[0],p[2]); const i2=Math.floor((w[0]-SC.bmin[0])/SC.bsize[0]*NM), j2=Math.floor((w[1]-SC.bmin[1])/SC.bsize[1]*NM); if(i2>=0&&j2>=0&&i2<NM&&j2<NM){ const k=j2*NM+i2; v=clamp(v*(1-m.erase[k])+m.add[k],0,1); } } }
+    if(e.type==='cloud'&&p[1]<e.level-e.r[1]*2) v*=0.3;
+    v-=footR(e)/(SC.scale*40); if(v>bv){ bv=v; best=i; } });
+  return best; }
+function select(i){ S.sel=(i==null||i<0)?-1:i; buildList(); buildCtx(); dirty.display=true; }
 function addEl(e){ if(S.els.length>=MAX_E){ toast(MAX_E+' elements is the limit'); return -1; } S.els.push(e); markEl(); return S.els.length-1; }
 function horizCamRight(){ const B=lastV.layout?lcamBasis():PL.cam; return norm([B.r[0],0,B.r[2]]); }
+function camFwdH(){ const B=lastV.layout?lcamBasis():PL.cam; return norm([B.f[0],0,B.f[2]]); }
+function vertAt(ro,rd,pt){ const nf=camFwdH(); const t=dot(sub(pt,ro),nf)/Math.max(dot(rd,nf),1e-4); return add(ro,mul(rd,t))[1]; }
+function grabHandle(h,mx,my,ev){ const e=S.els[h.i]; if(h.i!==S.sel) select(h.i); const H=handles(e); const {ro,rd}=mouseRay(mx,my);
+  const base={x0:mx,y0:my,x:mx,y:my,lx:mx,ly:my,e,orig:JSON.parse(JSON.stringify(e)),commit:true,k:h.k,hp:H[h.k]};
+  base.grab=rayPlaneY(ro,rd,H[h.k][1]); base.y0w=vertAt(ro,rd,H[h.k]); base.vert=ev.shiftKey&&h.k==='move';
+  const pv=e.shape?[e.c[0],e.c[2]]:pivotW(e); base.pv=pv; base.a0=Math.atan2(H[h.k][2]-pv[1],H[h.k][0]-pv[0]); base.d0=Math.hypot(H[h.k][0]-pv[0],H[h.k][2]-pv[1]);
+  drag={...base,mode:'h_'+h.k}; }
 function toolDown(mx,my,ev){
   const t=S.tool, base={x0:mx,y0:my,x:mx,y:my,lx:mx,ly:my};
-  if(t==='select'){ const hi=pickHandle(mx,my); if(hi!=null){ select(hi); const e=S.els[hi]; const hp=handlePos(e); const {ro,rd}=mouseRay(mx,my); drag={...base,mode:'move',e,h0:hp,orig:JSON.parse(JSON.stringify(e)),grab:rayPlaneY(ro,rd,hp[1]),vert:ev.shiftKey,commit:true}; return; }
-    if(ev.button===0){ select(-1); } return; }
-  if(t==='sun'){ drag={...base,mode:'sun'}; setSunFrom(mx,my); return; }
-  const hit=pickAt(mx,my); if(!hit) return; const p=hit.p;
+  if(t!=='paint'&&t!=='sculpt'){ const h=pickHandle(mx,my); if(h&&(t==='select'||h.i===S.sel)){ grabHandle(h,mx,my,ev); return; } }
+  const hit=pickAt(mx,my);
+  if(t==='select'){ if(hit){ const i=elAtPoint(hit.p); if(i>=0){ select(i); grabHandle({i,k:'move'},mx,my,ev); return; } } if(ev.button===0) select(-1); return; }
+  if(!hit) return; const p=hit.p;
   if(['ground','mist','bank','cloud','rising'].includes(t)){
-    const r=horizCamRight(); const yaw=-Math.atan2(r[2],r[0]); const tmp=mkEl(t); uid--;
+    const r=horizCamRight(); const yaw=-Math.atan2(r[2],r[0]); const s0=SC.scale*0.01;
     const extra=t==='cloud'?{level:p[1]}:t==='rising'?{aux:anaAt(SC.canopy,p[0],p[2])>0.15?1:0}:{};
-    const e=mkEl(t,{c:[p[0],t==='bank'?groundAt(p[0],p[2]):p[1],p[2]],r:[SC.scale*0.01,tmp.r[1],SC.scale*0.01],yaw,...extra}); const i=addEl(e); if(i<0) return; select(i);
+    const e=mkEl(t,{c:[p[0],t==='bank'?groundAt(p[0],p[2]):p[1],p[2]],r:[s0,S.next[t].h,s0],yaw,...extra}); const i=addEl(e); if(i<0) return; select(i);
     drag={...base,mode:'foot',e,p0:p,commit:true}; return; }
-  if(t==='pocket'){ const s=SC.scale*0.01; const e=mkEl('pocket',{c:[p[0],p[1]+s*0.6,p[2]],r:[s,s*0.6,s]}); const i=addEl(e); if(i<0) return; select(i); drag={...base,mode:'pocket',e,p0:p,commit:true}; return; }
-  if(t==='pool'){ let e=S.els[S.sel]; if(!e||e.type!=='pool'){ e=mkEl('pool'); const i=addEl(e); if(i<0) return; select(i); }
-    floodPool(e,p[1]+SC.range*0.005+0.02,p[0],p[2]); markEl(); buildSel(); drag={...base,mode:'pool',e,lv0:e.level,seed:[p[0],p[2]],commit:true,label:'fog top '+(e.level-SC.floor).toFixed(2)+' m'}; return; }
-  if(t==='veil'){ const B=lastV.layout?lcamBasis():{pos:PL.cam.pos,f:PL.cam.f}; const fh=norm([B.f[0],0,B.f[2]]); const D=hit.t||len(sub(p,B.pos)); const behind=!ev.shiftKey;
-    const g=groundAt(p[0],p[2]); const tall=Math.max(p[1]-g,SC.scale*0.02); const thick=Math.max(D*0.06,SC.scale*0.01); const gap=Math.max(D*0.03,SC.scale*0.004);
-    const c=add(p,mul(fh,(behind?1:-1)*(gap+thick))); const cc=cssCam(lastV); const halfW=Math.max(D*(cc.w/2/cc.fx)*0.75,SC.scale*0.05);
-    const e=mkEl('veil',{name:(behind?'Veil behind':'Veil in front')+' · '+(S.els.filter(x=>x.type==='veil').length+1),c:[c[0],g,c[2]],r:[halfW,tall*1.6+SC.scale*0.01,thick],yaw:Math.atan2(fh[0],fh[2])*-1+Math.PI/2*0, vis:clamp(D*0.9,SC.scale*0.1,SC.scale*8)});
-    e.yaw=Math.atan2(-fh[0],fh[2])*0; const r=norm([fh[2],0,-fh[0]]); e.yaw=-Math.atan2(r[2],r[0]);
-    const i=addEl(e); if(i>=0){ select(i); pushUndo(); toast(e.name+' placed'); } return; }
-  if(t==='brush'){ let e=S.els[S.sel]; if(!e||e.type==='pocket'){ e=mkEl('ground',{name:'Painted ground fog',shape:false,c:p.slice()}); const i=addEl(e); if(i<0) return; select(i); }
-    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } brushErase=ev.ctrlKey||ev.metaKey; paintAt(e,p,brushErase); drag={...base,mode:'paint',e,commit:true,erase:brushErase}; return; }
+  if(t==='pool'){ const e=mkEl('pool',{r:[0,S.next.pool.h,0]}); const i=addEl(e); if(i<0) return; select(i);
+    floodPool(e,p[1]+Math.max(e.r[1]*0.6,SC.range*0.005)+0.02,p[0],p[2]); markEl(); drag={...base,mode:'pool',e,lv0:e.level,seed:[p[0],p[2]],commit:true,label:'fog top '+(e.level-SC.floor).toFixed(2)+' m'}; return; }
+  if(t==='paint'){ let e=S.els[S.sel]; if(!e){ const ty=S.paintType||'ground'; e=mkEl(ty,{name:'Painted '+TYPES[ty].label.toLowerCase(),shape:false,c:p.slice(),mc:[p[0],p[2]],level:ty==='cloud'?p[1]:ty==='pool'?p[1]+S.next.pool.h:0,r:[0,S.next[ty].h,0]}); const i=addEl(e); if(i<0) return; select(i); }
+    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } const er=ev.ctrlKey||ev.metaKey; paintAt(e,p,er); drag={...base,mode:'paint',e,commit:true,erase:er}; return; }
+  if(t==='sculpt'){ let e=S.els[S.sel]; if(!e){ const i=elAtPoint(p); if(i>=0){ select(i); e=S.els[i]; } }
+    if(!e){ toast('Select a fog element to sculpt'); return; } if(e.type==='pool'){ /* flood masks are rebuilt on move; sculpt the top instead */ }
+    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } const lo=ev.ctrlKey||ev.metaKey; sculptAt(e,p,lo?-1:1); drag={...base,mode:'sculpt',e,commit:true,dir:lo?-1:1}; return; }
 }
 function toolMove(mx,my,ev){
   const d=drag; d.lx=mx; d.ly=my;
-  if(d.mode==='sun'){ setSunFrom(mx,my); return; }
-  const {ro,rd}=mouseRay(mx,my);
-  if(d.mode==='move'){ const e=d.e, o=d.orig; let delta;
-    if(d.vert||ev.shiftKey){ const B=lastV.layout?lcamBasis():PL.cam; const nf=norm([B.f[0],0,B.f[2]]); const t=dot(sub(d.h0,ro),nf)/Math.max(dot(rd,nf),1e-4); delta=[0,add(ro,mul(rd,t))[1]-d.h0[1],0]; }
-    else { const hit=rayPlaneY(ro,rd,d.h0[1]); if(!hit||!d.grab) return; delta=sub(hit,d.grab); delta[1]=0; if(len(delta)>SC.scale*20) return; }
-    if(e.type==='pool'&&delta[1]!==0){ floodPool(e,o.level+delta[1],o.c[0],o.c[2]); }
-    else if(e.type==='cloud'&&delta[1]!==0){ e.level=o.level+delta[1]; }
-    else { e.c=[o.c[0]+delta[0],o.c[1]+delta[1],o.c[2]+delta[2]]; if(e.mask>=0&&!e.shape||e.mask>=0) e.mo=[o.mo[0]+delta[0],o.mo[1]+delta[2]]; if(e.type==='bank'&&!(d.vert||ev.shiftKey)) e.c[1]=groundAt(e.c[0],e.c[2]); }
-    d.label=e.type==='pool'?'fog top '+(e.level-SC.floor).toFixed(2)+' m':e.type==='cloud'?'cloud base '+(e.level-SC.floor).toFixed(1)+' m':(d.vert||ev.shiftKey?'height '+(handlePos(e)[1]-SC.floor).toFixed(2)+' m':'');
-    markEl(); poke(); refreshSel(); return; }
-  if(d.mode==='foot'){ const hit=rayPlaneY(ro,rd,d.p0[1]); if(!hit) return; const R=clamp(Math.hypot(hit[0]-d.p0[0],hit[2]-d.p0[2]),SC.scale*0.005,SC.scale*3); const e=d.e;
-    e.r[0]=R; e.r[2]=e.type==='bank'?R*0.45:R; d.label=(e.type==='bank'?'width ':'radius ')+(e.type==='bank'?R*2:R).toFixed(1)+' m'; markEl(); poke(); refreshSel(); return; }
-  if(d.mode==='pocket'){ const hit=rayPlaneY(ro,rd,d.p0[1]); if(!hit) return; const R=clamp(Math.hypot(hit[0]-d.p0[0],hit[2]-d.p0[2]),SC.scale*0.004,SC.scale); d.e.r=[R,R*0.6,R]; d.e.c=[d.p0[0],d.p0[1]+R*0.45,d.p0[2]]; d.label='radius '+R.toFixed(1)+' m'; markEl(); poke(); refreshSel(); return; }
-  if(d.mode==='pool'){ const lv=d.lv0+(d.y0-my)*SC.range*0.0025; floodPool(d.e,lv,d.seed[0],d.seed[1]); d.label='fog top '+(lv-SC.floor).toFixed(2)+' m'; markEl(); poke(); refreshSel(); return; }
-  if(d.mode==='paint'){ const hit=pickAt(mx,my); if(hit) paintAt(d.e,hit.p,d.erase); return; }
+  const {ro,rd}=mouseRay(mx,my); const e=d.e, o=d.orig;
+  if(d.mode==='h_move'){ let delta;
+    if(d.vert||ev.shiftKey){ delta=[0,vertAt(ro,rd,d.hp)-d.y0w,0]; }
+    else { const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit||!d.grab) return; delta=sub(hit,d.grab); delta[1]=0; if(len(delta)>SC.scale*20) return; }
+    if(e.type==='pool'){ if(delta[1]!==0) floodPool(e,o.level+delta[1],o.c[0],o.c[2]); else floodPool(e,e.level,o.c[0]+delta[0],o.c[2]+delta[2]); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; }
+    else if(e.type==='cloud'&&delta[1]!==0){ e.level=o.level+delta[1]; d.label='cloud base '+(e.level-SC.floor).toFixed(1)+' m'; }
+    else if(delta[1]!==0){ e.c=[o.c[0],o.c[1]+delta[1],o.c[2]]; d.label='height '+(e.c[1]-SC.floor).toFixed(2)+' m'; }
+    else { e.c=[o.c[0]+delta[0],o.c[1],o.c[2]+delta[2]]; e.mo=[o.mo[0]+delta[0],o.mo[1]+delta[2]]; if(e.type==='bank') e.c[1]=groundAt(e.c[0],e.c[2]); d.label=''; }
+    markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='h_height'){ const y=vertAt(ro,rd,d.hp); const [cx,cz]=centerW(e); const g=groundAt(cx,cz); const mn=Math.max(0.05,SC.scale*0.0015);
+    if(e.type==='pool'){ floodPool(e,Math.max(y,g+0.05),cx,cz); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; }
+    else if(e.type==='cloud'){ e.r[1]=Math.max(y-e.level,mn); d.label='thickness '+fmLen(e.r[1]); }
+    else if(e.type==='bank'){ e.r[1]=Math.max(y-Math.max(e.c[1],g),mn); d.label='thickness '+fmLen(e.r[1]); }
+    else { const k=e.type==='rising'?1.2:e.type==='mist'?1.5:1; const b=e.type==='rising'&&e.aux?g+SC.canHmax*clamp(anaAt(SC.canopy,cx,cz),0,1):g; e.r[1]=Math.max((y-b)/k,mn); d.label=(e.type==='ground'?'depth ':'height ')+fmLen(e.r[1]); }
+    markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='h_sx'||d.mode==='h_sz'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const l=worldToLocal(e,hit[0],hit[2]); const mn=SC.scale*0.004;
+    if(ev.shiftKey){ const k=Math.max(Math.hypot(hit[0]-d.pv[0],hit[2]-d.pv[1]),mn)/Math.max(d.d0,1e-3); e.r[0]=o.r[0]*k; e.r[2]=o.r[2]*k; e.ms=o.ms*k; }
+    else if(d.mode==='h_sx') e.r[0]=Math.max(Math.abs(l[0]),mn); else e.r[2]=Math.max(Math.abs(l[1]),mn);
+    d.label=`${fmLen(e.r[0]*2)} × ${fmLen(e.r[2]*2)}`; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='h_scale'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const k=clamp(Math.hypot(hit[0]-d.pv[0],hit[2]-d.pv[1])/Math.max(d.d0,1e-3),0.05,20); e.ms=o.ms*k; if(e.shape){ e.r[0]=o.r[0]*k; e.r[2]=o.r[2]*k; } d.label='scale '+(e.ms).toFixed(2)+'×'; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='h_rot'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const a=Math.atan2(hit[2]-d.pv[1],hit[0]-d.pv[0]); let y=o.yaw-(a-d.a0); if(ev.shiftKey) y=Math.round(y/(15*D2R))*15*D2R; e.yaw=y; d.label='rotate '+((((-y/D2R)%360)+540)%360-180).toFixed(0)+'°'; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='foot'){ const hit=rayPlaneY(ro,rd,d.p0[1]); if(!hit) return; const R=clamp(Math.hypot(hit[0]-d.p0[0],hit[2]-d.p0[2]),SC.scale*0.004,SC.scale*3);
+    e.r[0]=R; e.r[2]=e.type==='bank'?R*0.45:R; d.label=(e.type==='bank'?'width ':'radius ')+fmLen(e.type==='bank'?R*2:R); markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='pool'){ const lv=d.lv0+(d.y0-my)*SC.range*0.0025; floodPool(e,lv,d.seed[0],d.seed[1]); d.label='fog top '+(lv-SC.floor).toFixed(2)+' m'; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='paint'){ const hit=pickAt(mx,my); if(hit) paintAt(e,hit.p,d.erase); return; }
+  if(d.mode==='sculpt'){ const hit=pickAt(mx,my); if(hit) sculptAt(e,hit.p,(ev.ctrlKey||ev.metaKey)?-1:1); return; }
 }
-function paintAt(e,p,erase){ const m=maskFor(e); if(!m) return; const N=NM; const cx=(p[0]-e.mo[0]-SC.bmin[0])/SC.bsize[0]*N-0.5, cz=(p[2]-e.mo[1]-SC.bmin[1])/SC.bsize[1]*N-0.5, r=S.brushR/SC.bsize[0]*N;
-  for(let j=Math.max(0,Math.floor(cz-r));j<=Math.min(N-1,Math.ceil(cz+r));j++) for(let i=Math.max(0,Math.floor(cx-r));i<=Math.min(N-1,Math.ceil(cx+r));i++){ const d=Math.hypot(i-cx,j-cz)/Math.max(r,0.5); if(d>1) continue; const w=(1-d*d)*0.35; const k=j*N+i;
-    if(erase){ m.erase[k]=Math.min(1,m.erase[k]+w); m.add[k]=Math.max(0,m.add[k]-w); } else { m.add[k]=Math.min(1,m.add[k]+w); m.erase[k]=Math.max(0,m.erase[k]-w); } }
+function brushCells(e,p,fn){ const N=NM; const w=worldToMask(e,p[0],p[2]); const cx=(w[0]-SC.bmin[0])/SC.bsize[0]*N-0.5, cz=(w[1]-SC.bmin[1])/SC.bsize[1]*N-0.5, r=S.brushR/e.ms/SC.bsize[0]*N;
+  for(let j=Math.max(0,Math.floor(cz-r));j<=Math.min(N-1,Math.ceil(cz+r));j++) for(let i=Math.max(0,Math.floor(cx-r));i<=Math.min(N-1,Math.ceil(cx+r));i++){ const d=Math.hypot(i-cx,j-cz)/Math.max(r,0.5); if(d>1) continue; fn(j*N+i,(1-d*d)*(1-d*d)); } }
+function paintAt(e,p,erase){ const m=maskFor(e); if(!m) return; const st=S.brushStr??0.35;
+  brushCells(e,p,(k,w)=>{ w*=st; if(erase){ m.erase[k]=Math.min(1,m.erase[k]+w); m.add[k]=Math.max(0,m.add[k]-w); } else { m.add[k]=Math.min(1,m.add[k]+w); m.erase[k]=Math.max(0,m.erase[k]-w); } });
   uploadMask(e); markEl(); poke(); }
-function setSunFrom(mx,my){ const {rd}=mouseRay(mx,my); S.sun.el=clamp(Math.asin(clamp(rd[1],-1,1))/D2R,-2,85); S.sun.az=Math.atan2(rd[0],-rd[2])/D2R; dirty.sky=true; dirty.shadow=true; poke(); refreshGlobal(); }
+function sculptAt(e,p,dir){ const m=maskFor(e); if(!m) return; const st=(S.brushStr??0.35)*0.18;
+  brushCells(e,p,(k,w)=>{ m.ht[k]=clamp(m.ht[k]+dir*w*st,0,1); });
+  uploadMask(e); markEl(); poke(); }
 
 /* keyboard */
 const typing=()=>{const a=document.activeElement;return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='SELECT'||a.tagName==='TEXTAREA');};
 addEventListener('keydown',ev=>{
-  if(ev.key==='Alt') ev.preventDefault();
+  if(ev.key==='Alt') ev.preventDefault(); modKey=ev.ctrlKey||ev.metaKey;
   if(typing()||!$('#modal').hidden&&ev.key!=='Escape') return; const k=ev.key;
   if(k==='Escape'){ if(!$('#modal').hidden) closeModal(); else select(-1); return; }
   if((ev.ctrlKey||ev.metaKey)&&k.toLowerCase()==='z'){ ev.preventDefault(); undo(); return; }
@@ -1585,19 +1816,20 @@ addEventListener('keydown',ev=>{
   if(k==='c'||k==='C'){ setView(S.view==='shot'?'layout':'shot'); return; }
   if(k==='f'||k==='F'){ frameSel(); return; } if(k==='a'||k==='A'){ frameAll(); return; }
   if(k==='h'||k==='H'){ S.gizmos=S.gizmos===false; return; }
+  if(k==='g'||k==='G'){ setQuality(S.quality==='final'?'draft':'final'); return; }
 });
-addEventListener('keyup',ev=>{ if(ev.key==='b'||ev.key==='B') bKey=false; });
-addEventListener('blur',()=>{ bKey=false; });
+addEventListener('keyup',ev=>{ if(ev.key==='b'||ev.key==='B') bKey=false; modKey=ev.ctrlKey||ev.metaKey; });
+addEventListener('blur',()=>{ bKey=false; modKey=false; });
 function frameSel(){ const e=S.els[S.sel]; if(!e){ frameAll(); return; } if(S.view==='shot') setView('layout'); const b=elBounds(e); S.lcam.coi=handlePos(e); S.lcam.dist=Math.max((b?b.r:SC.scale*0.1)*2.6,SC.scale*0.02); dirty.layout=true; poke(); }
 function frameAll(){ if(S.view==='shot') setView('layout'); S.lcam.coi=[SC.bmin[0]+SC.bsize[0]/2,(SC.floor+SC.top)/2,SC.bmin[1]+SC.bsize[1]/2]; S.lcam.dist=SC.bsize[0]*0.9; S.lcam.pitch=Math.min(S.lcam.pitch,-0.45); dirty.layout=true; poke(); }
 
 /* undo */
 const undoStack=[];
 const q8=a=>{ const o=new Uint8Array(a.length); for(let i=0;i<a.length;i++) o[i]=clamp(a[i],0,1)*255+0.5; return o; }, u8f=a=>{ const o=new Float32Array(a.length); for(let i=0;i<a.length;i++) o[i]=a[i]/255; return o; };
-function snapshot(){ return {els:JSON.parse(JSON.stringify(S.els)),sel:S.sel,masks:new Map([...MASK.data].map(([k,m])=>[k,{add:q8(m.add),erase:q8(m.erase)}])),free:MASK.free.slice()}; }
-function pushUndo(){ undoStack.push(snapshot()); if(undoStack.length>20) undoStack.shift(); }
-function undo(){ if(undoStack.length<2){ toast('Nothing to undo'); return; } undoStack.pop(); const s=undoStack[undoStack.length-1]; S.els=JSON.parse(JSON.stringify(s.els)); S.sel=Math.min(s.sel,S.els.length-1); MASK.data=new Map([...s.masks].map(([k,m])=>[k,{add:u8f(m.add),erase:u8f(m.erase)}])); MASK.free=s.free.slice();
-  for(const e of S.els) if(e.mask>=0) uploadMask(e); markEl(); buildList(); buildSel(); toast('Undone'); }
+function snapshot(){ return {els:JSON.parse(JSON.stringify(S.els)),sel:S.sel,masks:new Map([...MASK.data].map(([k,m])=>[k,{add:q8(m.add),erase:q8(m.erase),ht:q8(m.ht)}])),free:MASK.free.slice()}; }
+function pushUndo(){ undoStack.push(snapshot()); if(undoStack.length>24) undoStack.shift(); }
+function undo(){ if(undoStack.length<2){ toast('Nothing to undo'); return; } undoStack.pop(); const s=undoStack[undoStack.length-1]; S.els=JSON.parse(JSON.stringify(s.els)); S.sel=Math.min(s.sel,S.els.length-1); MASK.data=new Map([...s.masks].map(([k,m])=>[k,{add:u8f(m.add),erase:u8f(m.erase),ht:u8f(m.ht)}])); MASK.free=s.free.slice();
+  for(const e of S.els) if(e.mask>=0) uploadMask(e); markEl(); buildList(); buildCtx(); toast('Undone'); }
 
 /* =====================================================================
    UI
@@ -1610,37 +1842,37 @@ const ICONS={
   bank:'<path d="M3 17h18"/><path d="M3 17c0-3 2-5 4.5-5 .5-2.5 2.5-4 5-4s4.2 1.6 4.7 3.8C19.6 12 21 14 21 17"/>',
   rising:'<path d="M4 20l3-5 3 5"/><path d="M13 20l3-6 3 6"/><path d="M7 12c-1-2 1-3 0-5"/><path d="M16 11c-1-2 1-3 0-5"/>',
   mist:'<path d="M4 8h12"/><path d="M7 12h13"/><path d="M4 16h10"/>',
-  pocket:'<ellipse cx="12" cy="11" rx="7" ry="4.5"/><path d="M12 15.5V20"/><path d="M9 20h6"/>',
-  veil:'<path d="M12 4v16"/><path d="M15 6.5c2 .4 4 .4 6 0v11c-2 .4-4 .4-6 0z"/><circle cx="6.5" cy="9" r="2"/><path d="M4 17c0-2.5 1.2-4.5 2.5-4.5S9 14.5 9 17"/>',
-  brush:'<path d="M14.5 4.5l5 5L10 19l-5 1 1-5z"/><path d="M12.5 6.5l5 5"/>',
-  sun:'<circle cx="12" cy="12" r="3.6"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/>',
+  paint:'<path d="M14.5 4.5l5 5L10 19l-5 1 1-5z"/><path d="M12.5 6.5l5 5"/>',
+  sculpt:'<path d="M3 18c3 0 4-7 9-7s6 7 9 7"/><path d="M12 3v5"/><path d="M9.5 5.5L12 3l2.5 2.5"/>',
 };
 const TOOLS=[
-  {id:'select',key:'q',name:'Select & move',hint:'Drag a handle to move an element. Shift-drag lifts it, or raises a valley fog top or cloud base.'},
-  {id:'ground',key:'1',name:'Ground fog',hint:'Drag out the area. Depth follows the ground: deeper in hollows and drainage lines, thin by walls and under trees.'},
-  {id:'pool',key:'2',name:'Valley fog',hint:'Click where the fog should settle, then drag up or down. It fills the connected low ground under a flat top.'},
+  {id:'select',key:'q',name:'Select & move',hint:'Click fog or a handle to select. Drag to move, Shift-drag to lift. The square handles size it, the arrow on top sets height, the ring rotates.'},
+  {id:'ground',key:'1',name:'Ground fog',hint:'Set the look on the right, then drag out the area. Depth follows the ground: deeper in hollows and drainage lines, thin by walls and under trees.'},
+  {id:'pool',key:'2',name:'Valley fog',hint:'Click where the fog should settle, then drag up or down. It fills the connected low ground under a soft top.'},
   {id:'cloud',key:'3',name:'Low cloud',hint:'Click the slope where the cloud base should sit, then drag out the area. Hills rise into it.'},
   {id:'bank',key:'4',name:'Fog bank',hint:'Drag out the bank. It faces the camera, streaks along the wind and drifts with it.'},
   {id:'rising',key:'5',name:'Rising mist',hint:'Drag over a forest or wet ground. Wisps and puffs rise off the canopy or surface.'},
   {id:'mist',key:'6',name:'Mist',hint:'Drag out an area of thin hanging mist.'},
-  {id:'pocket',key:'7',name:'Fog pocket',hint:'Click a surface and drag to size a free-floating volume.'},
-  {id:'veil',key:'8',name:'Veil',hint:'Click a subject to put a veil just behind it. Shift-click puts it in front.'},
-  {id:'brush',key:'9',name:'Paint',hint:'Paint more fog into the selected element. Ctrl-paint clears it. B-drag or [ ] resizes.'},
-  {id:'sun',key:'0',name:'Sun',hint:'Drag in the view to aim the sun. Match it to the plate key light.'},
+  {id:'paint',key:'7',name:'Paint',hint:'Paint fog into the selected element, or a new one. Ctrl-paint clears. B-drag or [ ] resizes the brush.'},
+  {id:'sculpt',key:'8',name:'Sculpt',hint:'Paint over an element to raise it. Ctrl-paint lowers. Works on depth, tops and cloud bases.'},
 ];
-function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===7||i===9) { const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
+function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===7) { const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',S.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
-function setTool(id){ S.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='select'?'default':id==='sun'?'move':'crosshair'; hoverHit=null; dirty.display=true; }
-function buildHint(){ const t=TOOLS.find(x=>x.id===S.tool); const h=$('#hint'); h.innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(S.tool==='brush'?`<span>radius <b style="font-family:var(--f-mono)">${S.brushR.toFixed(1)} m</b></span>`:''); }
+function setTool(id){ const was=S.tool; S.tool=id; if(TYPES[id]&&S.sel>=0) S.sel=-1; buildRail(); buildHint(); buildList(); buildCtx(); ov.style.cursor=id==='select'?'default':'crosshair'; hoverHit=null; dirty.display=true;
+  if(TYPES[id]&&was!==id){ const c=$('#secCtx'); c.open=true; c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); c.scrollIntoView({block:'nearest',behavior:'smooth'}); } }
+function buildHint(){ const t=TOOLS.find(x=>x.id===S.tool); const h=$('#hint'); h.innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+((S.tool==='paint'||S.tool==='sculpt')?`<span>radius <b style="font-family:var(--f-mono)">${fmLen(S.brushR)}</b></span>`:''); }
 const PASSES=['Comp','Fog element','Fog alpha','Values','Value bands','Over checker','Plate','P','N'];
 function buildAovs(){ const a=$('#aovs'); a.innerHTML=''; PASSES.forEach((n,i)=>{ const b=document.createElement('button'); b.setAttribute('role','tab'); b.setAttribute('aria-selected',S.pass===i); b.textContent=n; b.onclick=()=>{ S.pass=i; buildAovs(); dirty.display=true; }; a.appendChild(b); }); }
-function syncViewSeg(){ $('#vShot').setAttribute('aria-pressed',S.view==='shot'); $('#vLayout').setAttribute('aria-pressed',S.view==='layout'); $('#navkeys').innerHTML=S.view==='shot'?'Alt+drag or wheel enters layout<br>C shot/layout · V fog on/off':'Alt+LMB tumble · Alt+MMB track · Alt+RMB dolly<br>F frame · A all · C shot camera'; }
-$('#vShot').onclick=()=>setView('shot'); $('#vLayout').onclick=()=>setView('layout');
+function syncViewSeg(){ $('#vShot').setAttribute('aria-pressed',S.view==='shot'); $('#vLayout').setAttribute('aria-pressed',S.view==='layout'); $('#camReset').disabled=S.view==='shot'&&!drag;
+  $('#navkeys').innerHTML=S.view==='shot'?'Alt+drag or wheel enters layout · C toggles':'Alt+LMB tumble · Alt+MMB track · Alt+RMB dolly · F frame · A all'; }
+$('#vShot').onclick=()=>setView('shot'); $('#vLayout').onclick=()=>setView('layout'); $('#camReset').onclick=resetShotCam;
+function setQuality(q){ S.quality=q; $('#qDraft').setAttribute('aria-pressed',q==='draft'); $('#qFinal').setAttribute('aria-pressed',q==='final'); resetAccum(); if(q==='final') toast('Final · full resolution, every detail octave, keeps refining'); }
+$('#qDraft').onclick=()=>setQuality('draft'); $('#qFinal').onclick=()=>setQuality('final');
 function toggleFog(){ S.fogOn=!S.fogOn; const b=$('#fogBtn'); b.setAttribute('aria-pressed',S.fogOn); b.textContent=S.fogOn?'Fog on':'Fog off'; resetAccum(); dirty.display=true; }
 $('#fogBtn').onclick=toggleFog;
 function slider(parent,o){
   const row=document.createElement('div'); row.className='row'; const id='s'+Math.random().toString(36).slice(2,8);
-  row.innerHTML=`<label for="${id}">${o.label}</label><input type="range" id="${id}" min="0" max="1000" step="1"><output></output>`;
+  row.innerHTML=`<label for="${id}">${o.label}</label><input type="range" id="${id}" min="0" max="1000" step="1"><output></output>`; if(o.tip) row.title=o.tip;
   const inp=row.querySelector('input'), out=row.querySelector('output');
   const toS=v=>o.log?Math.log(v/o.min)/Math.log(o.max/o.min):(v-o.min)/(o.max-o.min), fromS=s=>o.log?o.min*Math.pow(o.max/o.min,s):o.min+s*(o.max-o.min);
   const refresh=()=>{ const v=o.get(); const s=clamp(toS(v),0,1); inp.value=Math.round(s*1000); inp.style.setProperty('--p',(s*100)+'%'); out.textContent=o.fmt?o.fmt(v):v.toFixed(2); };
@@ -1651,61 +1883,83 @@ function chips(parent,label,opts,get,set){ const row=document.createElement('div
   draw(); parent.appendChild(row); return draw; }
 function subH(p,t){ const d=document.createElement('div'); d.className='sub-h'; d.textContent=t; p.appendChild(d); }
 const fm=(d,u='')=>v=>v.toFixed(d)+(u?' '+u:'');
-const fmLen=v=>v>=1000?(v/1000).toFixed(2)+' km':v>=10?v.toFixed(0)+' m':v.toFixed(v<1?2:1)+' m';
+const fmLen=v=>v>=1000?(v/1000).toFixed(2)+' km':v>=10?v.toFixed(0)+' m':v>=1?v.toFixed(1)+' m':(v*100).toFixed(0)+' cm';
+const pct=v=>Math.round(v*100)+'%';
 const EYE='<svg viewBox="0 0 16 16"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg>';
 const EYE_OFF='<svg viewBox="0 0 16 16"><path d="M2 2l12 12"/><path d="M6.2 4c.6-.3 1.2-.5 1.8-.5 4.1 0 6.5 4.5 6.5 4.5s-.6 1.2-1.8 2.4M10 12.1c-.6.3-1.3.4-2 .4-4.1 0-6.5-4.5-6.5-4.5s.8-1.5 2.3-2.8"/></svg>';
 const TRASH='<svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>';
 function buildList(){ const l=$('#elList'); l.innerHTML=''; $('#elCount').textContent=`${S.els.length} / ${MAX_E}`;
-  if(!S.els.length){ l.innerHTML='<div class="empty">No fog yet. Pick a tool on the left (<span class="kbd">1</span>–<span class="kbd">6</span>) and click into the shot, or auto-place one below.</div>'; return; }
+  if(!S.els.length){ l.innerHTML='<div class="empty">No fog yet. Pick a tool on the left (<span class="kbd">1</span>–<span class="kbd">6</span>), set its look, and click into the shot. Or auto-place one below.</div>'; return; }
   S.els.forEach((e,i)=>{ const r=document.createElement('div'); r.className='vrow'+(i===S.sel?' sel':'')+(e.on?'':' off');
     r.innerHTML=`<span class="sw" style="background:${TYPES[e.type].col}"></span><span class="nm"></span><span class="ty">${TYPES[e.type].label.toLowerCase()}</span><button class="ib" aria-label="Toggle">${e.on?EYE:EYE_OFF}</button><button class="ib" aria-label="Delete">${TRASH}</button>`;
-    r.querySelector('.nm').textContent=e.name; r.onclick=()=>select(i);
+    r.querySelector('.nm').textContent=e.name; r.onclick=()=>{ if(TYPES[S.tool]) setTool('select'); select(i); };
     const [eye,del]=r.querySelectorAll('.ib'); eye.onclick=ev=>{ ev.stopPropagation(); e.on=!e.on; markEl(); pushUndo(); buildList(); };
-    del.onclick=ev=>{ ev.stopPropagation(); releaseMask(e); S.els.splice(i,1); if(S.sel>=S.els.length) S.sel=S.els.length-1; if(S.sel===i) S.sel=-1; markEl(); pushUndo(); buildList(); buildSel(); };
+    del.onclick=ev=>{ ev.stopPropagation(); releaseMask(e); S.els.splice(i,1); if(S.sel===i) S.sel=-1; else if(S.sel>i) S.sel--; markEl(); pushUndo(); buildList(); buildCtx(); };
     l.appendChild(r); }); }
-function deleteSel(){ const e=S.els[S.sel]; if(!e) return; releaseMask(e); S.els.splice(S.sel,1); S.sel=-1; markEl(); pushUndo(); buildList(); buildSel(); }
-function duplicateSel(){ const e=S.els[S.sel]; if(!e) return; const c=JSON.parse(JSON.stringify(e)); c.id=++uid; c.name=e.name+' copy'; c.mask=-1;
-  if(e.mask>=0){ const m=maskFor(c); if(m){ const s=MASK.data.get(e.mask); m.add.set(s.add); m.erase.set(s.erase); } }
+function deleteSel(){ const e=S.els[S.sel]; if(!e) return; releaseMask(e); S.els.splice(S.sel,1); S.sel=-1; markEl(); pushUndo(); buildList(); buildCtx(); }
+function duplicateSel(){ const e=S.els[S.sel]; if(!e) return; const c=JSON.parse(JSON.stringify(e)); c.id=++uid; c.name=e.name+' copy'; c.mask=-1; c.seed=Math.floor(rnd()*1000);
+  if(e.mask>=0){ const m=maskFor(c); if(m){ const s=MASK.data.get(e.mask); m.add.set(s.add); m.erase.set(s.erase); m.ht.set(s.ht); } }
   const sh=SC.scale*0.05; c.c[0]+=sh; c.c[2]+=sh; c.mo=[e.mo[0]+sh,e.mo[1]+sh]; const i=addEl(c); if(i>=0){ if(c.mask>=0) uploadMask(c); select(i); pushUndo(); } }
-let selRefresh=[]; function refreshSel(){ selRefresh.forEach(f=>f()); }
-function buildSel(){
-  const b=$('#selBody'); b.innerHTML=''; selRefresh=[]; const e=S.els[S.sel];
-  if(!e){ $('#selTitle').textContent='Selected'; b.innerHTML=`<div class="empty">Nothing selected. Click a handle in the view or a row above.<br><br><span class="kbd">Space</span> plays the loop · <span class="kbd">V</span> fog on/off · <span class="kbd">C</span> shot/layout · <span class="kbd">F</span> frame · <span class="kbd">Ctrl Z</span> undo</div>`; return; }
-  $('#selTitle').textContent='Selected · '+TYPES[e.type].label;
-  const nm=document.createElement('input'); nm.className='name-in'; nm.id='elName'; nm.value=e.name; nm.setAttribute('aria-label','Element name'); nm.oninput=()=>{ e.name=nm.value; buildList(); }; b.appendChild(nm);
-  const d=document.createElement('div'); d.className='note'; d.textContent=TYPES[e.type].desc; b.appendChild(d);
-  const sl=(label,min,max,get,set,fmt,log,step)=>selRefresh.push(slider(b,{label,min,max,get,set:v=>{ set(v); markEl(); },fmt,log,step,commit:pushUndo}));
-  const s=SC.scale, rel=v=>(v-SC.floor);
-  subH(b,'Density');
-  sl('Visibility',0.5,s*20,()=>e.vis,v=>e.vis=v,fmLen,true);
-  sl('Breakup',0,1,()=>e.breakup,v=>e.breakup=v,fm(2));
-  sl('Edge feather',0.05,1,()=>e.feather,v=>e.feather=v,fm(2));
-  sl('Structure size',0.1,4,()=>e.struct,v=>e.struct=v,fm(2,'×'),true);
-  subH(b,'Shape');
-  if(e.type==='ground'){ sl('Depth',0.05,s*0.08,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Terrain response',0,1,()=>e.terrain,v=>e.terrain=v,fm(2)); sl('Burn-off',0,1,()=>e.burn,v=>e.burn=v,fm(2)); }
-  if(e.type==='pool'){ sl('Top height',-SC.range*0.05,SC.range*0.8,()=>rel(e.level),v=>{ floodPool(e,SC.floor+v,e.mext?e.mext.cx:e.c[0],e.mext?e.mext.cz:e.c[2]); },v=>v.toFixed(2)+' m'); sl('Top softness',0.05,s*0.06,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Top waves',0,1.5,()=>e.aux,v=>e.aux=v,fm(2)); sl('Lift off ground',0,1,()=>e.aux2,v=>e.aux2=v,fm(2)); sl('Burn-off',0,1,()=>e.burn,v=>e.burn=v,fm(2)); }
-  if(e.type==='cloud'){ sl('Base height',-SC.range*0.1,SC.range*1.5,()=>rel(e.level),v=>{ e.level=SC.floor+v; },v=>v.toFixed(1)+' m'); sl('Thickness',0.2,s*0.6,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Windward drop',0,1.5,()=>e.aux,v=>e.aux=v,fm(2)); sl('Scud below',0,1,()=>e.aux2,v=>e.aux2=v,fm(2)); }
-  if(e.type==='rising'){ selRefresh.push(chips(b,'Rises from',[[1,'Canopy'],[0,'Ground / water']],()=>e.aux,v=>{ e.aux=v; markEl(); pushUndo(); })); sl('Height',0.1,s*0.15,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Rise speed',0,s*0.004+0.5,()=>e.rise,v=>e.rise=v,fm(2,'m/s')); sl('Puffiness',0,1,()=>e.aux2,v=>e.aux2=v,fm(2)); }
-  if(e.type==='mist'){ sl('Height',0.2,s*0.2,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Rising wisps',0,1,()=>e.aux,v=>e.aux=v,fm(2)); sl('Terrain follow',0,1,()=>e.terrain,v=>e.terrain=v,fm(2)); }
-  if(e.type==='bank'){ sl('Thickness',0.5,s*0.5,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Drift with wind',0,2,()=>e.aux,v=>e.aux=v,fm(2,'×')); sl('Streaks',0.5,3,()=>e.streak,v=>e.streak=v,fm(2,'×')); }
-  if(e.type==='pocket'){ sl('Radius X',0.1,s*0.5,()=>e.r[0],v=>e.r[0]=v,fmLen,true); sl('Radius Y',0.1,s*0.3,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Radius Z',0.1,s*0.5,()=>e.r[2],v=>e.r[2]=v,fmLen,true); sl('Height',SC.floor-SC.range*0.1,SC.top+SC.range,()=>e.c[1],v=>e.c[1]=v,v=>rel(v).toFixed(1)+' m'); }
-  if(e.type==='veil'){ sl('Height',0.2,s*0.6,()=>e.r[1],v=>e.r[1]=v,fmLen,true); sl('Width',s*0.02,s*3,()=>e.r[0]*2,v=>e.r[0]=v/2,fmLen,true); sl('Thickness',0.1,s*0.3,()=>e.r[2]*2,v=>e.r[2]=v/2,fmLen,true); }
-  if(e.shape&&e.type!=='veil'&&e.type!=='pocket'){ sl(e.type==='bank'?'Width':'Size X',0.2,s*3,()=>e.r[0]*(e.type==='bank'?2:1),v=>e.r[0]=e.type==='bank'?v/2:v,fmLen,true); sl(e.type==='bank'?'Depth':'Size Z',0.2,s*3,()=>e.r[2]*(e.type==='bank'?2:1),v=>e.r[2]=e.type==='bank'?v/2:v,fmLen,true); }
-  if(e.type!=='pool') sl('Rotation',-180,180,()=>e.yaw/D2R,v=>e.yaw=v*D2R,fm(0,'°'));
-  const bt=document.createElement('div'); bt.className='btns'; bt.style.marginTop='6px';
-  bt.innerHTML=`<button class="btn" id="bDup">Duplicate</button><button class="btn" id="bFrame">Frame</button>${e.mask>=0?'<button class="btn" id="bClear">Clear paint</button>':''}<button class="btn danger" id="bDel">Delete</button>`; b.appendChild(bt);
-  bt.querySelector('#bDup').onclick=duplicateSel; bt.querySelector('#bFrame').onclick=frameSel; bt.querySelector('#bDel').onclick=deleteSel;
-  const cl=bt.querySelector('#bClear'); if(cl) cl.onclick=()=>{ const m=MASK.data.get(e.mask); m.add.fill(0); m.erase.fill(0); if(!e.shape){ e.shape=true; e.r[0]=e.r[0]||SC.scale*0.1; e.r[2]=e.r[2]||SC.scale*0.1; } uploadMask(e); markEl(); pushUndo(); buildSel(); };
-  const n2=document.createElement('div'); n2.className='note'; n2.innerHTML=e.mask>=0?'Footprint: '+(e.shape?'shape plus painted mask':'painted / auto mask')+'. Use <b>Paint</b> (9) to add or Ctrl-paint to clear.':'Use <b>Paint</b> (9) to paint extra fog into this element or clear parts of it.'; b.appendChild(n2);
+/* ---- context panel: the attributes of what you are about to place, or of the selection ---- */
+let ctxRefresh=[]; function refreshCtx(){ ctxRefresh.forEach(f=>f()); }
+function buildCtx(){
+  const b=$('#ctxBody'); b.innerHTML=''; ctxRefresh=[]; const sel=S.els[S.sel];
+  const isNew=!sel&&!!TYPES[S.tool]; const t=sel||(isNew?S.next[S.tool]:null); const type=sel?sel.type:S.tool;
+  const brush=S.tool==='paint'||S.tool==='sculpt';
+  if(brush){ subH(b,S.tool==='paint'?'Paint brush':'Sculpt brush'); b.lastChild.style.cssText='margin-top:0;padding-top:0;border:0';
+    ctxRefresh.push(slider(b,{label:'Radius',min:SC.scale*0.002,max:SC.scale*0.6,log:true,get:()=>S.brushR,set:v=>{ S.brushR=v; buildHint(); },fmt:fmLen}));
+    ctxRefresh.push(slider(b,{label:'Strength',min:0.05,max:1,get:()=>S.brushStr??0.35,set:v=>{ S.brushStr=v; },fmt:pct}));
+    if(!sel&&S.tool==='paint'){ ctxRefresh.push(chips(b,'New element',['ground','mist','rising','bank','cloud'].map(k=>[k,TYPES[k].label,TYPES[k].col]),()=>S.paintType||'ground',v=>{ S.paintType=v; })); const n=document.createElement('div'); n.className='note'; n.textContent='Nothing selected, so painting starts a new element of this type. Select an element to paint into it.'; b.appendChild(n); }
+    if(!sel&&S.tool==='sculpt'){ const n=document.createElement('div'); n.className='note'; n.textContent='Click an element in the view or the list, then paint over it to raise it, Ctrl-paint to lower.'; b.appendChild(n); }
+  }
+  if(!t){ $('#ctxTitle').textContent=brush?(S.tool==='paint'?'Paint':'Sculpt'):'Selected'; if(!brush) b.innerHTML=`<div class="empty">Pick a fog tool to set up what you will place, or click an element to edit it.<br><br><span class="kbd">Space</span> plays · <span class="kbd">V</span> fog on/off · <span class="kbd">C</span> shot/layout · <span class="kbd">G</span> draft/final · <span class="kbd">F</span> frame · <span class="kbd">Ctrl Z</span> undo</div>`; return; }
+  $('#ctxTitle').textContent=isNew?'New · '+TYPES[type].label:'Selected · '+TYPES[type].label;
+  const after=()=>{ if(!isNew) markEl(); };
+  const sl=(label,min,max,get,set,fmt,log,tip)=>ctxRefresh.push(slider(b,{label,min,max,get,set:v=>{ set(v); t.preset=null; after(); },fmt,log,tip,commit:()=>{ if(!isNew) pushUndo(); refreshPre&&refreshPre(); }}));
+  if(sel){ const nm=document.createElement('input'); nm.className='name-in'; nm.id='elName'; nm.value=sel.name; nm.setAttribute('aria-label','Element name'); nm.oninput=()=>{ sel.name=nm.value; buildList(); }; b.appendChild(nm); }
+  else { const n=document.createElement('div'); n.className='note new'; n.innerHTML=`<b>Set the look, then ${type==='pool'?'click a low spot':'drag out the area'} in the view.</b> These settings carry over to the next one.`; b.appendChild(n); }
+  const d=document.createElement('div'); d.className='note'; d.textContent=TYPES[type].desc; b.appendChild(d);
+  // style presets
+  const pre=document.createElement('div'); pre.className='presets'; b.appendChild(pre);
+  let refreshPre=()=>{ pre.innerHTML=''; for(const [name,vals] of PRESETS[type]){ const c=document.createElement('button'); c.className='chip pre'; c.textContent=name; c.setAttribute('aria-pressed',t.preset===name); c.onclick=()=>{ applyPreset(t,type,vals); t.preset=name; if(!isNew){ markEl(); pushUndo(); } refreshCtx(); refreshPre(); poke(); }; pre.appendChild(c); } };
+  refreshPre();
+  const s=SC.scale, H=()=>isNew?t.h:t.r[1], setH=v=>{ if(isNew) t.h=v; else t.r[1]=v; };
+  subH(b,'Shape & breakup');
+  sl('Wisps ↔ billows',0,1,()=>t.billow,v=>t.billow=v,v=>v<0.33?'wispy':v>0.67?'billowy':'mixed',false,'Fine fBm wisps or cauliflower Worley billows on the surface');
+  sl('Detail',0,1,()=>t.detail,v=>t.detail=v,pct,false,'How hard the detail octaves cut into the surface');
+  sl('Breakup',0,1,()=>t.breakup,v=>t.breakup=v,pct,false,'Large clear holes and separate masses');
+  sl('Windswept',0,1,()=>t.swept,v=>t.swept=v,pct,false,'Stretches along the wind and leans the structure downwind with height');
+  sl('Turbulence',0,1,()=>t.turb,v=>t.turb=v,pct,false,'Domain warp: swirls and torn edges');
+  sl('Edge softness',0,1,()=>t.edge,v=>t.edge=v,pct,false,'Crisp defined surface or a soft graded edge');
+  sl('Structure size',0.2,5,()=>t.struct,v=>t.struct=v,v=>fmLen(S.look.noise*v),true,'Size of the large shapes');
+  sl('Density',Math.max(0.3,s*0.01),s*20,()=>t.vis,v=>t.vis=v,v=>'vis '+fmLen(v),true,'Visibility inside the fog: lower is denser');
+  if(!isNew){ const rs=document.createElement('div'); rs.className='btns'; rs.innerHTML='<button class="btn" id="bSeed">New variation</button>'; b.appendChild(rs); rs.querySelector('#bSeed').onclick=()=>{ sel.seed=Math.floor(rnd()*1000); markEl(); pushUndo(); }; }
+  subH(b,'Behaviour');
+  if(type==='ground'){ sl('Depth',0.05,s*0.08,H,setH,fmLen,true); sl('Terrain response',0,1,()=>t.terrain,v=>t.terrain=v,pct); sl('Burn-off',0,1,()=>t.burn,v=>t.burn=v,pct); }
+  if(type==='pool'){ if(!isNew) sl('Top height',-SC.range*0.05,SC.range*0.8,()=>t.level-SC.floor,v=>{ floodPool(t,SC.floor+v,t.mext?t.mext.cx:t.c[0],t.mext?t.mext.cz:t.c[2]); },v=>v.toFixed(2)+' m');
+    sl('Top softness',0.05,s*0.08,H,setH,fmLen,true); sl('Top waves',0,1.5,()=>t.aux,v=>t.aux=v,fm(2)); sl('Lift off ground',0,1,()=>t.aux2,v=>t.aux2=v,pct); sl('Burn-off',0,1,()=>t.burn,v=>t.burn=v,pct); }
+  if(type==='cloud'){ if(!isNew) sl('Base height',-SC.range*0.1,SC.range*1.5,()=>t.level-SC.floor,v=>{ t.level=SC.floor+v; },v=>v.toFixed(1)+' m'); sl('Thickness',0.2,s*0.6,H,setH,fmLen,true); sl('Windward drop',0,1.5,()=>t.aux,v=>t.aux=v,fm(2)); sl('Scud below',0,1,()=>t.aux2,v=>t.aux2=v,pct); }
+  if(type==='rising'){ ctxRefresh.push(chips(b,'Rises from',[[1,'Canopy'],[0,'Ground / water']],()=>t.aux,v=>{ t.aux=v; after(); if(!isNew) pushUndo(); })); sl('Height',0.1,s*0.15,H,setH,fmLen,true); sl('Rise speed',0,s*0.004+0.5,()=>t.rise,v=>t.rise=v,fm(2,'m/s')); sl('Puffiness',0,1,()=>t.aux2,v=>t.aux2=v,pct); }
+  if(type==='mist'){ sl('Height',0.2,s*0.2,H,setH,fmLen,true); sl('Terrain follow',0,1,()=>t.terrain,v=>t.terrain=v,pct); }
+  if(type==='bank'){ sl('Thickness',0.3,s*0.5,H,setH,fmLen,true); sl('Drift with wind',0,2,()=>t.aux,v=>t.aux=v,fm(2,'×')); }
+  if(!isNew){ subH(b,'Placement');
+    if(t.shape){ sl(type==='bank'?'Width':'Size X',0.2,s*3,()=>t.r[0]*2,v=>t.r[0]=v/2,fmLen,true); sl(type==='bank'?'Depth':'Size Z',0.2,s*3,()=>t.r[2]*2,v=>t.r[2]=v/2,fmLen,true); }
+    else if(type!=='pool') sl('Scale',0.1,8,()=>t.ms,v=>t.ms=v,v=>v.toFixed(2)+'×',true);
+    if(type!=='pool') sl('Rotation',-180,180,()=>-t.yaw/D2R,v=>t.yaw=-v*D2R,fm(0,'°'));
+    sl('Footprint feather',0.05,1,()=>t.feather,v=>t.feather=v,pct);
+    const bt=document.createElement('div'); bt.className='btns'; bt.style.marginTop='6px';
+    bt.innerHTML=`<button class="btn" id="bDup">Duplicate</button><button class="btn" id="bFrame">Frame</button>${t.mask>=0?'<button class="btn" id="bClear">Clear paint</button><button class="btn" id="bFlat">Flatten sculpt</button>':''}<button class="btn danger" id="bDel">Delete</button>`; b.appendChild(bt);
+    bt.querySelector('#bDup').onclick=duplicateSel; bt.querySelector('#bFrame').onclick=frameSel; bt.querySelector('#bDel').onclick=deleteSel;
+    const cl=bt.querySelector('#bClear'); if(cl) cl.onclick=()=>{ const m=MASK.data.get(t.mask); m.add.fill(0); m.erase.fill(0); if(!t.shape){ t.shape=true; t.r[0]=t.r[0]||SC.scale*0.1; t.r[2]=t.r[2]||SC.scale*0.1; } uploadMask(t); markEl(); pushUndo(); buildCtx(); };
+    const fl=bt.querySelector('#bFlat'); if(fl) fl.onclick=()=>{ const m=MASK.data.get(t.mask); m.ht.fill(0.5); uploadMask(t); markEl(); pushUndo(); };
+    const n2=document.createElement('div'); n2.className='note'; n2.innerHTML='Drag the handles in the view: <b>dot</b> moves (Shift lifts), <b>arrow</b> sets height, <b>squares</b> size (Shift keeps proportion), <b>ring</b> rotates. <b>Paint</b> (7) adds or clears, <b>Sculpt</b> (8) raises or lowers parts.'; b.appendChild(n2); }
 }
 let globRefresh=[]; function refreshGlobal(){ globRefresh.forEach(f=>f()); drawDial(); }
 function buildGlobal(){
   globRefresh=[];
   const lb=$('#lookBody'); lb.innerHTML='';
   const ch=()=>{ resetAccum(); };
-  globRefresh.push(slider(lb,{label:'Noise size',min:0.3,max:120,log:true,get:()=>S.look.noise,set:v=>{S.look.noise=v;ch();},fmt:fmLen}));
-  globRefresh.push(slider(lb,{label:'Detail size',min:0.05,max:20,log:true,get:()=>S.look.detail,set:v=>{S.look.detail=v;ch();},fmt:fmLen}));
-  globRefresh.push(slider(lb,{label:'Wisp ↔ billow',min:0,max:1,get:()=>S.look.billow,set:v=>{S.look.billow=v;ch();},fmt:fm(2)}));
+  globRefresh.push(slider(lb,{label:'Base scale',min:0.3,max:120,log:true,get:()=>S.look.noise,set:v=>{S.look.noise=v;markEl();},fmt:fmLen,tip:'Every element\'s structure size is a multiple of this'}));
   globRefresh.push(slider(lb,{label:'Droplet size',min:3,max:40,log:true,get:()=>S.look.drop,set:v=>{S.look.drop=v;ch();},fmt:v=>v.toFixed(0)+' µm'}));
   globRefresh.push(slider(lb,{label:'Inner glow',min:0,max:0.85,get:()=>S.look.ms,set:v=>{S.look.ms=v;ch();},fmt:fm(2)}));
   globRefresh.push(slider(lb,{label:'Evolve',min:0,max:4,get:()=>S.look.evolve,set:v=>{S.look.evolve=v;ch();},fmt:fm(2)}));
@@ -1714,25 +1968,27 @@ function buildGlobal(){
   subH(lb,'Wind');
   const ww=document.createElement('div'); ww.className='windwrap'; ww.innerHTML='<canvas id="windDial" width="152" height="152" aria-label="Wind direction"></canvas><div id="windBody"></div>'; lb.appendChild(ww); wireDial();
   globRefresh.push(slider($('#windBody'),{label:'Speed',min:0,max:12,get:()=>S.wind.speed,set:v=>{S.wind.speed=v;markEl();},fmt:fm(1,'m/s')}));
-  const wn=document.createElement('div'); wn.className='note'; wn.textContent='Detail streaks and drifts along the wind. Banks travel with it, low cloud drops on windward slopes, valley fog grows waves on its top.'; $('#windBody').appendChild(wn);
+  const wn=document.createElement('div'); wn.className='note'; wn.textContent='Windswept elements streak along this. Banks travel with it, low cloud drops on windward slopes, valley fog grows waves on its top.'; $('#windBody').appendChild(wn);
   const li=$('#lightBody'); li.innerHTML='';
   const sky=()=>{ dirty.sky=true; dirty.shadow=true; };
   globRefresh.push(slider(li,{label:'Sun elevation',min:-2,max:85,get:()=>S.sun.el,set:v=>{S.sun.el=v;sky();},fmt:fm(1,'°')}));
   globRefresh.push(slider(li,{label:'Sun azimuth',min:-180,max:180,get:()=>S.sun.az,set:v=>{S.sun.az=v;sky();},fmt:fm(0,'°')}));
   globRefresh.push(slider(li,{label:'Fog brightness',min:-6,max:6,step:0.1,get:()=>S.fogEV,set:v=>{S.fogEV=v;ch();},fmt:v=>(v>=0?'+':'')+v.toFixed(1)+' EV'}));
-  const ln=document.createElement('div'); ln.className='note'; ln.innerHTML='Aim the sun to match the plate key light with the <b>Sun</b> tool (8). Shafts come from the reconstructed geometry.'; li.appendChild(ln);
+  const ln=document.createElement('div'); ln.className='note'; ln.innerHTML='Match the sun to the plate key light. Shafts and shadows in the fog come from the reconstructed set.'; li.appendChild(ln);
   const rb=$('#rendBody'); rb.innerHTML='';
   globRefresh.push(slider(rb,{label:'Exposure',min:-5,max:5,step:0.1,get:()=>S.ev,set:v=>{S.ev=v;dirty.display=true;dirty.layout=true;},fmt:v=>(v>=0?'+':'')+v.toFixed(1)+' EV'}));
   globRefresh.push(chips(rb,'Plate look',[[0,'Beauty'],[1,'Surface colour'],[2,'Clay']],()=>S.plateLook,v=>{ if(v===0&&!PL.beauty){ toast('No beauty pass in this plate'); return; } if(v===1&&!PL.albedo){ toast('No surface colour pass loaded'); return; } S.plateLook=v; dirty.layout=true; dirty.display=true; resetAccum(); }));
   globRefresh.push(chips(rb,'Layout set',[['mesh','Mesh'],['points','Points']],()=>S.recon,v=>{ S.recon=v; dirty.layout=true; resetAccum(); }));
   globRefresh.push(chips(rb,'',[['proxy','Ground grid']],v=>S.proxy,()=>{ S.proxy=!S.proxy; dirty.layout=true; resetAccum(); }));
-  globRefresh.push(chips(rb,'Refine to',[[16,'16'],[40,'40'],[128,'128']],()=>S.frames,v=>{ S.frames=v; }));
+  subH(rb,'Draft quality');
+  globRefresh.push(chips(rb,'Refine to',[[16,'16'],[40,'40'],[96,'96']],()=>S.frames,v=>{ S.frames=v; }));
   globRefresh.push(chips(rb,'Resolution',[[0.5,'50%'],[0.75,'75%'],[1,'100%']],()=>S.stillScale,v=>{ S.stillScale=v; resetAccum(); }));
   globRefresh.push(chips(rb,'Steps',[[64,'64'],[96,'96'],[160,'160']],()=>S.steps,v=>{ S.steps=v; resetAccum(); }));
+  const qn=document.createElement('div'); qn.className='note'; qn.innerHTML='<b>Final</b> (top of the view, or G) renders at full plate resolution with twice the steps, every detail octave and detailed self-shadowing, and keeps refining for 256 passes.'; rb.appendChild(qn);
   refreshGlobal();
 }
 function buildAuto(){ const a=$('#autoBtns'); a.innerHTML='';
-  for(const [k,t,d] of [['pool','Valley fog','Fills the lowest basin under a flat top'],['ground','Ground fog','Hollows and drainage lines, away from walls and trees'],['cloud','Low cloud','Caps the high ground, lower on windward slopes'],['rising','Rising mist','Wisps off the forest canopy or wet ground'],['bank','Fog bank','Behind the action, drifting across'],['mist','Mist','Thin layer over open low ground']]){ const b=document.createElement('button'); b.className='btn auto'; b.innerHTML=`<b>${t}</b><span>${d}</span>`; b.onclick=()=>runAuto(k); a.appendChild(b); } }
+  for(const [k,t,d] of [['pool','Valley fog','Fills the lowest basin under a soft top'],['ground','Ground fog','Hollows and drainage lines, away from walls and trees'],['cloud','Low cloud','Caps the high ground in broken masses'],['rising','Rising mist','Wisps off the forest canopy or wet ground'],['bank','Fog bank','Behind the action, drifting across'],['mist','Mist','Thin layer over open low ground']]){ const b=document.createElement('button'); b.className='btn auto'; b.innerHTML=`<b>${t}</b><span>${d}</span>`; b.onclick=()=>runAuto(k); a.appendChild(b); } }
 let dial,dctx;
 function wireDial(){ dial=$('#windDial'); dctx=dial.getContext('2d'); let dd=false; const set=ev=>{ const r=dial.getBoundingClientRect(); const x=ev.clientX-r.left-r.width/2, y=ev.clientY-r.top-r.height/2; const cam=PL?(S.view==='layout'?lcamBasis().f:PL.cam.f):[0,0,-1]; const cy=Math.atan2(cam[0],-cam[2]); S.wind.dir=((Math.atan2(x,-y)+cy)/D2R+360)%360; markEl(); refreshGlobal(); };
   dial.addEventListener('pointerdown',ev=>{ dd=true; dial.setPointerCapture(ev.pointerId); set(ev); }); dial.addEventListener('pointermove',ev=>{ if(dd) set(ev); }); dial.addEventListener('pointerup',()=>{ dd=false; }); }
@@ -1741,7 +1997,7 @@ function drawDial(){ if(!dctx) return; const W=dial.width,c=W/2; dctx.clearRect(
   const cam=PL?(S.view==='layout'?lcamBasis().f:PL.cam.f):[0,0,-1]; const a=S.wind.dir*D2R-Math.atan2(cam[0],-cam[2]), L=c-26, dx=Math.sin(a), dy=-Math.cos(a);
   dctx.strokeStyle='#9fc6d9'; dctx.lineWidth=4; dctx.lineCap='round'; dctx.beginPath(); dctx.moveTo(c-dx*L*0.7,c-dy*L*0.7); dctx.lineTo(c+dx*L,c+dy*L); dctx.stroke();
   dctx.fillStyle='#9fc6d9'; dctx.beginPath(); dctx.moveTo(c+dx*(L+8),c+dy*(L+8)); dctx.lineTo(c+dx*L-dy*10,c+dy*L+dx*10); dctx.lineTo(c+dx*L+dy*10,c+dy*L-dx*10); dctx.fill(); }
-/* plate panel */
+/* plate panel: what the current shot's passes are (loading comes from the shot list) */
 let pending=null;
 function buildPlate(err){
   const b=$('#plateBody'); b.innerHTML='';
@@ -1761,9 +2017,7 @@ function buildPlate(err){
     const go=document.createElement('div'); go.className='btns'; go.innerHTML='<button class="btn" id="mapGo" style="background:var(--sun);color:#1b1408;border-color:var(--sun)">Build the set</button><button class="btn" id="mapCancel">Cancel</button>'; box.appendChild(go);
     go.querySelector('#mapGo').onclick=loadPending; go.querySelector('#mapCancel').onclick=()=>{ pending=null; buildPlate(); };
     b.appendChild(box); return; }
-  const bt=document.createElement('div'); bt.className='btns'; bt.innerHTML='<button class="btn" id="loadExr">Load EXR passes…</button>'+(PL&&!PL.sample?'<button class="btn" id="useSample">Use sample frame</button>':''); b.appendChild(bt);
-  bt.querySelector('#loadExr').onclick=()=>$('#fileIn').click(); const us=bt.querySelector('#useSample'); if(us) us.onclick=()=>loadSample();
-  const n=document.createElement('div'); n.className='note'; n.innerHTML='Drop a utility frame on the view: <b>P</b> (world position) is required, <b>N</b>, alpha and a beauty or surface colour pass are used when present. Multipart EXRs and several files at once both work. Files stay on this machine.'; b.appendChild(n);
+  const n=document.createElement('div'); n.className='note'; n.innerHTML='In production the shot list loads each shot\'s utility pass: <b>P</b> (world position) is required, <b>N</b>, alpha and a beauty or surface colour pass are used when present. Files stay on this machine.'; b.appendChild(n);
 }
 async function readFiles(list){
   const files=[]; let err=null;
@@ -1775,29 +2029,37 @@ async function readFiles(list){
   if(pending&&pending.map.P){ toast('Passes found · check the mapping, then build'); }
 }
 async function loadPending(){ const p=pending; if(!p) return; try{ showLoader('Decoding passes',0.05); const pl=await exrToPlate(p.files,p.map,(t,x)=>showLoader(t,0.05+0.5*x)); pl.units=p.units; pending=null;
-    await ingest(pl,(t,x)=>showLoader(t,0.55+0.4*x)); afterIngest(); hideLoader(); toast('Set rebuilt from '+pl.name); }
+    await ingest(pl,(t,x)=>showLoader(t,0.55+0.4*x)); afterIngest(null); hideLoader(); toast('Set rebuilt from '+pl.name); }
   catch(e){ console.error(e); hideLoader(); buildPlate(e.message); } }
-async function loadSample(){ try{ showLoader('Rendering the sample frame',0.1); const pl=await renderSampleFrame((t,x)=>showLoader(t,0.1+0.5*x)); await ingest(pl,(t,x)=>showLoader(t,0.6+0.35*x)); afterIngest(true); hideLoader(); }catch(e){ console.error(e); fail(e.message); } }
-function afterIngest(sample){
-  buildPlate(); buildGlobal(); buildList(); buildSel(); syncViewSeg(); undoStack.length=0;
-  if(sample){ runAutoQuiet('pool'); runAutoQuiet('rising'); const e=S.els[0]; if(e){ e.vis=clamp(SC.scale*0.25,30,220); } select(-1); }
-  pushUndo(); dirty.sky=true; dirty.shadow=true; dirty.display=true; markEl();
+/* stand-in shot list: in the real tool this lists the sequence's shots and loads their utility passes */
+const SHOTS=[{id:'village',code:'tst_0010',name:'Valley village · wide'},{id:'street',code:'tst_0020',name:'Hillside lane · medium'}];
+function buildShots(){ const s=$('#shotSel'); s.innerHTML=''; for(const sh of SHOTS){ const o=document.createElement('option'); o.value=sh.id; o.textContent=sh.code+'  '+sh.name; s.appendChild(o); } s.value=S.shot; }
+$('#shotSel').onchange=ev=>{ loadSample(ev.target.value); };
+let loadingScene=false;
+async function loadSample(kind=S.shot){ if(loadingScene) return; loadingScene=true; ready=false; drag=null;
+  try{ S.shot=kind; $('#shotSel').value=kind; const sh=SHOTS.find(s=>s.id===kind); showLoader('Loading '+sh.code+' · '+sh.name,0.05);
+    const pl=await renderSampleFrame(kind,(t,x)=>showLoader(t,0.05+0.55*x)); await ingest(pl,(t,x)=>showLoader(t,0.6+0.35*x)); afterIngest(kind); hideLoader(); ready=true; }
+  catch(e){ console.error(e); fail(e.message); } loadingScene=false; }
+function afterIngest(kind){
+  newTemplates(); buildPlate(); buildGlobal(); buildList(); syncViewSeg(); undoStack.length=0;
+  if(kind==='village'){ runAutoQuiet('pool'); runAutoQuiet('rising'); select(-1); }
+  else if(kind==='street'){ streetDefaults(); select(-1); }
+  buildCtx(); pushUndo(); dirty.sky=true; dirty.shadow=true; dirty.display=true; markEl();
 }
 function runAutoQuiet(k){ const e=AUTO[k](); if(e) S.els.push(e); return e; }
 ['dragenter','dragover'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=false; }));
 ['dragleave','drop'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=true; }));
 $('#view').addEventListener('drop',ev=>{ const f=[...ev.dataTransfer.files].filter(f=>/\.exr$/i.test(f.name)); if(f.length) readFiles(f); else toast('Drop .exr files'); });
-$('#fileIn').addEventListener('change',ev=>{ const f=[...ev.target.files]; ev.target.value=''; if(f.length) readFiles(f); });
 
 /* timeline */
 function togglePlay(){ S.playing=!S.playing; $('#playIco').innerHTML=S.playing?'<path d="M3 1.5h3v11H3zM8 1.5h3v11H8z"/>':'<path d="M3 1.5v11l9-5.5z"/>'; $('#playBtn').setAttribute('aria-label',S.playing?'Pause':'Play'); resetAccum(); }
 $('#playBtn').onclick=togglePlay;
 function syncTimeline(){ const f=1001+Math.floor(S.time*24); const sc=$('#scrub'); sc.value=f; sc.style.setProperty('--p',((f-1001)/239*100)+'%'); $('#frameOut').innerHTML=`${f} <small>/1240</small>`; }
 $('#scrub').addEventListener('input',ev=>{ S.time=(+ev.target.value-1001)/24; syncTimeline(); poke(); });
-function updateHud(V,vw,vh){ const conv=Math.min(1,frames/S.frames); $('#convBar').style.width=(S.playing?100:conv*100)+'%';
-  const st=!ELU.n?'no fog elements':S.playing?'playing':frames>=S.frames?'refined':interacting?'interactive':'refining';
-  $('#hud').textContent=`${V.layout?'layout':'shot cam'} · fog ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2000); }
+function updateHud(V,vw,vh){ const fin=S.quality==='final', tgt=fin?S.finalFrames:S.frames; const conv=Math.min(1,frames/tgt); $('#convBar').style.width=(S.playing?100:conv*100)+'%'; $('#convBar').classList.toggle('fin',fin);
+  const st=!ELU.n?'no fog elements':S.playing?'playing':frames>=tgt?'refined':interacting?'interactive':(fin?'final '+frames+'/'+tgt:'refining');
+  $('#hud').textContent=`${V.layout?'layout':'shot cam'} · ${fin?'final':'draft'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; syncViewSeg(); }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2200); }
 function showLoader(msg,p){ const l=$('#loader'); l.hidden=false; l.classList.remove('err'); $('#loadMsg').textContent=msg; if(p!=null) $('#loadBar').style.width=(p*100).toFixed(1)+'%'; }
 function hideLoader(){ $('#loader').hidden=true; }
 function fail(msg){ const l=$('#loader'); l.hidden=false; l.classList.add('err'); $('#loadMsg').textContent=msg; ready=false; }
@@ -1808,8 +2070,11 @@ function fail(msg){ const l=$('#loader'); l.hidden=false; l.classList.add('err')
 let mTab='concept';
 const r2=x=>Math.round(x*1000)/1000;
 function setJSON(){ const u=PL.units||1; return {plate:PL.name,camera:PL.camSrc,units_in_file:u===1?'m':u===0.01?'cm':u,units_here:'m',frames:[1001,1240],fps:24,
-  sun:{elevation:r2(S.sun.el),azimuth:r2(S.sun.az)},wind:{toward_deg:r2(S.wind.dir),speed_mps:r2(S.wind.speed)},look:{noise_m:r2(S.look.noise),detail_m:r2(S.look.detail),billow:r2(S.look.billow),droplet_um:r2(S.look.drop),inner_glow:r2(S.look.ms),evolve:r2(S.look.evolve)},
-  elements:S.els.map(e=>({name:e.name,type:e.type,on:e.on,center:e.c.map(r2),radius:e.r.map(r2),yaw_deg:r2(e.yaw/D2R),visibility_m:r2(e.vis),breakup:r2(e.breakup),feather:r2(e.feather),terrain_follow:r2(e.terrain),level:e.type==='pool'||e.type==='cloud'?r2(e.level):undefined,burn_off:r2(e.burn||0),structure:r2(e.struct),drift:e.type==='bank'?r2(e.aux):undefined,wisps:e.type==='mist'?r2(e.aux):undefined,source:e.type==='rising'?(e.aux?'canopy':'ground'):undefined,rise_mps:e.type==='rising'?r2(e.rise):undefined,painted_mask:e.mask>=0}))}; }
+  sun:{elevation:r2(S.sun.el),azimuth:r2(S.sun.az)},wind:{toward_deg:r2(S.wind.dir),speed_mps:r2(S.wind.speed)},look:{base_scale_m:r2(S.look.noise),droplet_um:r2(S.look.drop),inner_glow:r2(S.look.ms),evolve:r2(S.look.evolve)},
+  elements:S.els.map(e=>({name:e.name,type:e.type,on:e.on,center:e.c.map(r2),radius:e.r.map(r2),yaw_deg:r2(-e.yaw/D2R),visibility_m:r2(e.vis),level:e.type==='pool'||e.type==='cloud'?r2(e.level):undefined,
+    style:{preset:e.preset||undefined,structure_m:r2(S.look.noise*e.struct),billow:r2(e.billow),detail:r2(e.detail),breakup:r2(e.breakup),windswept:r2(e.swept),turbulence:r2(e.turb),edge_softness:r2(e.edge),seed:e.seed},
+    feather:r2(e.feather),terrain_follow:r2(e.terrain),burn_off:r2(e.burn||0),drift:e.type==='bank'?r2(e.aux):undefined,source:e.type==='rising'?(e.aux?'canopy':'ground'):undefined,rise_mps:e.type==='rising'?r2(e.rise):undefined,
+    mask:e.mask>=0?{offset:e.mo.map(r2),pivot:e.mc.map(r2),scale:r2(e.ms),sculpted:(e.hmax||1)>1.01}:undefined}))}; }
 function nukeSnippet(){ const j=JSON.stringify(setJSON()).replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\[/g,'\\[').replace(/\]/g,'\\]').replace(/\$/g,'\\$');
   return `set cut_paste_input [stack 0]
 push $cut_paste_input
@@ -1841,11 +2106,10 @@ Group {
  }
 end_group
 `; }
-function vexSnippet(){ const L=[`// Brume fog set -> density. Volume Wrangle on a fog-sized volume (metres).`,`// Input 2: terrain heightfield (height layer). Elements below are baked from the prototype.`,`float g = volumesample(1, "height", set(@P.x, 0, @P.z));`,`float h = @P.y - g;`,`float nz = anoise(@P / ${S.look.noise.toFixed(2)} - set(${windDir().map(v=>(v*S.wind.speed).toFixed(3)).join(', ')}) * @Time);`,`float d = 0;`];
+function vexSnippet(){ const L=[`// Brume fog set -> density. Volume Wrangle on a fog-sized volume (metres).`,`// Input 2: terrain heightfield (height layer). Elements below are baked from the prototype.`,`float g = volumesample(1, "height", set(@P.x, 0, @P.z));`,`float h = @P.y - g;`,`float nz = anoise(@P / ${S.look.noise.toFixed(2)} - set(${windDir().map(v=>(v*S.wind.speed).toFixed(3)).join(', ')}) * @Time);`,`// Billow / wisp detail, breakup and windswept per element are in fog_set.json (style); the real tool runs the same octave stack in VEX.`,`float d = 0;`];
   S.els.filter(e=>e.on).forEach(e=>{ const s=vis2s(e.vis).toFixed(5), c=e.c.map(v=>v.toFixed(2)).join(', ');
     L.push(`// ${e.name} (${e.type})`);
-    if(e.type==='pocket') L.push(`{ vector l = (@P - set(${c})) / set(${e.r.map(v=>v.toFixed(2)).join(', ')}); d += ${s} * (1 - smooth(1 - ${e.feather.toFixed(2)}, 1, length(l) + (nz - 0.5) * ${(e.breakup*0.7).toFixed(2)})); }`);
-    else { L.push(`{ vector2 l = set(@P.x - ${e.c[0].toFixed(2)}, @P.z - ${e.c[2].toFixed(2)}); float fp = 1 - smooth(1 - ${e.feather.toFixed(2)}, 1, length(set(l.x / ${e.r[0].toFixed(2)}, l.y / ${e.r[2].toFixed(2)})));`);
+    { L.push(`{ vector2 l = set(@P.x - ${e.c[0].toFixed(2)}, @P.z - ${e.c[2].toFixed(2)}); float fp = 1 - smooth(1 - ${e.feather.toFixed(2)}, 1, length(set(l.x / ${e.r[0].toFixed(2)}, l.y / ${e.r[2].toFixed(2)})));`);
       const v= e.type==='ground'? `1 - smooth(${(e.r[1]*0.12).toFixed(3)}, ${e.r[1].toFixed(3)}, h)` : e.type==='pool'? `smooth(${e.level.toFixed(2)}, ${(e.level-e.r[1]).toFixed(2)}, @P.y)` : e.type==='mist'? `exp(-max(h, 0) / ${e.r[1].toFixed(2)})` : e.type==='bank'? `smooth(${(e.c[1]+e.r[1]).toFixed(2)}, ${(e.c[1]+e.r[1]*0.6).toFixed(2)}, @P.y)` : e.type==='cloud'? `smooth(${e.level.toFixed(2)}, ${(e.level+e.r[1]*0.15).toFixed(2)}, @P.y) * smooth(${(e.level+e.r[1]).toFixed(2)}, ${(e.level+e.r[1]*0.7).toFixed(2)}, @P.y) * (0.3 + 0.7 * clamp((@P.y - ${e.level.toFixed(2)}) / ${e.r[1].toFixed(2)}, 0, 1))` : e.type==='rising'? `exp(-max(h, 0) / ${e.r[1].toFixed(2)}) * smooth(0.6, 0.9, anoise(@P * set(1, 0.4, 1) / ${(S.look.noise*e.struct).toFixed(2)} - set(0, ${e.rise.toFixed(2)}, 0) * @Time))` : `1 - smooth(${(e.r[1]*0.4).toFixed(2)}, ${e.r[1].toFixed(2)}, h)`;
       L.push(`  d += ${s} * fp * (${v}) * (h > 0); }`); } });
   L.push(`f@density = d;  // extinction per metre; render with albedo ~0.98 and a cloud-droplet phase (~${S.look.drop.toFixed(0)} µm)`); return L.join('\n'); }
@@ -1853,7 +2117,7 @@ function copyBtn(btn,text){ btn.onclick=async()=>{ try{ await navigator.clipboar
 function buildModal(){ document.querySelectorAll('#mtabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.t===mTab)); const m=$('#mBody'); m.innerHTML='';
   if(mTab==='concept'){ m.innerHTML=`<p>Brume reads the <b>utility pass we already render</b> for every shot. P gives each pixel its exact place in the world, so the fog is raymarched straight against the frame with per-pixel holdouts and no sphere edges. The same P pass is rebuilt into a rough set you can orbit, so placing fog in depth is as easy as placing a light.</p>
     <div class="flow"><div><h4>1 · Utility pass in</h4><span>P, N and alpha from the render, plus surface colour or beauty for reference. Camera from the EXR metadata or solved from P.</span></div>
-    <div><h4>2 · Place and direct</h4><span>Ground fog, pooled fog, mist, banks, pockets and veils. The ground, hollows and walls are read from the passes so fog settles where real fog would. Paint to add or clear.</span></div>
+    <div><h4>2 · Place and direct</h4><span>Ground fog, valley fog, low cloud, banks, rising mist and mist, each with its own look: billows or wisps, breakup, windswept streaks. Move, size, rotate, paint and sculpt them in the view. The ground, hollows and walls are read from the passes so fog settles where real fog would. Paint to add or clear.</span></div>
     <div><h4>3 · Out to comp or 3D</h4><span><b>Nuke:</b> the same raymarch as a GPU node fed by P, so the element and its holdouts update with the comp. <b>Houdini:</b> the fog set baked to VDB from the same density model.</span></div></div>
     <p><b>Why it is fast:</b> nothing is path traced from scratch. Light comes from a sun and sky with shadows cast by the reconstructed set, multiple scattering is approximated in closed form, and the march only runs where a fog element actually is. Moving things drops the fog resolution for a moment, then it refines.</p>
     <p><b>How the fog behaves:</b> the passes are read for ground height, hollows, cold-air drainage lines, walls, tree canopy, slope direction and which ground sits in the sun's shadow. Ground fog is densest at the ground under a flat top and collects in hollows and drainage lines. Valley fog fills basins under the inversion and gets denser towards its top, with waves when wind runs over it. Low cloud sits at a condensation-level base that drops on windward slopes and clears in the lee, with scud underneath. Rising mist comes off wet canopy in wisps and puffs. Burn-off thins fog first where it is thin, sunlit or warm and lets it linger in shade. Light scatters with a measured cloud-droplet phase function, so backlit fog glows the way real fog does.</p>`; }
@@ -1878,24 +2142,26 @@ function initGL(){
   mkProg('noise',VS_FS,FS_NOISE); mkProg('sky',VS_FS,FS_SKY); mkProg('march',VS_FS,FS_MARCH); mkProg('disp',VS_FS,FS_DISP);
   mkProg('lRecon',VS_RECON,FS_RECON); mkProg('lProxy',VS_PROXY,FS_PROXY); mkProg('dRecon',VS_RECON,FS_EMPTY); mkProg('dProxy',VS_PROXY,FS_EMPTY);
   mkProg('sTerrain',VS_ST,FS_ST); mkProg('sBld',VS_SB,FS_SB); mkProg('sTree',VS_STR,FS_STR); mkProg('sWater',VS_SW,FS_SW); mkProg('sSky',VS_FS,FS_SSKY); mkProg('sD',VS_SD,FS_EMPTY); mkProg('sTreeD',VS_STR.replace('out vec3 vP; out vec3 vN; out vec3 vC; out float vPart; out float vH;','out vec3 vP; out vec3 vN; out vec3 vC; out float vPart; out float vH;'),FS_EMPTY); mkProg('sDown',VS_FS,FS_SDOWN);
-  T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT);
+  T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT); T.detail=tex3D(64,64,64,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT);
   T.sky=tex2D(256,128,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR,gl.CLAMP_TO_EDGE); gl.bindTexture(gl.TEXTURE_2D,T.sky); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
   F.sky=mkFBO([T.sky]); drawBufs(1); F.layer=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   return true;
 }
 async function boot(){
-  buildRail(); buildHint(); buildAovs(); buildPlate(); syncViewSeg();
+  buildRail(); buildHint(); buildAovs(); buildShots(); syncViewSeg();
   if(!initGL()) return;
   const t0=performance.now();
   while(true){ const done=Object.values(PR).filter(progDone).length, n=Object.keys(PR).length; showLoader(`Compiling shaders ${done}/${n} · ${((performance.now()-t0)/1000).toFixed(1)} s`,0.02+0.15*done/n); if(done===n) break; await new Promise(r=>setTimeout(r,60)); }
   try{ for(const p of Object.values(PR)) progCheck(p); }catch(e){ fail(e.message); return; }
-  const pr=use('noise'); gl.bindFramebuffer(gl.FRAMEBUFFER,F.layer); gl.viewport(0,0,128,128); drawBufs(1); u1f(pr,'uN',128);
-  for(let z=0;z<128;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.noise,0,z); u1f(pr,'uZ',(z+0.5)/128); fullscreen(); if(z%16===15){ showLoader('Building the noise volume',0.17+0.1*z/128); await yieldUI(); } }
+  const pr=use('noise'); gl.bindFramebuffer(gl.FRAMEBUFFER,F.layer); drawBufs(1);
+  for(const [tex,N,mode,p0,p1] of [[T.noise,128,0,0.17,0.08],[T.detail,64,1,0.25,0.04]]){ gl.viewport(0,0,N,N); u1f(pr,'uN',N); u1i(pr,'uMode',mode);
+    for(let z=0;z<N;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,tex,0,z); u1f(pr,'uZ',(z+0.5)/N); fullscreen(); if(z%16===15){ showLoader('Building the noise volumes',p0+p1*z/N); await yieldUI(); } } }
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  for(const tex of [T.noise,T.detail]){ gl.bindTexture(gl.TEXTURE_3D,tex); gl.generateMipmap(gl.TEXTURE_3D); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); }
   updateSunCPU(); renderSkyTex();
   resize(); new ResizeObserver(()=>{ resize(); }).observe($('#view'));
   buildAuto();
-  await loadSample();
+  await loadSample(S.shot);
   ready=true; requestAnimationFrame(frame);
 }
 glc.addEventListener('webglcontextlost',ev=>{ ev.preventDefault(); ready=false; showLoader('The GPU reset. Reload the page to continue.',0); });
