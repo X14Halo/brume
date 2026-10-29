@@ -387,7 +387,7 @@ const FS_MARCH=HEAD+`
 #define NE ${MAX_E}
 uniform sampler2D uDP; uniform int uDFlip; uniform vec2 uDRes;
 uniform sampler2D uGT; uniform vec2 uWC; uniform float uWS,uWK,uWSK;
-uniform sampler2D uAna; uniform sampler2D uAna2; uniform sampler2D uAna3; uniform sampler2D uAna4; uniform vec2 uBMin,uBSize; uniform float uCanH, uHobS;
+uniform sampler2D uAna; uniform sampler2D uAna2; uniform sampler2D uAna3; uniform sampler2D uAna4; uniform vec2 uBMin,uBSize; uniform float uCanH, uHobS, uFloor;
 uniform sampler2DArray uMasks;
 uniform sampler3D uNT; uniform sampler3D uND;
 uniform int uNE; uniform vec4 uE0[NE]; uniform vec4 uE1[NE]; uniform vec4 uE2[NE]; uniform vec4 uE3[NE]; uniform vec4 uE4[NE]; uniform vec4 uE5[NE]; uniform vec4 uE6[NE]; uniform vec4 uE7[NE]; uniform vec4 uE8[NE]; uniform vec4 uEB[NE];
@@ -407,10 +407,10 @@ vec2 rot2(vec2 v,float a){ float c=cos(a), s=sin(a); return vec2(c*v.x-s*v.y, s*
    Octaves fade only once they drop below about a pixel; sub-pixel jitter plus accumulation anti-aliases the rest.
    lvl: 0 body only, 1 + large shapes, 2 + all detail, 3 large shapes with the most fog detail could add (skip test) */
 float density(vec3 p,int lvl){
-  float d=0.; bool got=false; float g=0.; vec4 a1=vec4(0.), a2=vec4(0.), a3=vec4(0.5,0.5,0.,1.);
+  float d=0.; bool got=false; float g=0.; vec4 a1=vec4(0.), a2=vec4(0.), a3=vec4(0.5,0.5,0.,1.), a4=vec4(1.,0.,0.,0.);
   for(int i=0;i<NE;i++){ if(i>=uNE) break;
     vec4 eb=uEB[i]; vec3 rr=p-eb.xyz; if(dot(rr,rr)>eb.w*eb.w) continue;
-    if(!got){ got=true; g=textureLod(uGT,w2t(p.xz),0.).r; vec2 bu=(p.xz-uBMin)/uBSize; a1=textureLod(uAna,bu,0.); a2=textureLod(uAna2,bu,0.); a3=textureLod(uAna3,bu,0.); }
+    if(!got){ got=true; g=textureLod(uGT,w2t(p.xz),0.).r; vec2 bu=(p.xz-uBMin)/uBSize; a1=textureLod(uAna,bu,0.); a2=textureLod(uAna2,bu,0.); a3=textureLod(uAna3,bu,0.); a4=textureLod(uAna4,bu,0.); }
     vec4 e0=uE0[i], e1=uE1[i], e2=uE2[i], e3=uE3[i], e4=uE4[i], e5=uE5[i], e6=uE6[i], e7=uE7[i], e8=uE8[i];
     int ty=int(e0.w+0.5); float h=p.y-g;
     vec2 off= ty==3 ? uWind.xz*uTime*e4.z : vec2(0.);
@@ -438,13 +438,16 @@ float density(vec3 p,int lvl){
     vec2 gr=(a3.xy*2.-1.)*0.5; float up=dot(gr,WD);
     float grd=smoothstep(-0.25,0.25,h); float burn=e3.w; float c=0.;
     if(ty==0){ /* ground (radiation) fog: densest at the ground, flat defined top, collects low; burns off thin/sunlit/warm first */
-      float site=0.35+1.2*hol+0.7*pool+0.9*drain+0.5*wet-0.45*warm-0.7*can-2.*max(slope-0.08,0.);
-      float tm=mix(1.,clamp(site,0.2,1.7),e2.w);
+      float site=0.35+1.2*hol+0.7*pool+0.9*drain+0.5*wet-0.45*warm-0.7*can-0.6*max(slope-0.15,0.);
+      float tm=mix(1.,clamp(site,0.25,1.7),e2.w);
       float bs=burn*(0.5+0.8*(1.-shade)+0.6*warm+1.2*slope-0.6*pool-0.4*drain);
-      float D=e1.y*hm*tm*clamp(1.-bs,0.,1.); if(D<0.02) continue;
+      float D0=e1.y*hm*tm*clamp(1.-bs,0.,1.);
+      /* the cold layer's top stays nearly level: a small rise carries a thinner skin (fog does climb it a little),
+         a dip holds it deeper */
+      float rise=g-(uFloor+a4.b); float D=clamp(D0-rise*0.6*e2.w,0.,D0*2.); if(D<0.02) continue;
       float base=burn*D*0.45*(1.-0.6*shade);
-      float hn=h+(sh-0.5)*D*0.8;
-      c=pow(clamp(1.-(hn-base)/D,0.,1.),0.6)*1.25*smoothstep(base-D*0.05,base+D*(base>0.01?0.2:0.06),h)*grd*min(1.,fp*2.5);
+      float hn=h+(sh-0.5)*D*0.9+(big-0.5)*D*0.7;
+      c=pow(clamp(1.-(hn-base)/D,0.,1.),0.75)*1.3*smoothstep(base-D*0.05,base+D*(base>0.01?0.2:0.06),h)*grd*min(1.,fp*2.5);
     } else if(ty==1){ /* valley fog: fills the basin under the inversion; denser towards the top; waves when wind runs over it */
       float depth=max(e3.x-g,0.), soft=min(e1.y,max(depth*0.55,0.25));
       float wl=max(soft*10.,6.); float wave=e4.z*soft*1.2*sin(dot(p.xz,WD)*6.2831853/wl+sh*5.+big*3.)*clamp(WSP/2.,0.3,1.);
@@ -539,21 +542,25 @@ void main(){
     for(int i=0;i<400;i++){ if(i>uSteps+2) break;
       float sa=(k0+float(i))*ds; if(sa+ds<s0) continue; if(sa>s1) break;
       float tm=uMaxD*(sa+0.5*ds)*(sa+0.5*ds); vec3 pm=uCam+rd*tm; gFoot=max(tm*uPixAng,1e-3);
-      bool hit=density(pm,3)>1e-6||density(uCam+rd*(uMaxD*(sa+ds)*(sa+ds)),3)>1e-6;
+      float dmA=density(pm,3), dmB=density(uCam+rd*(uMaxD*(sa+ds)*(sa+ds)),3); bool hit=dmA>1e-6||dmB>1e-6;
       if(!hit&&!prevHit){ prevHit=false; continue; } prevHit=hit;
+      int nsub=max(dmA,dmB)*uMaxD*2.*(sa+0.5*ds)*ds>0.04?uSub:1;
       // far shadow and sky taps once per interval
       float tauFar=uSunOn==1?density(pm+uSunDir*(24.*sl),0)*18.*sl+density(pm+uSunDir*(52.*sl),0)*38.*sl+density(pm+uSunDir*(110.*sl),0)*76.*sl:0.;
       float tauUFar=density(pm+vec3(0.,7.*sl,0.),0)*9.*sl+density(pm+vec3(0.,22.*sl,0.),0)*22.*sl;
-      for(int m=0;m<16;m++){ if(m>=uSub) break;
-        float s=sa+(float(m)+fract(j+float(m)*0.618034))*ds/float(uSub); if(s<s0) continue; if(s>s1) break;
-        float t=uMaxD*s*s, dt=uMaxD*2.*s*ds/float(uSub);
+      for(int m=0;m<16;m++){ if(m>=nsub) break;
+        float s=sa+(float(m)+fract(j+float(m)*0.618034))*ds/float(nsub); if(s<s0) continue; if(s>s1) break;
+        float t=uMaxD*s*s, dt=uMaxD*2.*s*ds/float(nsub);
         vec3 p=uCam+rd*t; gFoot=max(t*uPixAng,1e-3);
         float d=density(p,2);
         if(d<1e-7) continue;
         float tauS=tauFar;
+        // thin samples (mist, fog edges) get a cheap light path; only optically meaningful ones pay for detailed self-shadowing
+        bool thin=d*dt<0.012;
         if(uSunOn==1){ int l3=uHQ==1?2:1;
-          tauS+=density(p+uSunDir*(0.5*sl),2)*1.*sl+density(p+uSunDir*(1.6*sl),2)*1.8*sl+density(p+uSunDir*(4.*sl),l3)*3.6*sl+density(p+uSunDir*(10.*sl),1)*8.*sl; }
-        float tauU=tauUFar+density(p+vec3(0.,1.5*sl,0.),1)*3.*sl;
+          if(thin) tauS+=density(p+uSunDir*(1.6*sl),0)*2.8*sl+density(p+uSunDir*(8.*sl),0)*12.*sl;
+          else tauS+=density(p+uSunDir*(0.5*sl),2)*1.*sl+density(p+uSunDir*(1.6*sl),2)*1.8*sl+density(p+uSunDir*(4.*sl),l3)*3.6*sl+density(p+uSunDir*(10.*sl),1)*8.*sl; }
+        float tauU=tauUFar+density(p+vec3(0.,1.5*sl,0.),thin?0:1)*3.*sl;
         float vis=uSunOn==1?sunVis(p,fract(j*7.31+float(i*16+m)*0.618034)):0.;
         // sun: single scattering with the droplet phase, then multiple-scattering octaves (Wrenninge) that spread light
         // a little way into geometric shadow but not through it
@@ -1255,7 +1262,7 @@ async function analyse(pl,prog){
   for(let i=0;i<n;i++){ const s=i*4; if(P[s+3]<0.5) continue; if(N){ const ny=N[s+1], nl=Math.hypot(N[s],N[s+1],N[s+2]); if(nl>1e-4&&ny/nl<0.5) continue; }
     const ix=Math.round(wIdx(P[s]-SC.wC[0])), iz=Math.round(wIdx(P[s+2]-SC.wC[1])); if(ix<0||iz<0||ix>=NG||iz>=NG) continue; const k=iz*NG+ix; if(P[s+1]<hmin[k]) hmin[k]=P[s+1]; }
   // 2. morphological opening removes roofs, canopies and cars, keeps terrain
-  const R=clamp(SC.d50*0.035,1.5,30); const cs=new Float32Array(NG); for(let i=0;i<NG;i++) cs[i]=Math.max(1e-4,wFrom(Math.min(i+1,NG-1))-wFrom(Math.max(i-1,0)))/2; const rc=i=>clamp(Math.round(R/cs[i]),1,10);
+  const R=clamp(Math.max(SC.d50*0.035,8),1.5,30); /* wide enough to lift whole houses off the ground estimate */ const cs=new Float32Array(NG); for(let i=0;i<NG;i++) cs[i]=Math.max(1e-4,wFrom(Math.min(i+1,NG-1))-wFrom(Math.max(i-1,0)))/2; const rc=i=>clamp(Math.round(R/cs[i]),1,10);
   const filt=(src,isMin)=>{ const t=new Float32Array(NG*NG), o=new Float32Array(NG*NG); const bad=isMin?Infinity:-Infinity; const sel=isMin?Math.min:Math.max;
     for(let j=0;j<NG;j++) for(let i=0;i<NG;i++){ const r=rc(i); let m=bad; for(let k=Math.max(0,i-r);k<=Math.min(NG-1,i+r);k++){ const v=src[j*NG+k]; if(isFinite(v)) m=sel(m,v); } t[j*NG+i]=m; }
     for(let j=0;j<NG;j++) for(let i=0;i<NG;i++){ const r=rc(j); let m=bad; for(let k=Math.max(0,j-r);k<=Math.min(NG-1,j+r);k++){ const v=t[k*NG+i]; if(isFinite(v)) m=sel(m,v); } o[j*NG+i]=m; }
@@ -1318,15 +1325,15 @@ async function analyse(pl,prog){
 }
 /* how much sky each patch of ground sees, and how tall the things around it are: fog in a street, a narrow valley or under
    trees gets less skylight near the ground, more as it rises above the obstructions */
-function skyView(top){ const N=NA, H=SC.H, T_=new Float32Array(N*N), sv=new Uint8Array(N*N*4);
+function skyView(top){ const N=NA, H=SC.H, T_=new Float32Array(N*N), sv=new Float32Array(N*N*4); const low=boxBlur(H,N,Math.max(2,Math.round(SC.scale*0.05/SC.cellA)),2);
   for(let k=0;k<N*N;k++) T_[k]=isFinite(top[k])?Math.max(top[k],H[k]):H[k];
   const R=clamp(Math.round(SC.scale*0.6/SC.cellA),4,40), dirs=12, HO=SC.scale*0.15;
   for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const k=j*N+i, h0=H[k]+Math.max(0.5,SC.scale*0.004); let open=0, hob=0;
     for(let d=0;d<dirs;d++){ const a=d/dirs*Math.PI*2, dx=Math.cos(a), dz=Math.sin(a); let mx=0, oh=0;
       for(let r=1;r<=R;r+=r<6?1:2){ const ii=Math.round(i+dx*r), jj=Math.round(j+dz*r); if(ii<0||jj<0||ii>=N||jj>=N) break; const kk=jj*N+ii; const dh=T_[kk]-h0; if(dh>0){ mx=Math.max(mx,dh/(r*SC.cellA)); oh=Math.max(oh,dh); } }
       open+=1-Math.sin(Math.atan(mx)); hob+=oh; }
-    sv[k*4]=clamp(open/dirs,0,1)*255; sv[k*4+1]=clamp(hob/dirs/HO,0,1)*255; sv[k*4+3]=255; }
-  if(T.ana4) gl.deleteTexture(T.ana4); T.ana4=tex2D(N,N,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.CLAMP_TO_EDGE,sv); }
+    sv[k*4]=clamp(open/dirs,0,1); sv[k*4+1]=clamp(hob/dirs/HO,0,1); sv[k*4+2]=low[k]-SC.floor; sv[k*4+3]=1; }
+  if(T.ana4) gl.deleteTexture(T.ana4); T.ana4=tex2D(N,N,gl.RGBA16F,gl.RGBA,gl.FLOAT,gl.LINEAR,gl.CLAMP_TO_EDGE,sv); }
 /* ground in the sun's shadow (terrain + canopy), where fog lingers longest */
 function updateShade(){ if(!SC.H) return; const N=NA, L=sunDir(), sh=new Float32Array(N*N);
   if(L[1]<=0.01) sh.fill(1); else { const hd=Math.hypot(L[0],L[2])||1e-6, dx=L[0]/hd, dz=L[2]/hd, rise=L[1]/hd, step=SC.cellA*0.9, top=SC.top+SC.range*0.5+SC.canHmax;
@@ -1436,9 +1443,20 @@ function uploadMask(e){ const m=MASK.data.get(e.mask); if(!m) return; const u=ne
 const rot2=(x,z,a)=>{ const c=Math.cos(a), s=Math.sin(a); return [c*x-s*z, s*x+c*z]; };
 function maskToWorld(e,x,z){ const q=rot2((x-e.mc[0])*e.ms,(z-e.mc[1])*e.ms,-e.yaw); return [e.mc[0]+e.mo[0]+q[0], e.mc[1]+e.mo[1]+q[1]]; }
 function worldToMask(e,x,z){ const q=rot2(x-e.mo[0]-e.mc[0],z-e.mo[1]-e.mc[1],e.yaw); return [e.mc[0]+q[0]/e.ms, e.mc[1]+q[1]/e.ms]; }
-function pivotW(e){ return [e.mc[0]+e.mo[0], e.mc[1]+e.mo[1]]; }
-function centerW(e){ if(e.shape||!e.mext) return [e.c[0],e.c[2]]; return maskToWorld(e,e.mext.cx,e.mext.cz); }
-function footR(e){ if(e.shape) return Math.max(e.r[0],e.r[2]); if(!e.mext) return SC.scale*0.05; const m=e.mext; return Math.hypot(m.x1-m.x0,m.z1-m.z0)/2*e.ms; }
+function pivotW(e){ if(e.gen&&e.win) return [e.win.cx,e.win.cz]; return [e.mc[0]+e.mo[0], e.mc[1]+e.mo[1]]; }
+/* terrain-derived elements keep the full field the fog type wants (hollows, canopy, high ground...) and a window you move,
+   size and turn; changing the window re-evaluates the field there, so a bigger element is a bigger natural volume, not a stretched one */
+function rebakeGen(e){ const m=MASK.data.get(e.mask); if(!m||!m.field) return; const w=e.win, N=NM, c=Math.cos(w.yaw), sn=Math.sin(w.yaw);
+  for(let j=0;j<N;j++){ const z=SC.bmin[1]+(j+0.5)/N*SC.bsize[1]; for(let i=0;i<N;i++){ const x=SC.bmin[0]+(i+0.5)/N*SC.bsize[0], k=j*N+i;
+    const dx=x-w.cx, dz=z-w.cz, lx=(c*dx-sn*dz)/w.rx, lz=(sn*dx+c*dz)/w.rz; const q=lx*lx*lx*lx+lz*lz*lz*lz;
+    const win=q>=1?0:1-sstep(0.45,1,q); m.add[k]=clamp(Math.max(m.field[k]*win*(1-m.erase[k]),m.padd[k]),0,1); } }
+  uploadMask(e); e.c=[w.cx,groundAt(w.cx,w.cz),w.cz]; }
+function makeGen(e,m){ m.field=m.add.slice(); m.padd=new Float32Array(NM*NM); m.erase.fill(0); e.gen=true; e.shape=false; e.mo=[0,0]; e.ms=1; e.yaw=0;
+  const x=e.mext; if(!x){ e.win={cx:e.c[0],cz:e.c[2],rx:SC.scale*0.1,rz:SC.scale*0.1,yaw:0}; }
+  else e.win={cx:(x.x0+x.x1)/2,cz:(x.z0+x.z1)/2,rx:(x.x1-x.x0)/2*1.12+SC.cellA*2,rz:(x.z1-x.z0)/2*1.12+SC.cellA*2,yaw:0};
+  e.mc=[e.win.cx,e.win.cz]; rebakeGen(e); }
+function centerW(e){ if(e.gen&&e.win) return [e.win.cx,e.win.cz]; if(e.shape||!e.mext) return [e.c[0],e.c[2]]; return maskToWorld(e,e.mext.cx,e.mext.cz); }
+function footR(e){ if(e.gen&&e.win) return Math.max(e.win.rx,e.win.rz); if(e.shape) return Math.max(e.r[0],e.r[2]); if(!e.mext) return SC.scale*0.05; const m=e.mext; return Math.hypot(m.x1-m.x0,m.z1-m.z0)/2*e.ms; }
 function elBounds(e){
   let cx=e.c[0], cz=e.c[2], R=0;
   if(e.shape) R=Math.max(e.r[0],e.r[2])*1.25;
@@ -1476,7 +1494,7 @@ function markEl(){ dirty.el=true; resetAccum(); }
 /* auto-placement from the analysis */
 function maskFromField(e,fn,blur=1){ const m=maskFor(e); if(!m){ toast(MAX_E+' elements is the limit'); return false; } e.shape=false; e.mo=[0,0]; e.ms=1; e.yaw=0;
   for(let j=0;j<NM;j++) for(let i=0;i<NM;i++){ const k=j*NM+i; m.add[k]=fn(k,i,j); m.erase[k]=0; m.ht[k]=0.5; }
-  m.add.set(boxBlur(m.add,NM,blur,2)); uploadMask(e); if(!e.mext){ releaseMask(e); return false; } e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; e.mc=[e.mext.cx,e.mext.cz]; return true; }
+  m.add.set(boxBlur(m.add,NM,blur,2)); uploadMask(e); if(!e.mext){ releaseMask(e); return false; } e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; makeGen(e,m); return true; }
 function floodPool(e,level,seedX,seedZ){
   const m=maskFor(e); if(!m) return; const H=SC.H; const N=NA; const seen=new Uint8Array(N*N);
   e.mo=[0,0]; e.ms=1; e.yaw=0; e.mc=[seedX,seedZ]; const sm=[seedX,seedZ]; let si=clamp(Math.floor((sm[0]-SC.bmin[0])/SC.bsize[0]*N),0,N-1), sj=clamp(Math.floor((sm[1]-SC.bmin[1])/SC.bsize[1]*N),0,N-1);
@@ -1496,7 +1514,7 @@ function bakeFootprint(e){ // shape + paint + transform -> one world-aligned mas
     if(e.shape){ const l=worldToLocal(e,x,z); v=1-sstep(1-e.feather,1,Math.hypot(l[0]/e.r[0],l[1]/e.r[2])); }
     if(m0){ const w=worldToMask(e,x,z); const ii=Math.floor((w[0]-SC.bmin[0])/SC.bsize[0]*N), jj=Math.floor((w[1]-SC.bmin[1])/SC.bsize[1]*N); if(ii>=0&&jj>=0&&ii<N&&jj<N){ const q=jj*N+ii; v=clamp(v*(1-m0.erase[q])+m0.add[q],0,1); h=m0.ht[q]; } }
     add[k]=v; ht[k]=h; }
-  const m=maskFor(e); if(!m) return null; m.add.set(add); m.erase.fill(0); m.ht.set(ht); e.shape=false; e.mo=[0,0]; e.ms=1; e.yaw=0; return m; }
+  const m=maskFor(e); if(!m) return null; m.add.set(add); m.erase.fill(0); m.ht.set(ht); e.shape=false; e.gen=false; e.win=null; delete m.field; delete m.padd; e.mo=[0,0]; e.ms=1; e.yaw=0; return m; }
 function drainMask(m,iters,frac){ const N=NA, H=SC.H; let v=m.add.slice();
   const nb=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
   for(let it=0;it<iters;it++){ const o=v.slice();
@@ -1515,7 +1533,7 @@ function settleEl(e){
     if(!hs.length) return 'found no ground under it'; hs.sort((a,b)=>a-b); const lv=hs[Math.floor(hs.length*0.55)]; if(lv>=e.level) return 'already reaches the hills'; e.level=lv; return 'lowered its base until the hills reach into it'; }
   if(e.type==='rising') return 'already rises from its source';
   if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return null; }
-  const m=bakeFootprint(e); if(!m) return null; drainMask(m,e.type==='mist'?5:9,e.type==='mist'?0.2:0.3); uploadMask(e); if(e.mext){ e.mc=[e.mext.cx,e.mext.cz]; e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; }
+  const m=bakeFootprint(e); if(!m) return null; drainMask(m,e.type==='mist'?5:9,e.type==='mist'?0.2:0.3); uploadMask(e); if(e.mext){ e.c=[e.mext.cx,groundAt(e.mext.cx,e.mext.cz),e.mext.cz]; makeGen(e,m); }
   return 'drained downhill and pooled in the hollows'; }
 function settleSel(){ const e=S.els[S.sel]; if(!e){ toast('Select an element to settle, or use Settle all'); return; } const r=settleEl(e); if(r) toast(e.name+' '+r); markEl(); pushUndo(); buildList(); buildCtx(); }
 function settleAll(){ let n=0; for(const e of S.els) if(e.on&&settleEl(e)) n++; markEl(); pushUndo(); buildList(); buildCtx(); toast('Settled '+n+' element'+(n===1?'':'s')); }
@@ -1609,7 +1627,7 @@ function marchPass(V,vw,vh,steps,blend,hq,sub){
   u1i(pr,'uNE',ELU.n); for(const k of ELK) gl.uniform4fv(U(pr,'u'+k+'[0]'),ELU[k]);
   u3v(pr,'uWind',mul(windDir(),S.wind.speed)); u1f(pr,'uTime',S.time); u1f(pr,'uEvolve',S.look.evolve);
   u3v(pr,'uCam',c.pos); u3v(pr,'uR',c.r); u3v(pr,'uU',c.u); u3v(pr,'uF',c.f); u4f(pr,'uIntr',c.fx,c.fy,c.cx,c.cy); u2f(pr,'uRes',vw,vh);
-  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40); u1f(pr,'uPixAng',1/c.fx); u1i(pr,'uHQ',hq?1:0); u1i(pr,'uSub',sub); bindTex(10,gl.TEXTURE_2D,T.ana4); u1i(pr,'uAna4',10); u1f(pr,'uHobS',SC.scale*0.15);
+  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40); u1f(pr,'uPixAng',1/c.fx); u1i(pr,'uHQ',hq?1:0); u1i(pr,'uSub',sub); bindTex(10,gl.TEXTURE_2D,T.ana4); u1i(pr,'uAna4',10); u1f(pr,'uHobS',SC.scale*0.15); u1f(pr,'uFloor',SC.floor);
   u3v(pr,'uSunDir',sunDir()); u3v(pr,'uSunE',SUN_E); u3v(pr,'uSkyAvg',SKY_AVG); u3v(pr,'uAlb',S.look.tint.map(v=>v*0.985)); gl.uniform4fv(U(pr,'uPh'),mieParams(S.look.drop)); u1f(pr,'uMS',S.look.ms);
   u1f(pr,'uGain',S.fogGain*Math.pow(2,S.fogEV)); uM4(pr,'uFLM',F.flm.VP); { const tw=F.flm.extent/F.fsSize; u1f(pr,'uFBiasV',window.__dbgNoShadow?1e3:(tw*2.5+SC.scale*0.002)/F.flm.range); u1f(pr,'uFTexel',1/F.fsSize); u1f(pr,'uFPen',F.flm.range*0.02/F.flm.extent); } u1i(pr,'uSunOn',S.sun.el>-1?1:0);
   u1f(pr,'uBlend',blend); u1f(pr,'uLS',clamp(S.look.noise*0.07,0.03,6));
@@ -1682,69 +1700,77 @@ function rayPlaneY(ro,rd,y){ if(Math.abs(rd[1])<1e-6) return null; const t=(y-ro
 function mouseRay(mx,my){ const cc=cssCam(lastV); return {ro:cc.pos,rd:camRay(cc,mx,my)}; }
 
 /* =====================================================================
-   OVERLAY — footprints, the transform gizmo, brush rings
+   OVERLAY — footprints, a Maya-style transform gizmo, brush rings
    ===================================================================== */
 let hoverHit=null, hoverEl=null, hoverK=null;
-const GOLD='#efb24d';
+const GOLD='#efb24d', AX={x:'#e5604f',y:'#7fcf5f',z:'#4f8fe5'};
 function projC(cc,p){ const q=camProj(cc,p); return q&&q[2]>SC.scale*0.002?q:null; }
 function poly(cc,pts,closed){ octx.beginPath(); let pen=false; const n=pts.length; for(let i=0;i<n+(closed?1:0);i++){ const q=projC(cc,pts[i%n]); if(!q){ pen=false; continue; } if(!pen){ octx.moveTo(q[0],q[1]); pen=true; } else octx.lineTo(q[0],q[1]); } octx.stroke(); }
 const lift=()=>Math.max(0.02,SC.scale*0.0008);
-function baseY(e,x,z){ return e.type==='cloud'||e.type==='pool'?e.level:groundAt(x,z)+lift(); }
+function baseY(e,x,z){ return e.type==='cloud'||e.type==='pool'?Math.max(e.level,groundAt(x,z)+lift()):groundAt(x,z)+lift(); }
 function topY(e,x,z){ const g=groundAt(x,z);
   if(e.type==='pool') return e.level; if(e.type==='cloud') return e.level+e.r[1]; if(e.type==='bank') return Math.max(e.c[1],g)+e.r[1];
   if(e.type==='rising') return g+(e.aux?SC.canHmax*clamp(anaAt(SC.canopy,x,z),0,1):0)+e.r[1]*1.2; if(e.type==='mist') return g+e.r[1]*1.5; return g+e.r[1]; }
-/* local frame of the element: shape centre, or the mask pivot */
-function localToWorld(e,lx,lz){ const q=rot2(lx,lz,-e.yaw); if(e.shape) return [e.c[0]+q[0],e.c[2]+q[1]]; const p=pivotW(e); return [p[0]+q[0],p[1]+q[1]]; }
-function worldToLocal(e,x,z){ const o=e.shape?[e.c[0],e.c[2]]:pivotW(e); return rot2(x-o[0],z-o[1],e.yaw); }
-function extLocal(e){ // half extents of the footprint in the local frame
-  if(e.shape) return [e.r[0],e.r[2],0,0]; const m=e.mext; if(!m) return [SC.scale*0.05,SC.scale*0.05,0,0];
-  return [(m.x1-m.x0)/2*e.ms,(m.z1-m.z0)/2*e.ms,((m.x0+m.x1)/2-e.mc[0])*e.ms,((m.z0+m.z1)/2-e.mc[1])*e.ms]; }
-function outline(e,n=56){ const pts=[]; const [ax,az,ox,oz]=extLocal(e);
-  if(e.shape){ for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; const w=localToWorld(e,Math.cos(a)*ax,Math.sin(a)*az); pts.push([w[0],baseY(e,w[0],w[1]),w[1]]); } }
-  else { const c=[[-1,-1],[1,-1],[1,1],[-1,1]]; for(let s=0;s<4;s++){ const a=c[s], b=c[(s+1)%4]; for(let k=0;k<12;k++){ const t=k/12; const w=localToWorld(e,ox+lerp(a[0],b[0],t)*ax,oz+lerp(a[1],b[1],t)*az); pts.push([w[0],baseY(e,w[0],w[1]),w[1]]); } } }
-  return pts; }
-function handles(e){ const [cx,cz]=centerW(e); const H={};
-  const my= e.type==='cloud'?e.level: groundAt(cx,cz)+lift();
-  H.move=[cx,my,cz]; H.height=[cx,Math.max(topY(e,cx,cz),my+SC.scale*0.004),cz];
-  if(e.type!=='pool'){ const [ax,az,ox,oz]=extLocal(e);
-    if(e.shape){ let w=localToWorld(e,ax,0); H.sx=[w[0],baseY(e,w[0],w[1]),w[1]]; w=localToWorld(e,0,az); H.sz=[w[0],baseY(e,w[0],w[1]),w[1]]; }
-    else { const w=localToWorld(e,ox+ax,oz+az); H.scale=[w[0],baseY(e,w[0],w[1]),w[1]]; }
-    const w=localToWorld(e,ox-ax*1.08,oz); H.rot=[w[0],baseY(e,w[0],w[1]),w[1]]; }
-  return H; }
-function handlePos(e){ return handles(e).move; }
-function dot2(x,y,r,fill){ octx.beginPath(); octx.arc(x,y,r,0,Math.PI*2); octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.stroke(); octx.fillStyle=fill; octx.fill(); }
+/* every element has a local frame: origin, heading, half extents (shape radii, the window of a terrain-derived element, or painted extents) */
+function frameOf(e){
+  if(e.gen&&e.win) return {o:[e.win.cx,e.win.cz],yaw:e.win.yaw,ax:e.win.rx,az:e.win.rz,ox:0,oz:0,round:false};
+  if(e.shape) return {o:[e.c[0],e.c[2]],yaw:e.yaw,ax:e.r[0],az:e.r[2],ox:0,oz:0,round:true};
+  const p=pivotW(e), m=e.mext; if(!m) return {o:p,yaw:e.yaw,ax:SC.scale*0.05,az:SC.scale*0.05,ox:0,oz:0,round:false};
+  return {o:p,yaw:e.yaw,ax:(m.x1-m.x0)/2*e.ms,az:(m.z1-m.z0)/2*e.ms,ox:((m.x0+m.x1)/2-e.mc[0])*e.ms,oz:((m.z0+m.z1)/2-e.mc[1])*e.ms,round:false}; }
+function localToWorld(e,lx,lz,F=frameOf(e)){ const q=rot2(lx,lz,-F.yaw); return [F.o[0]+q[0],F.o[1]+q[1]]; }
+function worldToLocal(e,x,z,F=frameOf(e)){ return rot2(x-F.o[0],z-F.o[1],F.yaw); }
+function outline(e,n=64){ const F=frameOf(e), pts=[];
+  for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; let cx=Math.cos(a), sz=Math.sin(a);
+    if(!F.round){ const r=Math.pow(Math.pow(Math.abs(cx),4)+Math.pow(Math.abs(sz),4),0.25); cx/=r; sz/=r; }
+    const w=localToWorld(e,F.ox+cx*F.ax,F.oz+sz*F.az,F); pts.push([w[0],baseY(e,w[0],w[1]),w[1]]); } return pts; }
+/* gizmo geometry, sized in screen pixels so it is always easy to grab */
+function gizmo(e,cc){ const F=frameOf(e); const c=localToWorld(e,F.ox,F.oz,F); const B=[c[0],groundAt(c[0],c[1])+lift(),c[1]];
+  if(e.type==='cloud') B[1]=Math.max(B[1],Math.min(e.level,B[1]+SC.scale*2));
+  const q=projC(cc,B); if(!q) return null; const pw=q[2]/cc.fx; const L=72*pw;
+  const dx=rot2(1,0,-F.yaw), dz=rot2(0,1,-F.yaw);
+  const G={F,B,pw,L,sB:q};
+  G.X=[dx[0],0,dx[1]]; G.Z=[dz[0],0,dz[1]];
+  G.tip={mx:add(B,mul(G.X,L)),mz:add(B,mul(G.Z,L)),my:add(B,[0,L,0])};
+  G.ringR=96*pw;
+  G.scale={}; if(e.type!=='pool'){ const pts=F.round?[['sx',1,0],['sx-',-1,0],['sz',0,1],['sz-',0,-1],['su',0.7071,0.7071],['su',-0.7071,0.7071],['su',0.7071,-0.7071],['su',-0.7071,-0.7071]]:[['sx',1,0],['sx-',-1,0],['sz',0,1],['sz-',0,-1],['su',0.84,0.84],['su',-0.84,0.84],['su',0.84,-0.84],['su',-0.84,-0.84]];
+    pts.forEach(([k,a,b],i)=>{ const w=localToWorld(e,F.ox+a*F.ax,F.oz+b*F.az,F); G.scale[k+':'+i]=[w[0],baseY(e,w[0],w[1]),w[1]]; }); }
+  return G; }
+function handlePos(e){ const F=frameOf(e); const c=localToWorld(e,F.ox,F.oz,F); return [c[0],e.type==='cloud'?e.level:groundAt(c[0],c[1]),c[1]]; }
+function arrow(q0,q1,col,hl){ const dx=q1[0]-q0[0], dy=q1[1]-q0[1], l=Math.hypot(dx,dy)||1, ux=dx/l, uy=dy/l;
+  octx.strokeStyle='rgba(10,12,14,.8)'; octx.lineWidth=hl?6:5; octx.beginPath(); octx.moveTo(q0[0],q0[1]); octx.lineTo(q1[0],q1[1]); octx.stroke();
+  octx.strokeStyle=hl?'#fff':col; octx.lineWidth=hl?3:2; octx.beginPath(); octx.moveTo(q0[0],q0[1]); octx.lineTo(q1[0],q1[1]); octx.stroke();
+  const s=hl?10:8; octx.fillStyle=hl?'#fff':col; octx.beginPath(); octx.moveTo(q1[0]+ux*s,q1[1]+uy*s); octx.lineTo(q1[0]-uy*s*0.55,q1[1]+ux*s*0.55); octx.lineTo(q1[0]+uy*s*0.55,q1[1]-ux*s*0.55); octx.closePath(); octx.fill(); }
 function label(x,y,t,col){ octx.font='500 11px "IBM Plex Mono", monospace'; const w=octx.measureText(t).width; octx.fillStyle='rgba(14,17,20,.82)'; octx.fillRect(x,y-9,w+10,18); octx.fillStyle=col; octx.fillText(t,x+5,y+4); }
+function ringPts(G,n=72){ const pts=[]; for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; pts.push(add(G.B,add(mul(G.X,Math.cos(a)*G.ringR),mul(G.Z,Math.sin(a)*G.ringR)))); } return pts; }
 function drawEl(cc,e,sel){
-  const col=sel?GOLD:TYPES[e.type].col; octx.strokeStyle=col; octx.lineWidth=sel?1.5:1; octx.globalAlpha=sel?0.9:(e.on?0.5:0.22);
-  if(e.shape||sel){ octx.setLineDash(e.shape?[]:[5,4]); poly(cc,outline(e),true); octx.setLineDash([]); }
-  if(e.type==='bank'&&sel){ octx.setLineDash([2,4]); poly(cc,outline(e,40).map(p=>[p[0],e.c[1]+e.r[1],p[2]]),true); octx.setLineDash([]); }
-  octx.globalAlpha=1;
-  const H=handles(e); const m=projC(cc,H.move); if(!m) return;
-  if(!sel){ dot2(m[0],m[1],hoverEl===e?5.5:4.5,col); if(hoverEl===e) label(m[0]+10,m[1],e.name,'#dce2e8'); return; }
-  const ht=projC(cc,H.height);
-  if(ht){ octx.strokeStyle='rgba(239,178,77,.8)'; octx.lineWidth=1.2; octx.setLineDash([3,3]); octx.beginPath(); octx.moveTo(m[0],m[1]); octx.lineTo(ht[0],ht[1]); octx.stroke(); octx.setLineDash([]);
-    const hv=hoverK==='height'; octx.beginPath(); octx.moveTo(ht[0],ht[1]-(hv?9:7)); octx.lineTo(ht[0]-(hv?7:6),ht[1]+4); octx.lineTo(ht[0]+(hv?7:6),ht[1]+4); octx.closePath(); octx.fillStyle=hv?'#fff2d6':GOLD; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.stroke(); octx.fill(); }
-  for(const k of ['sx','sz','scale']){ if(!H[k]) continue; const q=projC(cc,H[k]); if(!q) continue; const s=hoverK===k?6:4.5; octx.fillStyle=hoverK===k?'#fff2d6':GOLD; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.strokeRect(q[0]-s,q[1]-s,s*2,s*2); octx.fillRect(q[0]-s,q[1]-s,s*2,s*2); }
-  if(H.rot){ const q=projC(cc,H.rot); if(q){ const r=hoverK==='rot'?8:6.5; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=4; octx.beginPath(); octx.arc(q[0],q[1],r,0.3,Math.PI*1.75); octx.stroke(); octx.strokeStyle=hoverK==='rot'?'#fff2d6':GOLD; octx.lineWidth=2; octx.beginPath(); octx.arc(q[0],q[1],r,0.3,Math.PI*1.75); octx.stroke();
-    const a=Math.PI*1.75; octx.fillStyle=octx.strokeStyle; octx.beginPath(); octx.moveTo(q[0]+Math.cos(a)*r+3,q[1]+Math.sin(a)*r+3); octx.lineTo(q[0]+Math.cos(a)*r-4,q[1]+Math.sin(a)*r+1); octx.lineTo(q[0]+Math.cos(a)*r+1,q[1]+Math.sin(a)*r-5); octx.fill(); } }
-  dot2(m[0],m[1],hoverK==='move'?7:6,GOLD);
-  label(m[0]+12,m[1],e.name,GOLD);
+  const col=sel?GOLD:TYPES[e.type].col;
+  if(!sel){ const q=projC(cc,handlePos(e)); if(!q) return; octx.globalAlpha=e.on?0.9:0.35; octx.beginPath(); octx.arc(q[0],q[1],hoverEl===e?5.5:4.5,0,Math.PI*2); octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.stroke(); octx.fillStyle=col; octx.fill(); octx.globalAlpha=1;
+    if(hoverEl===e){ octx.globalAlpha=0.6; octx.strokeStyle=col; octx.lineWidth=1; octx.setLineDash([4,4]); poly(cc,outline(e),true); octx.setLineDash([]); octx.globalAlpha=1; label(q[0]+10,q[1],e.name,'#dce2e8'); } return; }
+  octx.strokeStyle=GOLD; octx.lineWidth=1.4; octx.globalAlpha=0.9; octx.setLineDash(e.shape?[]:[6,4]); poly(cc,outline(e),true); octx.setLineDash([]); octx.globalAlpha=1;
+  if(S.tool==='brush') return;
+  const G=gizmo(e,cc); if(!G) return;
+  // rotate ring
+  if(e.type!=='pool'){ octx.globalAlpha=hoverK==='rot'?1:0.75; octx.strokeStyle='rgba(10,12,14,.6)'; octx.lineWidth=5; poly(cc,ringPts(G),true); octx.strokeStyle=hoverK==='rot'?'#fff':'#e7c35a'; octx.lineWidth=hoverK==='rot'?2.5:1.6; poly(cc,ringPts(G),true); octx.globalAlpha=1; }
+  // scale handles on the footprint
+  for(const [k,p] of Object.entries(G.scale)){ const q=projC(cc,p); if(!q) continue; const hk=hoverK===k; const s=hk?6.5:(k.startsWith('su')?4:5); octx.save(); octx.translate(q[0],q[1]); if(k.startsWith('su')) octx.rotate(Math.PI/4); octx.fillStyle=hk?'#fff':GOLD; octx.strokeStyle='rgba(10,12,14,.85)'; octx.lineWidth=2; octx.strokeRect(-s,-s,s*2,s*2); octx.fillRect(-s,-s,s*2,s*2); octx.restore(); }
+  // move arrows (local X red, Z blue), height (green)
+  const q0=G.sB; for(const [k,c] of [['mx',AX.x],['mz',AX.z],['my',AX.y]]){ const q=projC(cc,G.tip[k]); if(q) arrow(q0,q,c,hoverK===k); }
+  const s=hoverK==='move'?8:6.5; octx.fillStyle=hoverK==='move'?'#fff':GOLD; octx.strokeStyle='rgba(10,12,14,.9)'; octx.lineWidth=2; octx.strokeRect(q0[0]-s,q0[1]-s,s*2,s*2); octx.fillRect(q0[0]-s,q0[1]-s,s*2,s*2);
+  label(q0[0]+14,q0[1]+18,e.name,GOLD);
 }
 function drawOverlay(V){
   octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); const cc=cssCam(V);
   if(S.gizmos!==false&&S.pass!==7&&S.pass!==8){ S.els.forEach((e,i)=>{ if(i!==S.sel) drawEl(cc,e,false); }); if(S.els[S.sel]) drawEl(cc,S.els[S.sel],true); }
-  if(V.layout){ // shot camera frustum
-    const c=PL.cam, d=SC.d50*0.35; const cor=[[0,0],[c.w,0],[c.w,c.h],[0,c.h]].map(([x,y])=>add(c.pos,mul(camRay(c,x,y),d)));
+  if(V.layout){ const c=PL.cam, d=SC.d50*0.35; const cor=[[0,0],[c.w,0],[c.w,c.h],[0,c.h]].map(([x,y])=>add(c.pos,mul(camRay(c,x,y),d)));
     octx.strokeStyle='rgba(239,178,77,.75)'; octx.lineWidth=1; for(const q of cor) poly(cc,[c.pos,q],false); poly(cc,cor,true);
     const lab=projC(cc,c.pos); if(lab){ octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(239,178,77,.9)'; octx.fillText('shot cam',lab[0]+6,lab[1]-6); } }
-  const brush=S.tool==='paint'||S.tool==='sculpt';
-  if(hoverHit&&!drag&&(brush||TYPES[S.tool])&&hoverK==null){
-    const p=hoverHit.p; const r=brush?S.brushR:SC.scale*0.012; octx.strokeStyle='rgba(239,178,77,.9)'; octx.lineWidth=1.2; octx.setLineDash(brush&&modKey?[3,3]:[]);
-    const ring=[]; for(let i=0;i<48;i++){ const a=i/48*Math.PI*2; const x=p[0]+Math.cos(a)*r, z=p[2]+Math.sin(a)*r; ring.push([x,brush?groundAt(x,z)+lift():p[1]+lift(),z]); } poly(cc,ring,true); octx.setLineDash([]);
-    if(S.tool==='sculpt'){ const s=projC(cc,p); if(s){ octx.strokeStyle='rgba(239,178,77,.9)'; octx.lineWidth=1.5; octx.beginPath(); const u=modKey?1:-1; octx.moveTo(s[0],s[1]+u*7); octx.lineTo(s[0],s[1]-u*7); octx.moveTo(s[0]-4,s[1]-u*3); octx.lineTo(s[0],s[1]-u*7); octx.lineTo(s[0]+4,s[1]-u*3); octx.stroke(); } }
-    if(S.tool==='pool'){ const s=projC(cc,p); if(s) label(s[0]+12,s[1]-8,'fog top '+(p[1]-SC.floor).toFixed(2)+' m above floor',GOLD); } }
+  const brush=S.tool==='brush';
+  if(hoverHit&&!drag&&(brush||(TYPES[S.tool]&&hoverK==null))){
+    const p=hoverHit.p; const r=brush?S.brushR:defaultR(p); octx.lineWidth=1.3; const inv=brush&&modKey; const m=brushMode();
+    octx.strokeStyle=brush?(m==='pile'||m==='add'?'rgba(239,178,77,.95)':m==='smooth'?'rgba(159,198,217,.95)':'rgba(224,111,94,.95)'):'rgba(239,178,77,.9)'; octx.setLineDash(brush&&(m==='erase'||m==='thin')?[4,3]:[]);
+    const ring=[]; for(let i=0;i<48;i++){ const a=i/48*Math.PI*2; const x=p[0]+Math.cos(a)*r, z=p[2]+Math.sin(a)*r; ring.push([x,groundAt(x,z)+lift(),z]); } poly(cc,ring,true); octx.setLineDash([]);
+    const s=projC(cc,p); if(s){ if(brush) label(s[0]+12,s[1]-10,BRUSH_LABEL[m],octx.strokeStyle); else if(S.tool==='pool') label(s[0]+12,s[1]-8,'fog top '+(p[1]-SC.floor).toFixed(2)+' m above floor',GOLD); else label(s[0]+12,s[1]-10,'click to place · drag to size',GOLD); } }
   if(drag&&drag.label) label(drag.lx+14,drag.ly-10,drag.label,GOLD);
-  // wind arrow
   const B=V.layout?lcamBasis():{f:PL.cam.f}; const camYaw=Math.atan2(B.f[0],-B.f[2]); const x0=cssW-34,y0=cssH-34,a=S.wind.dir*D2R-camYaw;
   octx.globalAlpha=0.85; octx.strokeStyle='rgba(220,226,232,.35)'; octx.lineWidth=1; octx.beginPath(); octx.arc(x0,y0,18,0,Math.PI*2); octx.stroke();
   const dx=Math.sin(a),dy=-Math.cos(a),L=8+Math.min(S.wind.speed,10)*0.9; octx.strokeStyle='#9fc6d9'; octx.lineWidth=2; octx.beginPath(); octx.moveTo(x0-dx*L,y0-dy*L); octx.lineTo(x0+dx*L,y0+dy*L); octx.stroke();
@@ -1753,7 +1779,7 @@ function drawOverlay(V){
 }
 
 /* =====================================================================
-   INTERACTION — Maya navigation, placing, the gizmo, paint and sculpt
+   INTERACTION — Maya navigation, placing, the gizmo, the fog brush
    ===================================================================== */
 let drag=null, modKey=false, bKey=false; const pointers=new Map();
 function enterLayout(){ if(S.view==='layout') return; S.view='layout'; dirty.layout=true; resetAccum(); syncViewSeg(); }
@@ -1779,21 +1805,28 @@ ov.addEventListener('pointerdown',ev=>{
 });
 ov.addEventListener('pointermove',ev=>{
   const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my}); modKey=ev.ctrlKey||ev.metaKey;
-  if(!drag){ if(ready&&PL&&lastV){ const h=pickHandle(mx,my); hoverK=h&&h.i===S.sel?h.k:null; hoverEl=h?S.els[h.i]:null; hoverHit=S.tool==='select'?null:pickAt(mx,my); if(S.tool==='pool') dirty.display=true; ov.style.cursor=hoverK?(hoverK==='move'?'move':'grab'):S.tool==='select'?'default':'crosshair'; } return; }
+  if(!drag){ if(ready&&PL&&lastV){ const h=pickHandle(mx,my); hoverK=h&&h.i===S.sel?h.k:null; hoverEl=h?S.els[h.i]:null; hoverHit=S.tool==='select'?null:pickAt(mx,my); dirty.display=dirty.display||S.tool==='pool';
+      ov.style.cursor=hoverK?(hoverK==='move'?'move':hoverK==='rot'?'grab':'pointer'):S.tool==='select'?'default':'crosshair'; } return; }
   if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); drag.mode='track'; navMove(cx-drag.cx,cy-drag.cy); drag.mode='pinch'; drag.d=d; drag.cx=cx; drag.cy=cy; return; }
   const dx=mx-drag.x, dy=my-drag.y; drag.x=mx; drag.y=my;
   if(['tumble','track','dolly'].includes(drag.mode)){ navMove(dx,dy); return; }
-  if(drag.mode==='brushsize'){ S.brushR=clamp(drag.r0*Math.exp((mx-drag.x0)*0.01),SC.scale*0.002,SC.scale*0.6); buildHint(); return; }
+  if(drag.mode==='brushsize'){ S.brushR=clamp(drag.r0*Math.exp((mx-drag.x0)*0.01),SC.scale*0.002,SC.scale*0.6); buildHint(); refreshCtx(); return; }
   toolMove(mx,my,ev);
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; } if(drag.commit){ pushUndo(); if(drag.e) refreshCtx(); } drag=null; resetAccum(); }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; } if(drag.commit){ pushUndo(); if(drag.e){ buildCtx(); } } drag=null; resetAccum(); }
 ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
 ov.addEventListener('pointerleave',()=>{ if(!drag){ hoverHit=null; hoverEl=null; hoverK=null; } });
 ov.addEventListener('wheel',ev=>{ ev.preventDefault(); if(!PL) return; if(S.view==='shot'){ initLayoutCam(); enterLayout(); } dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
-/* handles of the selected element first, then the centre dots of the rest */
-function pickHandle(mx,my){ if(!lastV) return null; const cc=cssCam(lastV); let best=null,bd=13;
-  const e=S.els[S.sel]; if(e&&S.gizmos!==false){ const H=handles(e); for(const k of ['height','sx','sz','scale','rot','move']){ if(!H[k]) continue; const q=projC(cc,H[k]); if(!q) continue; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={i:S.sel,k}; } } if(best) return best; }
-  S.els.forEach((e,i)=>{ const q=projC(cc,handles(e).move); if(!q) return; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={i,k:'move'}; } }); return best; }
+/* gizmo parts of the selected element first, then the dots of the others */
+function segDist(px,py,a,b){ const vx=b[0]-a[0], vy=b[1]-a[1]; const t=clamp(((px-a[0])*vx+(py-a[1])*vy)/Math.max(vx*vx+vy*vy,1e-6),0,1); return Math.hypot(px-a[0]-vx*t,py-a[1]-vy*t); }
+function pickHandle(mx,my){ if(!lastV) return null; const cc=cssCam(lastV);
+  const e=S.els[S.sel]; if(e&&S.gizmos!==false&&S.tool!=='brush'){ const G=gizmo(e,cc); if(G){ const q0=G.sB; let best=null, bd=11;
+    if(Math.max(Math.abs(mx-q0[0]),Math.abs(my-q0[1]))<10) return {i:S.sel,k:'move'};
+    for(const k of ['mx','mz','my']){ const q=projC(cc,G.tip[k]); if(!q) continue; const d=Math.min(segDist(mx,my,q0,q)+3,Math.hypot(mx-q[0],my-q[1])); if(d<bd){ bd=d; best={i:S.sel,k}; } }
+    for(const [k,p] of Object.entries(G.scale)){ const q=projC(cc,p); if(!q) continue; const d=Math.hypot(mx-q[0],my-q[1]); if(d<bd){ bd=d; best={i:S.sel,k}; } }
+    if(best) return best;
+    if(e.type!=='pool'){ const R=ringPts(G,48).map(p=>projC(cc,p)); for(let i=0;i<R.length;i++){ const a=R[i], b=R[(i+1)%R.length]; if(a&&b&&segDist(mx,my,a,b)<7) return {i:S.sel,k:'rot'}; } } } }
+  let best=null,bd=12; S.els.forEach((e,i)=>{ const q=projC(cc,handlePos(e)); if(!q) return; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={i,k:'move'}; } }); return best; }
 /* which element covers this ground point: shape footprint or mask, the most solid wins */
 function elAtPoint(p){ let best=-1, bv=0.15;
   S.els.forEach((e,i)=>{ if(!e.on) return; let v=0;
@@ -1807,67 +1840,92 @@ function addEl(e){ if(S.els.length>=MAX_E){ toast(MAX_E+' elements is the limit'
 function horizCamRight(){ const B=lastV.layout?lcamBasis():PL.cam; return norm([B.r[0],0,B.r[2]]); }
 function camFwdH(){ const B=lastV.layout?lcamBasis():PL.cam; return norm([B.f[0],0,B.f[2]]); }
 function vertAt(ro,rd,pt){ const nf=camFwdH(); const t=dot(sub(pt,ro),nf)/Math.max(dot(rd,nf),1e-4); return add(ro,mul(rd,t))[1]; }
-function grabHandle(h,mx,my,ev){ const e=S.els[h.i]; if(h.i!==S.sel) select(h.i); const H=handles(e); const {ro,rd}=mouseRay(mx,my);
-  const base={x0:mx,y0:my,x:mx,y:my,lx:mx,ly:my,e,orig:JSON.parse(JSON.stringify(e)),commit:true,k:h.k,hp:H[h.k]};
-  base.grab=rayPlaneY(ro,rd,H[h.k][1]); base.y0w=vertAt(ro,rd,H[h.k]); base.vert=ev.shiftKey&&h.k==='move';
-  const pv=e.shape?[e.c[0],e.c[2]]:pivotW(e); base.pv=pv; base.a0=Math.atan2(H[h.k][2]-pv[1],H[h.k][0]-pv[0]); base.d0=Math.hypot(H[h.k][0]-pv[0],H[h.k][2]-pv[1]);
-  drag={...base,mode:'h_'+h.k}; }
+/* the surface under the cursor; the shot pass when in the shot camera, else the rebuilt ground. Falls back to a plane. */
+function surfaceAt(mx,my,y0){ const h=pickAt(mx,my); if(h) return h.p; const {ro,rd}=mouseRay(mx,my); return rayPlaneY(ro,rd,y0); }
+/* footprint size that reads well at this distance: about a fifth of the frame width */
+function defaultR(p){ const cc=cssCam(lastV); const d=len(sub(p,cc.pos)); return clamp(d*(cc.w/cc.fx)*0.09,SC.scale*0.004,SC.scale*1.5); }
+function grabHandle(h,mx,my,ev){ const e=S.els[h.i]; if(h.i!==S.sel) select(h.i); const cc=cssCam(lastV); const G=gizmo(e,cc);
+  const d={x0:mx,y0:my,x:mx,y:my,lx:mx,ly:my,e,orig:JSON.parse(JSON.stringify(e)),commit:true,k:h.k,mode:'g_'+h.k.split(':')[0].replace('-',''),G,F:frameOf(e)};
+  const {ro,rd}=mouseRay(mx,my); d.y0w=G?vertAt(ro,rd,G.B):0;
+  if(h.k==='body'){ const s=surfaceAt(mx,my,G?G.B[1]:0); const c=localToWorld(e,d.F.ox,d.F.oz,d.F); d.off=s?[c[0]-s[0],c[1]-s[2]]:[0,0]; d.mode='g_move'; }
+  else if(h.k==='move') d.off=[0,0];
+  if(G&&h.k!=='move'&&h.k!=='body'){ const q=G.sB; const tip=h.k==='rot'?null:(G.tip[h.k]||G.scale[h.k]); d.sB=q; if(tip){ const t=projC(cc,tip); d.sT=t; } d.a0=Math.atan2(my-q[1],mx-q[0]);
+    const qx=projC(cc,G.tip.mx), qz=projC(cc,G.tip.mz); d.flip=qx&&qz?Math.sign((qx[0]-q[0])*(qz[1]-q[1])-(qx[1]-q[1])*(qz[0]-q[0]))||1:1; }
+  drag=d; }
+function setCenter(e,o,F0,x,z){ // move the element so its frame centre is at x,z
+  const c0=localToWorld(o,F0.ox,F0.oz,F0); const dx=x-c0[0], dz=z-c0[1];
+  if(e.type==='pool'){ floodPool(e,o.level,x,z); return; }
+  if(e.gen&&e.win){ e.win.cx=o.win.cx+dx; e.win.cz=o.win.cz+dz; rebakeGen(e); return; }
+  e.c=[o.c[0]+dx,o.c[1],o.c[2]+dz]; e.mo=[o.mo[0]+dx,o.mo[1]+dz]; if(e.type==='bank') e.c[1]=groundAt(e.c[0],e.c[2]); }
+function scaleBy(e,o,kx,kz){ // resize the footprint; noise stays world-sized, terrain-derived fog is re-evaluated over the new area
+  const mn=SC.scale*0.003;
+  if(e.gen&&e.win){ e.win.rx=Math.max(o.win.rx*kx,mn); e.win.rz=Math.max(o.win.rz*kz,mn); rebakeGen(e); return; }
+  if(e.shape){ e.r[0]=Math.max(o.r[0]*kx,mn); e.r[2]=Math.max(o.r[2]*kz,mn); if(e.mask>=0) e.ms=o.ms*Math.sqrt(kx*kz); return; }
+  e.ms=Math.max(o.ms*Math.sqrt(kx*kz),0.05); }
+function setYaw(e,o,y){ if(e.gen&&e.win){ e.win.yaw=y; rebakeGen(e); } else e.yaw=y; }
 function toolDown(mx,my,ev){
   const t=S.tool, base={x0:mx,y0:my,x:mx,y:my,lx:mx,ly:my};
-  if(t!=='paint'&&t!=='sculpt'){ const h=pickHandle(mx,my); if(h&&(t==='select'||h.i===S.sel)){ grabHandle(h,mx,my,ev); return; } }
+  if(t!=='brush'){ const h=pickHandle(mx,my); if(h&&(t==='select'||h.i===S.sel)){ grabHandle(h,mx,my,ev); return; } }
   const hit=pickAt(mx,my);
-  if(t==='select'){ if(hit){ const i=elAtPoint(hit.p); if(i>=0){ select(i); grabHandle({i,k:'move'},mx,my,ev); return; } } if(ev.button===0) select(-1); return; }
+  if(t==='select'){ if(hit){ const i=elAtPoint(hit.p); if(i>=0){ select(i); grabHandle({i,k:'body'},mx,my,ev); return; } } if(ev.button===0) select(-1); return; }
   if(!hit) return; const p=hit.p;
   if(['ground','mist','bank','cloud','rising'].includes(t)){
-    const r=horizCamRight(); const yaw=-Math.atan2(r[2],r[0]); const s0=SC.scale*0.01;
+    const r=horizCamRight(); const yaw=-Math.atan2(r[2],r[0]); const R0=defaultR(p);
     const extra=t==='cloud'?{level:p[1]}:t==='rising'?{aux:anaAt(SC.canopy,p[0],p[2])>0.15?1:0}:{};
-    const e=mkEl(t,{c:[p[0],t==='bank'?groundAt(p[0],p[2]):p[1],p[2]],r:[s0,S.next[t].h,s0],yaw,...extra}); const i=addEl(e); if(i<0) return; select(i);
-    drag={...base,mode:'foot',e,p0:p,commit:true}; return; }
+    const e=mkEl(t,{c:[p[0],t==='bank'?groundAt(p[0],p[2]):p[1],p[2]],r:[t==='bank'?R0*1.6:R0,S.next[t].h,t==='bank'?R0*0.7:R0],yaw,...extra}); const i=addEl(e); if(i<0) return; select(i);
+    drag={...base,mode:'foot',e,p0:p,R0,commit:true,label:'drag to size'}; return; }
   if(t==='pool'){ const e=mkEl('pool',{r:[0,S.next.pool.h,0]}); const i=addEl(e); if(i<0) return; select(i);
-    floodPool(e,Math.min(p[1]+Math.max(e.r[1]*0.6,SC.range*0.005)+0.02,PL.cam.pos[1]-Math.max(0.4,SC.d50*0.02)),p[0],p[2]); markEl(); drag={...base,mode:'pool',e,lv0:e.level,seed:[p[0],p[2]],commit:true,label:'fog top '+(e.level-SC.floor).toFixed(2)+' m'}; return; }
-  if(t==='paint'){ let e=S.els[S.sel]; if(!e){ const ty=S.paintType||'ground'; e=mkEl(ty,{name:'Painted '+TYPES[ty].label.toLowerCase(),shape:false,c:p.slice(),mc:[p[0],p[2]],level:ty==='cloud'?p[1]:ty==='pool'?p[1]+S.next.pool.h:0,r:[0,S.next[ty].h,0]}); const i=addEl(e); if(i<0) return; select(i); }
-    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } const er=ev.ctrlKey||ev.metaKey; paintAt(e,p,er); drag={...base,mode:'paint',e,commit:true,erase:er}; return; }
-  if(t==='sculpt'){ let e=S.els[S.sel]; if(!e){ const i=elAtPoint(p); if(i>=0){ select(i); e=S.els[i]; } }
-    if(!e){ toast('Select a fog element to sculpt'); return; } if(e.type==='pool'){ /* flood masks are rebuilt on move; sculpt the top instead */ }
-    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } const lo=ev.ctrlKey||ev.metaKey; sculptAt(e,p,lo?-1:1); drag={...base,mode:'sculpt',e,commit:true,dir:lo?-1:1}; return; }
+    floodPool(e,Math.min(p[1]+Math.max(e.r[1]*0.6,SC.range*0.005)+0.02,PL.cam.pos[1]-Math.max(0.4,SC.d50*0.02)),p[0],p[2]); markEl(); drag={...base,mode:'pool',e,lv0:e.level,seed:[p[0],p[2]],commit:true,label:'drag up or down · fog top '+(e.level-SC.floor).toFixed(2)+' m'}; return; }
+  if(t==='brush'){ let e=S.els[S.sel]; const m=brushMode(ev);
+    if(!e){ const i=elAtPoint(p); if(i>=0){ select(i); e=S.els[i]; } }
+    if(!e){ if(m==='erase'||m==='thin'||m==='smooth'){ toast('Brush over a fog element, or select one first'); return; }
+      const ty=S.paintType||'ground'; e=mkEl(ty,{name:'Painted '+TYPES[ty].label.toLowerCase(),shape:false,c:p.slice(),mc:[p[0],p[2]],level:ty==='cloud'?p[1]:0,r:[0,S.next[ty].h,0]}); const i=addEl(e); if(i<0) return; select(i); }
+    if(e.type==='pool'&&(m==='add'||m==='erase')){ toast('Valley fog fills its basin: pile up or thin out its top instead'); }
+    if(!maskFor(e)){ toast(MAX_E+' painted elements is the limit'); return; } brushAt(e,p,m); drag={...base,mode:'brush',e,commit:true}; return; }
 }
 function toolMove(mx,my,ev){
-  const d=drag; d.lx=mx; d.ly=my;
-  const {ro,rd}=mouseRay(mx,my); const e=d.e, o=d.orig;
-  if(d.mode==='h_move'){ let delta;
-    if(d.vert||ev.shiftKey){ delta=[0,vertAt(ro,rd,d.hp)-d.y0w,0]; }
-    else { const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit||!d.grab) return; delta=sub(hit,d.grab); delta[1]=0; if(len(delta)>SC.scale*20) return; }
-    if(e.type==='pool'){ if(delta[1]!==0) floodPool(e,o.level+delta[1],o.c[0],o.c[2]); else floodPool(e,e.level,o.c[0]+delta[0],o.c[2]+delta[2]); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; }
-    else if(e.type==='cloud'&&delta[1]!==0){ e.level=o.level+delta[1]; d.label='cloud base '+(e.level-SC.floor).toFixed(1)+' m'; }
-    else if(delta[1]!==0){ e.c=[o.c[0],o.c[1]+delta[1],o.c[2]]; d.label='height '+(e.c[1]-SC.floor).toFixed(2)+' m'; }
-    else { e.c=[o.c[0]+delta[0],o.c[1],o.c[2]+delta[2]]; e.mo=[o.mo[0]+delta[0],o.mo[1]+delta[2]]; if(e.type==='bank') e.c[1]=groundAt(e.c[0],e.c[2]); d.label=''; }
+  const d=drag; d.lx=mx; d.ly=my; const e=d.e, o=d.orig; const {ro,rd}=mouseRay(mx,my);
+  if(d.mode==='g_move'){ // free move: the element goes to the surface under the cursor, wherever you point
+    if(ev.shiftKey){ const dy=vertAt(ro,rd,d.G.B)-d.y0w; if(e.type==='cloud'){ e.level=o.level+dy; d.label='cloud base '+(e.level-SC.floor).toFixed(1)+' m'; } else if(e.type==='pool'){ floodPool(e,o.level+dy,o.c[0],o.c[2]); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; } markEl(); poke(); refreshCtx(); return; }
+    const s=surfaceAt(mx,my,d.G?d.G.B[1]:0); if(!s) return; setCenter(e,o,d.F,s[0]+(d.off?d.off[0]:0),s[2]+(d.off?d.off[1]:0)); d.label=''; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='g_mx'||d.mode==='g_mz'){ // along one axis: screen distance along the arrow maps to world distance
+    const v=[d.sT[0]-d.sB[0],d.sT[1]-d.sB[1]], l2=Math.max(v[0]*v[0]+v[1]*v[1],1); const t=((mx-d.x0)*v[0]+(my-d.y0)*v[1])/l2*d.G.L; const ax=d.mode==='g_mx'?d.G.X:d.G.Z;
+    const c0=localToWorld(o,d.F.ox,d.F.oz,d.F); setCenter(e,o,d.F,c0[0]+ax[0]*t,c0[1]+ax[2]*t); d.label=(d.mode==='g_mx'?'x ':'z ')+(t>=0?'+':'')+fmLen(Math.abs(t)).replace(' ',' '); markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='g_my'){ const dy=vertAt(ro,rd,d.G.B)-d.y0w; const mn=Math.max(0.05,SC.scale*0.0015);
+    if(e.type==='pool'){ floodPool(e,Math.max(o.level+dy,groundAt(o.c[0],o.c[2])+0.05),o.c[0],o.c[2]); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; }
+    else if(e.type==='cloud'&&!ev.shiftKey){ e.r[1]=Math.max(o.r[1]+dy,mn); d.label='thickness '+fmLen(e.r[1])+' · Shift moves the base'; }
+    else if(e.type==='cloud'){ e.level=o.level+dy; d.label='cloud base '+(e.level-SC.floor).toFixed(1)+' m'; }
+    else { const k=e.type==='rising'?1.2:e.type==='mist'?1.5:1; e.r[1]=Math.max(o.r[1]+dy/k,mn); d.label=(e.type==='ground'?'depth ':e.type==='bank'?'thickness ':'height ')+fmLen(e.r[1]); }
     markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='h_height'){ const y=vertAt(ro,rd,d.hp); const [cx,cz]=centerW(e); const g=groundAt(cx,cz); const mn=Math.max(0.05,SC.scale*0.0015);
-    if(e.type==='pool'){ floodPool(e,Math.max(y,g+0.05),cx,cz); d.label='fog top '+(e.level-SC.floor).toFixed(2)+' m'; }
-    else if(e.type==='cloud'){ e.r[1]=Math.max(y-e.level,mn); d.label='thickness '+fmLen(e.r[1]); }
-    else if(e.type==='bank'){ e.r[1]=Math.max(y-Math.max(e.c[1],g),mn); d.label='thickness '+fmLen(e.r[1]); }
-    else { const k=e.type==='rising'?1.2:e.type==='mist'?1.5:1; const b=e.type==='rising'&&e.aux?g+SC.canHmax*clamp(anaAt(SC.canopy,cx,cz),0,1):g; e.r[1]=Math.max((y-b)/k,mn); d.label=(e.type==='ground'?'depth ':'height ')+fmLen(e.r[1]); }
-    markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='h_sx'||d.mode==='h_sz'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const l=worldToLocal(e,hit[0],hit[2]); const mn=SC.scale*0.004;
-    if(ev.shiftKey){ const k=Math.max(Math.hypot(hit[0]-d.pv[0],hit[2]-d.pv[1]),mn)/Math.max(d.d0,1e-3); e.r[0]=o.r[0]*k; e.r[2]=o.r[2]*k; e.ms=o.ms*k; }
-    else if(d.mode==='h_sx') e.r[0]=Math.max(Math.abs(l[0]),mn); else e.r[2]=Math.max(Math.abs(l[1]),mn);
-    d.label=`${fmLen(e.r[0]*2)} × ${fmLen(e.r[2]*2)}`; markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='h_scale'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const k=clamp(Math.hypot(hit[0]-d.pv[0],hit[2]-d.pv[1])/Math.max(d.d0,1e-3),0.05,20); e.ms=o.ms*k; if(e.shape){ e.r[0]=o.r[0]*k; e.r[2]=o.r[2]*k; } d.label='scale '+(e.ms).toFixed(2)+'×'; markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='h_rot'){ const hit=rayPlaneY(ro,rd,d.hp[1]); if(!hit) return; const a=Math.atan2(hit[2]-d.pv[1],hit[0]-d.pv[0]); let y=o.yaw-(a-d.a0); if(ev.shiftKey) y=Math.round(y/(15*D2R))*15*D2R; e.yaw=y; d.label='rotate '+((((-y/D2R)%360)+540)%360-180).toFixed(0)+'°'; markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='foot'){ const hit=rayPlaneY(ro,rd,d.p0[1]); if(!hit) return; const R=clamp(Math.hypot(hit[0]-d.p0[0],hit[2]-d.p0[2]),SC.scale*0.004,SC.scale*3);
-    e.r[0]=R; e.r[2]=e.type==='bank'?R*0.45:R; d.label=(e.type==='bank'?'width ':'radius ')+fmLen(e.type==='bank'?R*2:R); markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='g_sx'||d.mode==='g_sz'||d.mode==='g_su'){ const v=[d.sT[0]-d.sB[0],d.sT[1]-d.sB[1]], l2=Math.max(v[0]*v[0]+v[1]*v[1],1); const k=clamp(((mx-d.sB[0])*v[0]+(my-d.sB[1])*v[1])/l2,0.05,40);
+    if(d.mode==='g_su'||ev.shiftKey) scaleBy(e,o,k,k); else if(d.mode==='g_sx') scaleBy(e,o,k,1); else scaleBy(e,o,1,k);
+    const F=frameOf(e); d.label=`${fmLen(F.ax*2)} × ${fmLen(F.az*2)}`+(e.gen?' · re-evaluated':''); markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='g_rot'){ const a=Math.atan2(my-d.sB[1],mx-d.sB[0]); let da=a-d.a0; while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI; const F0=frameOf(o); let y=F0.yaw+da*(d.flip<0?1:-1); if(ev.shiftKey) y=Math.round(y/(15*D2R))*15*D2R; setYaw(e,o,y);
+    d.label='rotate '+((((-y/D2R)%360)+540)%360-180).toFixed(0)+'°'; markEl(); poke(); refreshCtx(); return; }
+  if(d.mode==='foot'){ if(Math.hypot(mx-d.x0,my-d.y0)<5) return; const s=surfaceAt(mx,my,d.p0[1]); if(!s) return; const R=clamp(Math.hypot(s[0]-d.p0[0],s[2]-d.p0[2]),SC.scale*0.004,SC.scale*3);
+    e.r[0]=e.type==='bank'?R:R; e.r[2]=e.type==='bank'?R*0.45:R; d.label=(e.type==='bank'?'width ':'radius ')+fmLen(e.type==='bank'?R*2:R); markEl(); poke(); refreshCtx(); return; }
   if(d.mode==='pool'){ const lv=d.lv0+(d.y0-my)*SC.range*0.0025; floodPool(e,lv,d.seed[0],d.seed[1]); d.label='fog top '+(lv-SC.floor).toFixed(2)+' m'; markEl(); poke(); refreshCtx(); return; }
-  if(d.mode==='paint'){ const hit=pickAt(mx,my); if(hit) paintAt(e,hit.p,d.erase); return; }
-  if(d.mode==='sculpt'){ const hit=pickAt(mx,my); if(hit) sculptAt(e,hit.p,(ev.ctrlKey||ev.metaKey)?-1:1); return; }
+  if(d.mode==='brush'){ const hit=pickAt(mx,my); if(hit) brushAt(e,hit.p,brushMode(ev)); return; }
 }
+/* the fog brush: one tool to pile fog up, thin it, add or erase coverage, or smooth what you've done. Ctrl does the opposite. */
+const BRUSH_LABEL={pile:'pile up',thin:'thin out',add:'add fog',erase:'erase',smooth:'smooth'};
+function brushMode(ev){ const m=S.brushMode||'pile'; const inv=ev?(ev.ctrlKey||ev.metaKey):modKey; if(!inv) return m; return {pile:'thin',thin:'pile',add:'erase',erase:'add',smooth:'smooth'}[m]; }
 function brushCells(e,p,fn){ const N=NM; const w=worldToMask(e,p[0],p[2]); const cx=(w[0]-SC.bmin[0])/SC.bsize[0]*N-0.5, cz=(w[1]-SC.bmin[1])/SC.bsize[1]*N-0.5, r=S.brushR/e.ms/SC.bsize[0]*N;
   for(let j=Math.max(0,Math.floor(cz-r));j<=Math.min(N-1,Math.ceil(cz+r));j++) for(let i=Math.max(0,Math.floor(cx-r));i<=Math.min(N-1,Math.ceil(cx+r));i++){ const d=Math.hypot(i-cx,j-cz)/Math.max(r,0.5); if(d>1) continue; fn(j*N+i,(1-d*d)*(1-d*d)); } }
-function paintAt(e,p,erase){ const m=maskFor(e); if(!m) return; const st=S.brushStr??0.35;
-  brushCells(e,p,(k,w)=>{ w*=st; if(erase){ m.erase[k]=Math.min(1,m.erase[k]+w); m.add[k]=Math.max(0,m.add[k]-w); } else { m.add[k]=Math.min(1,m.add[k]+w); m.erase[k]=Math.max(0,m.erase[k]-w); } });
-  uploadMask(e); markEl(); poke(); }
-function sculptAt(e,p,dir){ const m=maskFor(e); if(!m) return; const st=(S.brushStr??0.35)*0.18;
-  brushCells(e,p,(k,w)=>{ m.ht[k]=clamp(m.ht[k]+dir*w*st,0,1); });
-  uploadMask(e); markEl(); poke(); }
+function brushAt(e,p,mode){ const m=maskFor(e); if(!m) return; const st=S.brushStr??0.35, gen=e.gen&&m.field;
+  // coverage: generated elements keep their own paint layer so moving and resizing still re-evaluates the terrain
+  const cov=(k,w)=>{ if(gen){ if(w>0){ m.padd[k]=Math.min(1,m.padd[k]+w); m.erase[k]=Math.max(0,m.erase[k]-w); } else { m.erase[k]=Math.min(1,m.erase[k]-w); m.padd[k]=Math.max(0,m.padd[k]+w); } }
+    else if(w>0){ m.add[k]=Math.min(1,m.add[k]+w); m.erase[k]=Math.max(0,m.erase[k]-w); } else { m.erase[k]=Math.min(1,m.erase[k]-w); m.add[k]=Math.max(0,m.add[k]+w); } };
+  const pool=e.type==='pool';
+  if(mode==='smooth'){ const src=m.ht.slice(), N=NM; brushCells(e,p,(k,w)=>{ const i=k%N, j=(k/N)|0; let s=0,n=0; for(let b=-2;b<=2;b++) for(let a=-2;a<=2;a++){ const ii=i+a, jj=j+b; if(ii<0||jj<0||ii>=N||jj>=N) continue; s+=src[jj*N+ii]; n++; } m.ht[k]=lerp(src[k],s/n,w*st*1.5); }); }
+  else brushCells(e,p,(k,w)=>{ w*=st;
+    if(mode==='pile'){ m.ht[k]=clamp(m.ht[k]+w*0.2,0,1); if(!pool) cov(k,w*0.6); }
+    else if(mode==='thin'){ m.ht[k]=clamp(m.ht[k]-w*0.2,0,1); if(!pool) cov(k,-w*0.35); }
+    else if(mode==='add'){ if(!pool) cov(k,w); }
+    else if(mode==='erase'){ if(!pool) cov(k,-w); } });
+  if(gen) rebakeGen(e); else uploadMask(e); markEl(); poke(); }
+function paintAt(e,p,erase){ brushAt(e,p,erase?'erase':'add'); }
+function sculptAt(e,p,dir){ brushAt(e,p,dir>0?'pile':'thin'); }
 
 /* keyboard */
 const typing=()=>{const a=document.activeElement;return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='SELECT'||a.tagName==='TEXTAREA');};
@@ -1898,9 +1956,9 @@ function frameAll(){ if(S.view==='shot') setView('layout'); S.lcam.coi=[SC.bmin[
 /* undo */
 const undoStack=[];
 const q8=a=>{ const o=new Uint8Array(a.length); for(let i=0;i<a.length;i++) o[i]=clamp(a[i],0,1)*255+0.5; return o; }, u8f=a=>{ const o=new Float32Array(a.length); for(let i=0;i<a.length;i++) o[i]=a[i]/255; return o; };
-function snapshot(){ return {els:JSON.parse(JSON.stringify(S.els)),sel:S.sel,masks:new Map([...MASK.data].map(([k,m])=>[k,{add:q8(m.add),erase:q8(m.erase),ht:q8(m.ht)}])),free:MASK.free.slice()}; }
+function snapshot(){ return {els:JSON.parse(JSON.stringify(S.els)),sel:S.sel,masks:new Map([...MASK.data].map(([k,m])=>[k,{add:q8(m.add),erase:q8(m.erase),ht:q8(m.ht),field:m.field?q8(m.field):null,padd:m.padd?q8(m.padd):null}])),free:MASK.free.slice()}; }
 function pushUndo(){ undoStack.push(snapshot()); if(undoStack.length>24) undoStack.shift(); }
-function undo(){ if(undoStack.length<2){ toast('Nothing to undo'); return; } undoStack.pop(); const s=undoStack[undoStack.length-1]; S.els=JSON.parse(JSON.stringify(s.els)); S.sel=Math.min(s.sel,S.els.length-1); MASK.data=new Map([...s.masks].map(([k,m])=>[k,{add:u8f(m.add),erase:u8f(m.erase),ht:u8f(m.ht)}])); MASK.free=s.free.slice();
+function undo(){ if(undoStack.length<2){ toast('Nothing to undo'); return; } undoStack.pop(); const s=undoStack[undoStack.length-1]; S.els=JSON.parse(JSON.stringify(s.els)); S.sel=Math.min(s.sel,S.els.length-1); MASK.data=new Map([...s.masks].map(([k,m])=>[k,Object.assign({add:u8f(m.add),erase:u8f(m.erase),ht:u8f(m.ht)},m.field?{field:u8f(m.field),padd:u8f(m.padd)}:{})])); MASK.free=s.free.slice();
   for(const e of S.els) if(e.mask>=0) uploadMask(e); markEl(); buildList(); buildCtx(); toast('Undone'); }
 
 /* =====================================================================
@@ -1914,25 +1972,23 @@ const ICONS={
   bank:'<path d="M3 17h18"/><path d="M3 17c0-3 2-5 4.5-5 .5-2.5 2.5-4 5-4s4.2 1.6 4.7 3.8C19.6 12 21 14 21 17"/>',
   rising:'<path d="M4 20l3-5 3 5"/><path d="M13 20l3-6 3 6"/><path d="M7 12c-1-2 1-3 0-5"/><path d="M16 11c-1-2 1-3 0-5"/>',
   mist:'<path d="M4 8h12"/><path d="M7 12h13"/><path d="M4 16h10"/>',
-  paint:'<path d="M14.5 4.5l5 5L10 19l-5 1 1-5z"/><path d="M12.5 6.5l5 5"/>',
-  sculpt:'<path d="M3 18c3 0 4-7 9-7s6 7 9 7"/><path d="M12 3v5"/><path d="M9.5 5.5L12 3l2.5 2.5"/>',
+  brush:'<path d="M14.5 4.5l5 5L10 19l-5 1 1-5z"/><path d="M12.5 6.5l5 5"/><path d="M3 21c2-1 4-1 6 0"/>',
 };
 const TOOLS=[
-  {id:'select',key:'q',name:'Select & move',hint:'Click fog or a handle to select. Drag to move, Shift-drag to lift. The square handles size it, the arrow on top sets height, the ring rotates.'},
+  {id:'select',key:'q',name:'Select & move',hint:'Click fog to select it and drag it where you want it. Arrows move along an axis, green sets height, the ring rotates, squares on the outline resize.'},
   {id:'ground',key:'1',name:'Ground fog',hint:'Set the look on the right, then drag out the area. Depth follows the ground: deeper in hollows and drainage lines, thin by walls and under trees.'},
   {id:'pool',key:'2',name:'Valley fog',hint:'Click where the fog should settle, then drag up or down. It fills the connected low ground under a soft top.'},
   {id:'cloud',key:'3',name:'Low cloud',hint:'Click the slope where the cloud base should sit, then drag out the area. Hills rise into it.'},
   {id:'bank',key:'4',name:'Fog bank',hint:'Drag out the bank. It faces the camera, streaks along the wind and drifts with it.'},
   {id:'rising',key:'5',name:'Rising mist',hint:'Drag over a forest or wet ground. Wisps and puffs rise off the canopy or surface.'},
   {id:'mist',key:'6',name:'Mist',hint:'Drag out an area of thin hanging mist.'},
-  {id:'paint',key:'7',name:'Paint',hint:'Paint fog into the selected element, or a new one. Ctrl-paint clears. B-drag or [ ] resizes the brush.'},
-  {id:'sculpt',key:'8',name:'Sculpt',hint:'Paint over an element to raise it. Ctrl-paint lowers. Works on depth, tops and cloud bases.'},
+  {id:'brush',key:'7',name:'Fog brush',hint:'Brush over fog to pile it up or thin it out, add or erase it. Ctrl does the opposite. [ ] or B-drag sizes the brush.'},
 ];
 function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===7) { const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',S.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
 function setTool(id){ const was=S.tool; S.tool=id; if(TYPES[id]&&S.sel>=0) S.sel=-1; buildRail(); buildHint(); buildList(); buildCtx(); ov.style.cursor=id==='select'?'default':'crosshair'; hoverHit=null; dirty.display=true;
   if(TYPES[id]&&was!==id){ const c=$('#secCtx'); c.open=true; c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); c.scrollIntoView({block:'nearest',behavior:'smooth'}); } }
-function buildHint(){ const t=TOOLS.find(x=>x.id===S.tool); const h=$('#hint'); h.innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+((S.tool==='paint'||S.tool==='sculpt')?`<span>radius <b style="font-family:var(--f-mono)">${fmLen(S.brushR)}</b></span>`:''); }
+function buildHint(){ const t=TOOLS.find(x=>x.id===S.tool); const h=$('#hint'); h.innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+((S.tool==='brush')?`<span>radius <b style="font-family:var(--f-mono)">${fmLen(S.brushR)}</b></span>`:''); }
 const PASSES=['Comp','Fog element','Fog alpha','Values','Value bands','Over checker','Plate','P','N'];
 function buildAovs(){ const a=$('#aovs'); a.innerHTML=''; PASSES.forEach((n,i)=>{ const b=document.createElement('button'); b.setAttribute('role','tab'); b.setAttribute('aria-selected',S.pass===i); b.textContent=n; b.onclick=()=>{ S.pass=i; buildAovs(); dirty.display=true; }; a.appendChild(b); }); }
 function syncViewSeg(){ $('#vShot').setAttribute('aria-pressed',S.view==='shot'); $('#vLayout').setAttribute('aria-pressed',S.view==='layout'); $('#camReset').disabled=S.view==='shot'&&!drag;
@@ -1970,21 +2026,22 @@ function buildList(){ const l=$('#elList'); l.innerHTML=''; $('#elCount').textCo
     l.appendChild(r); }); }
 function deleteSel(){ const e=S.els[S.sel]; if(!e) return; releaseMask(e); S.els.splice(S.sel,1); S.sel=-1; markEl(); pushUndo(); buildList(); buildCtx(); }
 function duplicateSel(){ const e=S.els[S.sel]; if(!e) return; const c=JSON.parse(JSON.stringify(e)); c.id=++uid; c.name=e.name+' copy'; c.mask=-1; c.seed=Math.floor(rnd()*1000);
-  if(e.mask>=0){ const m=maskFor(c); if(m){ const s=MASK.data.get(e.mask); m.add.set(s.add); m.erase.set(s.erase); m.ht.set(s.ht); } }
-  const sh=SC.scale*0.05; c.c[0]+=sh; c.c[2]+=sh; c.mo=[e.mo[0]+sh,e.mo[1]+sh]; const i=addEl(c); if(i>=0){ if(c.mask>=0) uploadMask(c); select(i); pushUndo(); } }
+  if(e.mask>=0){ const m=maskFor(c); if(m){ const s=MASK.data.get(e.mask); m.add.set(s.add); m.erase.set(s.erase); m.ht.set(s.ht); if(s.field){ m.field=s.field.slice(); m.padd=s.padd.slice(); } } }
+  const sh=footR(e)*0.6; c.c[0]+=sh; c.c[2]+=sh; if(c.gen&&c.win){ c.win.cx+=sh; c.win.cz+=sh; } else c.mo=[e.mo[0]+sh,e.mo[1]+sh]; const i=addEl(c); if(i>=0){ if(c.mask>=0){ if(c.gen) rebakeGen(c); else uploadMask(c); } select(i); pushUndo(); } }
 /* ---- context panel: the attributes of what you are about to place, or of the selection ---- */
 let ctxRefresh=[]; function refreshCtx(){ ctxRefresh.forEach(f=>f()); }
 function buildCtx(){
   const b=$('#ctxBody'); b.innerHTML=''; ctxRefresh=[]; const sel=S.els[S.sel];
   const isNew=!sel&&!!TYPES[S.tool]; const t=sel||(isNew?S.next[S.tool]:null); const type=sel?sel.type:S.tool;
-  const brush=S.tool==='paint'||S.tool==='sculpt';
-  if(brush){ subH(b,S.tool==='paint'?'Paint brush':'Sculpt brush'); b.lastChild.style.cssText='margin-top:0;padding-top:0;border:0';
+  const brush=S.tool==='brush';
+  if(brush){ subH(b,'Fog brush'); b.lastChild.style.cssText='margin-top:0;padding-top:0;border:0';
+    ctxRefresh.push(chips(b,'',[['pile','Pile up'],['thin','Thin out'],['add','Add'],['erase','Erase'],['smooth','Smooth']],()=>S.brushMode||'pile',v=>{ S.brushMode=v; }));
     ctxRefresh.push(slider(b,{label:'Radius',min:SC.scale*0.002,max:SC.scale*0.6,log:true,get:()=>S.brushR,set:v=>{ S.brushR=v; buildHint(); },fmt:fmLen}));
     ctxRefresh.push(slider(b,{label:'Strength',min:0.05,max:1,get:()=>S.brushStr??0.35,set:v=>{ S.brushStr=v; },fmt:pct}));
-    if(!sel&&S.tool==='paint'){ ctxRefresh.push(chips(b,'New element',['ground','mist','rising','bank','cloud'].map(k=>[k,TYPES[k].label,TYPES[k].col]),()=>S.paintType||'ground',v=>{ S.paintType=v; })); const n=document.createElement('div'); n.className='note'; n.textContent='Nothing selected, so painting starts a new element of this type. Select an element to paint into it.'; b.appendChild(n); }
-    if(!sel&&S.tool==='sculpt'){ const n=document.createElement('div'); n.className='note'; n.textContent='Click an element in the view or the list, then paint over it to raise it, Ctrl-paint to lower.'; b.appendChild(n); }
+    const n=document.createElement('div'); n.className='note'; n.innerHTML='<b>Pile up</b> heaps fog higher and wider where you brush, <b>Thin out</b> lowers and thins it, <b>Add</b> and <b>Erase</b> change only where fog is, <b>Smooth</b> evens out your strokes. Hold Ctrl for the opposite.'; b.appendChild(n);
+    if(!sel){ ctxRefresh.push(chips(b,'New element',['ground','mist','rising','bank','cloud'].map(k=>[k,TYPES[k].label,TYPES[k].col]),()=>S.paintType||'ground',v=>{ S.paintType=v; })); const n2=document.createElement('div'); n2.className='note'; n2.textContent='Brushing over existing fog works on that element. Brushing on bare ground with Pile up or Add starts a new element of this type.'; b.appendChild(n2); }
   }
-  if(!t){ $('#ctxTitle').textContent=brush?(S.tool==='paint'?'Paint':'Sculpt'):'Selected'; if(!brush) b.innerHTML=`<div class="empty">Pick a fog tool to set up what you will place, or click an element to edit it.<br><br><span class="kbd">Space</span> plays · <span class="kbd">V</span> fog on/off · <span class="kbd">C</span> shot/layout · <span class="kbd">G</span> draft/final · <span class="kbd">S</span> settle · <span class="kbd">F</span> frame · <span class="kbd">Ctrl Z</span> undo</div>`; return; }
+  if(!t){ $('#ctxTitle').textContent=brush?'Fog brush':'Selected'; if(!brush) b.innerHTML=`<div class="empty">Pick a fog tool to set up what you will place, or click an element to edit it.<br><br><span class="kbd">Space</span> plays · <span class="kbd">V</span> fog on/off · <span class="kbd">C</span> shot/layout · <span class="kbd">G</span> draft/final · <span class="kbd">S</span> settle · <span class="kbd">F</span> frame · <span class="kbd">Ctrl Z</span> undo</div>`; return; }
   $('#ctxTitle').textContent=isNew?'New · '+TYPES[type].label:'Selected · '+TYPES[type].label;
   const after=()=>{ if(!isNew) markEl(); };
   const sl=(label,min,max,get,set,fmt,log,tip)=>ctxRefresh.push(slider(b,{label,min,max,get,set:v=>{ set(v); t.preset=null; after(); },fmt,log,tip,commit:()=>{ if(!isNew) pushUndo(); refreshPre&&refreshPre(); }}));
@@ -2016,15 +2073,16 @@ function buildCtx(){
   if(type==='bank'){ sl('Thickness',0.3,s*0.5,H,setH,fmLen,true); sl('Drift with wind',0,2,()=>t.aux,v=>t.aux=v,fm(2,'×')); }
   if(!isNew){ subH(b,'Placement');
     if(t.shape){ sl(type==='bank'?'Width':'Size X',0.2,s*3,()=>t.r[0]*2,v=>t.r[0]=v/2,fmLen,true); sl(type==='bank'?'Depth':'Size Z',0.2,s*3,()=>t.r[2]*2,v=>t.r[2]=v/2,fmLen,true); }
+    else if(t.gen&&t.win){ sl('Size X',0.5,SC.bsize[0]*1.5,()=>t.win.rx*2,v=>{ t.win.rx=v/2; rebakeGen(t); },fmLen,true); sl('Size Z',0.5,SC.bsize[0]*1.5,()=>t.win.rz*2,v=>{ t.win.rz=v/2; rebakeGen(t); },fmLen,true); }
     else if(type!=='pool') sl('Scale',0.1,8,()=>t.ms,v=>t.ms=v,v=>v.toFixed(2)+'×',true);
-    if(type!=='pool') sl('Rotation',-180,180,()=>-t.yaw/D2R,v=>t.yaw=-v*D2R,fm(0,'°'));
+    if(type!=='pool') sl('Rotation',-180,180,()=>-(t.gen&&t.win?t.win.yaw:t.yaw)/D2R,v=>{ if(t.gen&&t.win){ t.win.yaw=-v*D2R; rebakeGen(t); } else t.yaw=-v*D2R; },fm(0,'°'));
     sl('Footprint feather',0.05,1,()=>t.feather,v=>t.feather=v,pct);
     const bt=document.createElement('div'); bt.className='btns'; bt.style.marginTop='6px';
     bt.innerHTML=`<button class="btn" id="bSettle" title="Let it come to rest the way real fog would (S)">Settle</button><button class="btn" id="bDup">Duplicate</button><button class="btn" id="bFrame">Frame</button>${t.mask>=0?'<button class="btn" id="bClear">Clear paint</button><button class="btn" id="bFlat">Flatten sculpt</button>':''}<button class="btn danger" id="bDel">Delete</button>`; b.appendChild(bt);
     bt.querySelector('#bSettle').onclick=settleSel; bt.querySelector('#bDup').onclick=duplicateSel; bt.querySelector('#bFrame').onclick=frameSel; bt.querySelector('#bDel').onclick=deleteSel;
-    const cl=bt.querySelector('#bClear'); if(cl) cl.onclick=()=>{ const m=MASK.data.get(t.mask); m.add.fill(0); m.erase.fill(0); if(!t.shape){ t.shape=true; t.r[0]=t.r[0]||SC.scale*0.1; t.r[2]=t.r[2]||SC.scale*0.1; } uploadMask(t); markEl(); pushUndo(); buildCtx(); };
+    const cl=bt.querySelector('#bClear'); if(cl) cl.onclick=()=>{ const m=MASK.data.get(t.mask); if(t.gen&&m.field){ m.padd.fill(0); m.erase.fill(0); rebakeGen(t); markEl(); pushUndo(); return; } m.add.fill(0); m.erase.fill(0); if(!t.shape){ t.shape=true; t.r[0]=t.r[0]||SC.scale*0.1; t.r[2]=t.r[2]||SC.scale*0.1; } uploadMask(t); markEl(); pushUndo(); buildCtx(); };
     const fl=bt.querySelector('#bFlat'); if(fl) fl.onclick=()=>{ const m=MASK.data.get(t.mask); m.ht.fill(0.5); uploadMask(t); markEl(); pushUndo(); };
-    const n2=document.createElement('div'); n2.className='note'; n2.innerHTML='Drag the handles in the view: <b>dot</b> moves (Shift lifts), <b>arrow</b> sets height, <b>squares</b> size (Shift keeps proportion), <b>ring</b> rotates. <b>Paint</b> (7) adds or clears, <b>Sculpt</b> (8) raises or lowers parts.'; b.appendChild(n2); }
+    const n2=document.createElement('div'); n2.className='note'; n2.innerHTML='In the view: drag the fog or the <b>square</b> to move it where you point, <b>red/blue arrows</b> move along an axis, <b>green</b> sets height, the <b>ring</b> rotates, <b>outline squares</b> resize (diamonds keep proportion). Resizing a terrain-derived element re-evaluates the ground, it does not stretch. <b>Fog brush</b> (7) piles fog up or thins it in places.'; b.appendChild(n2); }
 }
 let globRefresh=[]; function refreshGlobal(){ globRefresh.forEach(f=>f()); drawDial(); }
 function buildGlobal(){

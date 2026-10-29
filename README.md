@@ -16,7 +16,8 @@ Each shot's utility EXR (world position `P`, normals `N`, alpha, and a beauty or
 - builds every element as a signed density field with detail octaves pushed in and out of its surface (Worley billows or fBm wisps, each octave warped by the last), faded by pixel footprint so distance never turns to speckle
 - gives every element its own look: style presets per type, plus wisps ↔ billows, detail, breakup, windswept, turbulence, edge softness and structure size. Pick a tool and set the look before you place; select an element afterwards to change it
 - **Settle** (S, or Settle all) lets elements come to rest the way real fog would: valley fog refills its basin from the ground up, ground fog and mist drain downhill into hollows, banks sit back on the ground, low cloud drops until the hills reach into it
-- a transform gizmo in the view: move (Shift lifts), height, size, uniform scale and rotate. **Paint** adds or clears fog, **Sculpt** raises or lowers parts of an element
+- a Maya-style gizmo on the selected element: drag the fog to put it where you point, axis arrows, a height arrow, a rotate ring and resize handles on the outline. Resizing a terrain-derived element re-evaluates the ground instead of stretching it
+- one **Fog brush**: pile up, thin out, add, erase or smooth fog in places (Ctrl does the opposite)
 - **Draft / Final**: Draft is the fast interactive march; Final renders at full plate resolution with twice the steps, every detail octave and detailed self-shadowing, and keeps refining
 - lights fog with a measured cloud-droplet (Mie) phase function, multiple scattering and soft sun shafts from the reconstructed set
 - checks value structure (Values / Value bands) and copies a Nuke stub or Houdini VEX plus a fog-set JSON for hand-off
