@@ -331,7 +331,7 @@ float pfbm(vec3 p,float f0,int oct){ float a=0.5,s=0.,t=0.,f=f0; for(int k=0;k<5
 float wfbm(vec3 p,float f0){ return worley(p*f0,f0)*0.625+worley(p*f0*2.,f0*2.)*0.25+worley(p*f0*4.,f0*4.)*0.125; }
 void main(){
   vec3 p=vec3(gl_FragCoord.xy/uN,uZ);
-  if(uMode==1){ o=vec4(worley(p*3.,3.),worley(p*6.,6.),worley(p*12.,12.),pfbm(p,4.,3)); return; }
+  if(uMode==1){ o=vec4(worley(p*4.,4.),worley(p*8.,8.),worley(p*16.,16.),pfbm(p,4.,4)); return; }
   float pf=pfbm(p,4.,3), wf=wfbm(p,4.);
   float pw=clamp((pf-(wf-1.0))/(2.0-wf),0.,1.); pw=smoothstep(0.28,0.95,pw);
   o=vec4(pw, wfbm(p,6.), wfbm(p,8.), pfbm(p,3.,4));
@@ -387,13 +387,13 @@ const FS_MARCH=HEAD+`
 #define NE ${MAX_E}
 uniform sampler2D uDP; uniform int uDFlip; uniform vec2 uDRes;
 uniform sampler2D uGT; uniform vec2 uWC; uniform float uWS,uWK,uWSK;
-uniform sampler2D uAna; uniform sampler2D uAna2; uniform sampler2D uAna3; uniform vec2 uBMin,uBSize; uniform float uCanH;
+uniform sampler2D uAna; uniform sampler2D uAna2; uniform sampler2D uAna3; uniform sampler2D uAna4; uniform vec2 uBMin,uBSize; uniform float uCanH, uHobS;
 uniform sampler2DArray uMasks;
 uniform sampler3D uNT; uniform sampler3D uND;
 uniform int uNE; uniform vec4 uE0[NE]; uniform vec4 uE1[NE]; uniform vec4 uE2[NE]; uniform vec4 uE3[NE]; uniform vec4 uE4[NE]; uniform vec4 uE5[NE]; uniform vec4 uE6[NE]; uniform vec4 uE7[NE]; uniform vec4 uE8[NE]; uniform vec4 uEB[NE];
 uniform vec3 uWind; uniform float uTime, uEvolve;
 uniform vec3 uCam,uR,uU,uF; uniform vec4 uIntr; uniform vec2 uRes;
-uniform int uSteps; uniform float uFrame, uMaxD, uPixAng; uniform int uHQ;
+uniform int uSteps, uSub; uniform float uFrame, uMaxD, uPixAng; uniform int uHQ;
 uniform vec3 uSunDir, uSunE, uSkyAvg, uAlb; uniform float uMS, uGain; uniform vec4 uPh;
 uniform sampler2D uFS; uniform mat4 uFLM; uniform float uFBiasV, uFPen, uFTexel; uniform int uSunOn;
 uniform sampler2D uPrev; uniform float uBlend; uniform float uLS;
@@ -402,8 +402,10 @@ vec2 WD=vec2(1.,0.), WP=vec2(0.,1.); float WSP=0.; float gFoot=0.1;
 vec2 w2t(vec2 xz){ vec2 d=(xz-uWC)*(uWSK/uWS); return asinh(d)/uWK*0.5+0.5; }
 vec2 rot2(vec2 v,float a){ float c=cos(a), s=sin(a); return vec2(c*v.x-s*v.y, s*v.x+c*v.y); }
 /* Each element: a physical shape model (type) gives a smooth body c; it becomes a signed field that detail octaves push
-   in and out — Worley billows or fBm wisps, each octave warped by the one before (the Spectral Sky cloud method) —
-   with octaves faded out once they are smaller than a few pixels so distance never turns into speckle. */
+   in and out — Worley billows or fBm wisps, each octave warped by the one before (the Spectral Sky cloud method).
+   The same octaves modulate the density inside, so thin fog shows clumps and voids rather than a uniform slab.
+   Octaves fade only once they drop below about a pixel; sub-pixel jitter plus accumulation anti-aliases the rest.
+   lvl: 0 body only, 1 + large shapes, 2 + all detail, 3 large shapes with the most fog detail could add (skip test) */
 float density(vec3 p,int lvl){
   float d=0.; bool got=false; float g=0.; vec4 a1=vec4(0.), a2=vec4(0.), a3=vec4(0.5,0.5,0.,1.);
   for(int i=0;i<NE;i++){ if(i>=uNE) break;
@@ -473,28 +475,31 @@ float density(vec3 p,int lvl){
     float cov=e8.y; c*=smoothstep(0.6-cov*0.8,0.82-cov*0.8,big*0.8+sh*0.2+0.1);
     float th=(ty==2)?0.06:0.25, f0=c-th, amp=e8.x*0.42;
     if(f0+amp*0.6<=0.) continue;
-    float f=f0, rimW=mix(0.05,0.45,e8.z);
-    if(lvl>1&&amp>0.){
+    float f=f0, rimW=mix(0.04,0.7,e8.z);
+    float inner=1.;
+    if(lvl==2&&amp>0.){
       vec3 qd=vec3(dot(q.xz,WD)/(1.+ws*3.), q.y/max(e5.y,0.4), dot(q.xz,WP))+wv*S*e6.w*0.3;
       float billow=0., wisp=0., aw=0.5; vec3 pv=vec3(0.5);
-      for(int k=0;k<4;k++){
-        if(k==3&&uHQ==0) break;
+      for(int k=0;k<5;k++){
+        if(k==4&&uHQ==0) break;
         float L=S*0.42*pow(0.34,float(k));
-        float wk=smoothstep(2.5,7.,L*0.25/gFoot)*smoothstep(0.06,0.2,L*0.25); if(wk<=0.) break;
-        float lod=max(log2(gFoot*64./L),0.);
+        float wk=smoothstep(0.6,1.6,L*0.25/gFoot)*smoothstep(0.008,0.025,L*0.25); if(wk<=0.) break;
+        float lod=max(log2(gFoot*128./L)-0.5,0.);
         vec4 dn=textureLod(uND,(qd+(pv-0.5)*L*0.35)/L+vec3(0.13*float(k),ev*0.05*float(k+1),0.29*float(k)),lod);
         pv=dn.rgb;
-        float kw=k==0?0.55:k==1?0.3:k==2?0.16:0.1;
+        float kw=k==0?0.55:k==1?0.3:k==2?0.17:k==3?0.1:0.06;
         billow+=((dn.r*0.625+dn.g*0.25+dn.b*0.125)-0.56)*kw*wk;
         wisp+=(dn.a-0.5)*kw*wk;
         if(k==1) aw=mix(0.5,dn.a,wk);
       }
-      float disp=mix(wisp,billow,e6.z)*amp*2.4;
+      float var=mix(wisp,billow,e6.z);
+      inner=clamp(1.+var*2.6*e8.x,0.08,2.2);
+      float disp=var*amp*2.4;
       disp= disp<0.? disp : disp*0.45*smoothstep(-0.1*amp,0.03,f0);
       f+=disp;
       f-=amp*0.5*(1.-smoothstep(0.,0.25,f))*max(aw-0.38,0.);
-    } else f-=amp*0.12;
-    float dv=smoothstep(0.,rimW,f)*(0.55+0.45*clamp(c,0.,1.2))*smoothstep(-amp*0.7,rimW*0.5,f0);
+    } else if(lvl==3) f+=amp*0.5; else f-=amp*0.12;
+    float dv=smoothstep(0.,rimW,f)*(0.45+0.55*clamp(c,0.,1.2))*smoothstep(-amp*0.7,rimW*0.5,f0)*inner;
     d+=e2.x*dv;
   }
   return d;
@@ -510,6 +515,8 @@ float hash13(vec3 p){ uvec3 q=uvec3(ivec3(p))*uvec3(1597334673u,3812015801u,2798
 void main(){
   WSP=length(uWind.xz); if(WSP>1e-3){ WD=uWind.xz/WSP; WP=vec2(-WD.y,WD.x); }
   vec2 fc=gl_FragCoord.xy; vec2 ip=vec2(fc.x,uRes.y-fc.y);
+  // sub-pixel jitter: accumulated frames anti-alias detail finer than a pixel instead of aliasing it into speckle
+  ip+=vec2(hash13(vec3(fc,uFrame*1.7+3.)),hash13(vec3(fc.yx+17.,uFrame*2.3+7.)))-0.5;
   vec3 rd=normalize(uF+uR*((ip.x-uIntr.z)/uIntr.x)-uU*((ip.y-uIntr.w)/uIntr.y));
   vec2 bp=ip*(uDRes/uRes); ivec2 di=ivec2(clamp(bp,vec2(0.),uDRes-1.)); if(uDFlip==1) di.y=int(uDRes.y)-1-di.y;
   vec4 P=texelFetch(uDP,di,0);
@@ -521,30 +528,48 @@ void main(){
   if(t1>t0){
     float j=hash13(vec3(fc,uFrame+1.));
     float cosT=dot(rd,uSunDir), ph0=phaseMie(cosT);
-    /* samples sit on fixed distance shells around the camera (quadratic in distance), so neighbouring pixels sample alike */
+    float sunUp=max(uSunDir.y,0.);
+    /* coarse samples sit on fixed distance shells around the camera; an interval that may hold fog is re-marched
+       in uSub fine steps so detail is sampled at its own scale, not smeared by a long step */
     float s0=sqrt(t0/uMaxD), s1=sqrt(t1/uMaxD), base=1./float(uSteps*6);
     float lv=exp2(ceil(log2(max((s1-s0)/float(uSteps)/base,1.)))), ds=base*lv;
-    float k0=floor(s0/ds);
+    float k0=floor(s0/ds); bool prevHit=false; float sl=uLS;
     for(int i=0;i<400;i++){ if(i>uSteps+2) break;
-      float s=(k0+float(i)+j)*ds; if(s<s0) continue; if(s>s1) break;
-      float t=uMaxD*s*s, dt=uMaxD*2.*s*ds;
-      vec3 p=uCam+rd*t;
-      gFoot=max(t*uPixAng,1e-3);
-      float d=density(p,2);
-      if(d<1e-7) continue;
-      float tauS=0.;
-      if(uSunOn==1){ float sl=uLS;
-        int l1=uHQ==1?2:1;
-        tauS=density(p+uSunDir*(0.6*sl),l1)*1.2*sl+density(p+uSunDir*(2.*sl),l1)*2.*sl+density(p+uSunDir*(5.*sl),1)*4.*sl+density(p+uSunDir*(11.*sl),1)*8.*sl
-            +density(p+uSunDir*(24.*sl),0)*18.*sl+density(p+uSunDir*(52.*sl),0)*38.*sl+density(p+uSunDir*(110.*sl),0)*76.*sl; }
-      float tauU=density(p+vec3(0.,1.5*uLS,0.),1)*3.*uLS+density(p+vec3(0.,7.*uLS,0.),0)*9.*uLS+density(p+vec3(0.,22.*uLS,0.),0)*22.*uLS;
-      float vis=uSunOn==1?sunVis(p,fract(j*7.31+float(i)*0.618034)):0.;
-      float Ls=ph0*exp(-tauS)*vis; float a=0.45, b=uMS, cc=0.55;
-      for(int k=1;k<4;k++){ Ls+=b*hg(cosT,0.7*cc)*exp(-a*tauS)*mix(vis,1.,0.6); a*=0.45; b*=uMS; cc*=0.55; }
-      vec3 Sv=uSunE*Ls + uSkyAvg*(0.55*exp(-0.55*tauU)+0.12);
-      float tr=exp(-d*dt);
-      L+=T*Sv*uAlb*(1.-tr);
-      T*=tr;
+      float sa=(k0+float(i))*ds; if(sa+ds<s0) continue; if(sa>s1) break;
+      float tm=uMaxD*(sa+0.5*ds)*(sa+0.5*ds); vec3 pm=uCam+rd*tm; gFoot=max(tm*uPixAng,1e-3);
+      bool hit=density(pm,3)>1e-6||density(uCam+rd*(uMaxD*(sa+ds)*(sa+ds)),3)>1e-6;
+      if(!hit&&!prevHit){ prevHit=false; continue; } prevHit=hit;
+      // far shadow and sky taps once per interval
+      float tauFar=uSunOn==1?density(pm+uSunDir*(24.*sl),0)*18.*sl+density(pm+uSunDir*(52.*sl),0)*38.*sl+density(pm+uSunDir*(110.*sl),0)*76.*sl:0.;
+      float tauUFar=density(pm+vec3(0.,7.*sl,0.),0)*9.*sl+density(pm+vec3(0.,22.*sl,0.),0)*22.*sl;
+      for(int m=0;m<16;m++){ if(m>=uSub) break;
+        float s=sa+(float(m)+fract(j+float(m)*0.618034))*ds/float(uSub); if(s<s0) continue; if(s>s1) break;
+        float t=uMaxD*s*s, dt=uMaxD*2.*s*ds/float(uSub);
+        vec3 p=uCam+rd*t; gFoot=max(t*uPixAng,1e-3);
+        float d=density(p,2);
+        if(d<1e-7) continue;
+        float tauS=tauFar;
+        if(uSunOn==1){ int l3=uHQ==1?2:1;
+          tauS+=density(p+uSunDir*(0.5*sl),2)*1.*sl+density(p+uSunDir*(1.6*sl),2)*1.8*sl+density(p+uSunDir*(4.*sl),l3)*3.6*sl+density(p+uSunDir*(10.*sl),1)*8.*sl; }
+        float tauU=tauUFar+density(p+vec3(0.,1.5*sl,0.),1)*3.*sl;
+        float vis=uSunOn==1?sunVis(p,fract(j*7.31+float(i*16+m)*0.618034)):0.;
+        // sun: single scattering with the droplet phase, then multiple-scattering octaves (Wrenninge) that spread light
+        // a little way into geometric shadow but not through it
+        float Ls=ph0*exp(-tauS)*vis; float a=0.45, b=uMS, cc=0.55;
+        for(int k=1;k<4;k++){ Ls+=b*hg(cosT,0.7*cc)*exp(-a*tauS)*mix(vis,1.,0.12); a*=0.45; b*=uMS; cc*=0.55; }
+        // sky: only the part of the sky this point can see (streets, valleys and forest floors see less of it)
+        vec2 bu=(p.xz-uBMin)/uBSize; vec2 sv4=textureLod(uAna4,bu,0.).rg; float gh=p.y-textureLod(uGT,w2t(p.xz),0.).r;
+        float sv=mix(sv4.x,1.,smoothstep(0.,max(sv4.y*uHobS,0.3),gh));
+        float shade=textureLod(uAna2,bu,0.).g;
+        vec3 sky=uSkyAvg*sv*(0.65*exp(-0.5*tauU)+0.35*exp(-0.12*tauU));
+        // light bounced off the ground below (grass, roads ~15 %)
+        vec3 bounce=0.15*(uSunE*sunUp*(1.-shade)*0.3183+uSkyAvg*sv4.x)*0.5;
+        vec3 Sv=uSunE*Ls+sky+bounce;
+        float tr=exp(-d*dt);
+        L+=T*Sv*uAlb*(1.-tr);
+        T*=tr;
+        if(T<0.004) break;
+      }
       if(T<0.004) break;
     }
   }
@@ -1015,7 +1040,7 @@ async function renderSampleFrame(kind,prog){
 }
 /* a starting set for the lane: valley fog in the valley below, a thin ground fog drifting across the lane ahead */
 function streetDefaults(){
-  const p=runAutoQuiet('bank'); if(p){ applyPreset(p,'bank',PRESETS.bank[0][1]); p.preset='Rolling'; p.name='Fog bank · down the valley'; }
+  const p=runAutoQuiet('cloud'); if(p){ applyPreset(p,'cloud',PRESETS.cloud[1][1]); p.preset='Windswept'; p.name='Low cloud · over the far hills'; }
   const z=30, x=LX(z)-3; const g=groundAt(x,z); const [tx,tz]=[LX(z+1)-LX(z-1),2]; const yaw=-Math.atan2(tz,tx)+Math.PI/2;
   const e=mkEl('ground',{name:'Ground fog · on the lane',c:[x,g,z],r:[13,0.9,22],yaw});
   applyPreset(e,'ground',PRESETS.ground[2][1]); e.r[1]=1.1; e.terrain=0.4; e.preset='Wispy'; S.els.push(e);
@@ -1242,9 +1267,9 @@ async function analyse(pl,prog){
   SC.HG=HG;
   // 3. analysis grid (uniform over the scene)
   prog('Reading the terrain',0.5); await yieldUI();
-  const cellA=side/NA, H=new Float32Array(NA*NA), vis=new Float32Array(NA*NA), walls=new Float32Array(NA*NA), tot=new Float32Array(NA*NA), canC=new Float32Array(NA*NA), canHm=new Float32Array(NA*NA), nv=new Float32Array(NA*NA), nvc=new Float32Array(NA*NA), r1=new Float32Array(NA*NA), r2=new Float32Array(NA*NA), rc_=new Float32Array(NA*NA); const canMin=Math.max(1.2,SC.scale*0.004);
+  const top=new Float32Array(NA*NA).fill(-Infinity), cellA=side/NA, H=new Float32Array(NA*NA), vis=new Float32Array(NA*NA), walls=new Float32Array(NA*NA), tot=new Float32Array(NA*NA), canC=new Float32Array(NA*NA), canHm=new Float32Array(NA*NA), nv=new Float32Array(NA*NA), nvc=new Float32Array(NA*NA), r1=new Float32Array(NA*NA), r2=new Float32Array(NA*NA), rc_=new Float32Array(NA*NA); const canMin=Math.max(1.2,SC.scale*0.004);
   for(let j=0;j<NA;j++) for(let i=0;i<NA;i++) H[j*NA+i]=groundAt(SC.bmin[0]+(i+0.5)*cellA,SC.bmin[1]+(j+0.5)*cellA);
-  for(let i=0;i<n;i+=2){ const s=i*4; if(P[s+3]<0.5) continue; const ix=Math.floor((P[s]-SC.bmin[0])/cellA), iz=Math.floor((P[s+2]-SC.bmin[1])/cellA); if(ix<0||iz<0||ix>=NA||iz>=NA) continue; const k=iz*NA+ix; tot[k]++;
+  for(let i=0;i<n;i+=2){ const s=i*4; if(P[s+3]<0.5) continue; const ix=Math.floor((P[s]-SC.bmin[0])/cellA), iz=Math.floor((P[s+2]-SC.bmin[1])/cellA); if(ix<0||iz<0||ix>=NA||iz>=NA) continue; const k=iz*NA+ix; tot[k]++; if(P[s+1]>top[k]) top[k]=P[s+1];
     const hg=P[s+1]-groundAt(P[s],P[s+2]); let ny=1; if(N){ const nl=Math.hypot(N[s],N[s+1],N[s+2]); ny=nl>1e-4?Math.abs(N[s+1])/nl:1; }
     if(ny>=0.35){ r1[k]+=hg; r2[k]+=hg*hg; rc_[k]++; }
     if(N){ const px=i%w, py=(i/w)|0; if(px>0&&py>0&&px<w-1&&py<h-1){ let sx=0,sy=0,sz=0; for(let b=-1;b<=1;b++) for(let a=-1;a<=1;a++){ const q=((py+b)*w+px+a)*4; if(P[q+3]<0.5) continue; const nl=Math.hypot(N[q],N[q+1],N[q+2])||1; sx+=N[q]/nl; sy+=N[q+1]/nl; sz+=N[q+2]/nl; } nv[k]+=1-Math.hypot(sx,sy,sz)/9; nvc[k]++; } }
@@ -1277,6 +1302,7 @@ async function analyse(pl,prog){
     wet[k]=clamp(low*low*(1-sstep(0.02,0.12,slope[k]))+drain[k]*0.5,0,1);
     gx[k]=(H[j*NA+Math.min(i+1,NA-1)]-H[j*NA+Math.max(i-1,0)])/(2*cellA); gz[k]=(H[Math.min(j+1,NA-1)*NA+i]-H[Math.max(j-1,0)*NA+i])/(2*cellA); }
   Object.assign(SC,{H,pool,hol,warm,slope,seenA:seen,cellA,canopy,canH:Float32Array.from(cHB,v=>Math.min(v,canHmax)),canHmax:Math.max(canHmax,0.01),drain,wet,gx,gz,shade:new Float32Array(NA*NA)});
+  skyView(top);
   // 4. GPU textures
   if(T.gt) gl.deleteTexture(T.gt); if(T.ana) gl.deleteTexture(T.ana);
   T.gt=tex2D(NG,NG,X.fl?gl.R32F:gl.R16F,gl.RED,gl.FLOAT,gl.LINEAR,gl.CLAMP_TO_EDGE,HG);
@@ -1288,6 +1314,17 @@ async function analyse(pl,prog){
   const pi=new Uint32Array((PN-1)*(PN-1)*6); let q=0; for(let j=0;j<PN-1;j++) for(let i=0;i<PN-1;i++){ const a=j*PN+i,b=a+1,c=a+PN,d=c+1; pi[q++]=a;pi[q++]=c;pi[q++]=b;pi[q++]=b;pi[q++]=c;pi[q++]=d; }
   VA.proxy=mkVAO([{loc:0,size:2,data:pg}],pi); VA.proxyN=pi.length;
 }
+/* how much sky each patch of ground sees, and how tall the things around it are: fog in a street, a narrow valley or under
+   trees gets less skylight near the ground, more as it rises above the obstructions */
+function skyView(top){ const N=NA, H=SC.H, T_=new Float32Array(N*N), sv=new Uint8Array(N*N*4);
+  for(let k=0;k<N*N;k++) T_[k]=isFinite(top[k])?Math.max(top[k],H[k]):H[k];
+  const R=clamp(Math.round(SC.scale*0.6/SC.cellA),4,40), dirs=12, HO=SC.scale*0.15;
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const k=j*N+i, h0=H[k]+Math.max(0.5,SC.scale*0.004); let open=0, hob=0;
+    for(let d=0;d<dirs;d++){ const a=d/dirs*Math.PI*2, dx=Math.cos(a), dz=Math.sin(a); let mx=0, oh=0;
+      for(let r=1;r<=R;r+=r<6?1:2){ const ii=Math.round(i+dx*r), jj=Math.round(j+dz*r); if(ii<0||jj<0||ii>=N||jj>=N) break; const kk=jj*N+ii; const dh=T_[kk]-h0; if(dh>0){ mx=Math.max(mx,dh/(r*SC.cellA)); oh=Math.max(oh,dh); } }
+      open+=1-Math.sin(Math.atan(mx)); hob+=oh; }
+    sv[k*4]=clamp(open/dirs,0,1)*255; sv[k*4+1]=clamp(hob/dirs/HO,0,1)*255; sv[k*4+3]=255; }
+  if(T.ana4) gl.deleteTexture(T.ana4); T.ana4=tex2D(N,N,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.CLAMP_TO_EDGE,sv); }
 /* ground in the sun's shadow (terrain + canopy), where fog lingers longest */
 function updateShade(){ if(!SC.H) return; const N=NA, L=sunDir(), sh=new Float32Array(N*N);
   if(L[1]<=0.01) sh.fill(1); else { const hd=Math.hypot(L[0],L[2])||1e-6, dx=L[0]/hd, dz=L[2]/hd, rise=L[1]/hd, step=SC.cellA*0.9, top=SC.top+SC.range*0.5+SC.canHmax;
@@ -1526,7 +1563,7 @@ function renderLayout(V){
   gl.disable(gl.DEPTH_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
 }
 function expo(){ const base=S.plateLook===0&&PL.beautyExpo?PL.beautyExpo:LIT_EXPO; return base*Math.pow(2,S.ev); }
-function marchPass(V,vw,vh,steps,blend,hq){
+function marchPass(V,vw,vh,steps,blend,hq,sub){
   ensureAccum(vw,vh);
   const pr=use('march'); const src=accum.cur, dst=1-src; gl.bindFramebuffer(gl.FRAMEBUFFER,accum.fb[dst]); drawBufs(1); gl.viewport(0,0,vw,vh);
   const c=scaleCam(V.cam,vw,vh);
@@ -1538,7 +1575,7 @@ function marchPass(V,vw,vh,steps,blend,hq){
   u1i(pr,'uNE',ELU.n); for(const k of ELK) gl.uniform4fv(U(pr,'u'+k+'[0]'),ELU[k]);
   u3v(pr,'uWind',mul(windDir(),S.wind.speed)); u1f(pr,'uTime',S.time); u1f(pr,'uEvolve',S.look.evolve);
   u3v(pr,'uCam',c.pos); u3v(pr,'uR',c.r); u3v(pr,'uU',c.u); u3v(pr,'uF',c.f); u4f(pr,'uIntr',c.fx,c.fy,c.cx,c.cy); u2f(pr,'uRes',vw,vh);
-  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40); u1f(pr,'uPixAng',1/c.fx); u1i(pr,'uHQ',hq?1:0);
+  u1i(pr,'uSteps',steps); u1f(pr,'uFrame',frames); u1f(pr,'uMaxD',SC.scale*40); u1f(pr,'uPixAng',1/c.fx); u1i(pr,'uHQ',hq?1:0); u1i(pr,'uSub',sub); bindTex(10,gl.TEXTURE_2D,T.ana4); u1i(pr,'uAna4',10); u1f(pr,'uHobS',SC.scale*0.15);
   u3v(pr,'uSunDir',sunDir()); u3v(pr,'uSunE',SUN_E); u3v(pr,'uSkyAvg',SKY_AVG); u3v(pr,'uAlb',S.look.tint.map(v=>v*0.985)); gl.uniform4fv(U(pr,'uPh'),mieParams(S.look.drop)); u1f(pr,'uMS',S.look.ms);
   u1f(pr,'uGain',S.fogGain*Math.pow(2,S.fogEV)); uM4(pr,'uFLM',F.flm.VP); { const tw=F.flm.extent/F.fsSize; u1f(pr,'uFBiasV',window.__dbgNoShadow?1e3:(tw*2.5+SC.scale*0.002)/F.flm.range); u1f(pr,'uFTexel',1/F.fsSize); u1f(pr,'uFPen',F.flm.range*0.02/F.flm.extent); } u1i(pr,'uSunOn',S.sun.el>-1?1:0);
   u1f(pr,'uBlend',blend); u1f(pr,'uLS',clamp(S.look.noise*0.07,0.03,6));
@@ -1577,7 +1614,7 @@ function frame(now){
     let drew=false; const tgt=fin?S.finalFrames:S.frames;
     if(S.fogOn&&ELU.n>0&&(frames<tgt||S.playing)){
       const blend= S.playing? Math.max(1/(frames+1),0.45) : 1/(frames+1);
-      marchPass(V,vw,vh,moving?Math.round(S.steps*0.45):fin?Math.round(S.steps*2):S.steps,blend,fin); frames++; drew=true;
+      marchPass(V,vw,vh,moving?Math.round(S.steps*0.4):fin?Math.round(S.steps*1.5):S.steps,blend,fin,moving?2:fin?8:4); frames++; drew=true;
       if(moving){ if(ftAvg>40) volScale=Math.max(0.3,volScale*0.92); else if(ftAvg<22) volScale=Math.min(0.75,volScale*1.04); }
     }
     if(drew||dirty.display||V.layout&&frames<=1){ displayPass(V); dirty.display=false; }
@@ -2142,7 +2179,7 @@ function initGL(){
   mkProg('noise',VS_FS,FS_NOISE); mkProg('sky',VS_FS,FS_SKY); mkProg('march',VS_FS,FS_MARCH); mkProg('disp',VS_FS,FS_DISP);
   mkProg('lRecon',VS_RECON,FS_RECON); mkProg('lProxy',VS_PROXY,FS_PROXY); mkProg('dRecon',VS_RECON,FS_EMPTY); mkProg('dProxy',VS_PROXY,FS_EMPTY);
   mkProg('sTerrain',VS_ST,FS_ST); mkProg('sBld',VS_SB,FS_SB); mkProg('sTree',VS_STR,FS_STR); mkProg('sWater',VS_SW,FS_SW); mkProg('sSky',VS_FS,FS_SSKY); mkProg('sD',VS_SD,FS_EMPTY); mkProg('sTreeD',VS_STR.replace('out vec3 vP; out vec3 vN; out vec3 vC; out float vPart; out float vH;','out vec3 vP; out vec3 vN; out vec3 vC; out float vPart; out float vH;'),FS_EMPTY); mkProg('sDown',VS_FS,FS_SDOWN);
-  T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT); T.detail=tex3D(64,64,64,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT);
+  T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.LINEAR,gl.REPEAT);
   T.sky=tex2D(256,128,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR,gl.CLAMP_TO_EDGE); gl.bindTexture(gl.TEXTURE_2D,T.sky); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
   F.sky=mkFBO([T.sky]); drawBufs(1); F.layer=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   return true;
@@ -2154,7 +2191,7 @@ async function boot(){
   while(true){ const done=Object.values(PR).filter(progDone).length, n=Object.keys(PR).length; showLoader(`Compiling shaders ${done}/${n} · ${((performance.now()-t0)/1000).toFixed(1)} s`,0.02+0.15*done/n); if(done===n) break; await new Promise(r=>setTimeout(r,60)); }
   try{ for(const p of Object.values(PR)) progCheck(p); }catch(e){ fail(e.message); return; }
   const pr=use('noise'); gl.bindFramebuffer(gl.FRAMEBUFFER,F.layer); drawBufs(1);
-  for(const [tex,N,mode,p0,p1] of [[T.noise,128,0,0.17,0.08],[T.detail,64,1,0.25,0.04]]){ gl.viewport(0,0,N,N); u1f(pr,'uN',N); u1i(pr,'uMode',mode);
+  for(const [tex,N,mode,p0,p1] of [[T.noise,128,0,0.17,0.08],[T.detail,128,1,0.25,0.06]]){ gl.viewport(0,0,N,N); u1f(pr,'uN',N); u1i(pr,'uMode',mode);
     for(let z=0;z<N;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,tex,0,z); u1f(pr,'uZ',(z+0.5)/N); fullscreen(); if(z%16===15){ showLoader('Building the noise volumes',p0+p1*z/N); await yieldUI(); } } }
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   for(const tex of [T.noise,T.detail]){ gl.bindTexture(gl.TEXTURE_3D,tex); gl.generateMipmap(gl.TEXTURE_3D); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); }
