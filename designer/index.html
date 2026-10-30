@@ -469,6 +469,8 @@ const TEMPLATES={
     sim:{age:0.6,turb:0.45,lift:-0.45,calm:0.35,spread:0.7,wind:0.1,diss:0.03},det:{billow:0.25,amt:0.65,edge:0.75,brk:0.35},den:{d:0.24}},
   veil:{label:'Mist veil',size:[90,30,24],floor:true,profile:1,icon:'<path d="M3 8h22"/><path d="M5 12h20"/><path d="M3 16h22"/><path d="M6 20h16"/>',
     sim:{age:0.5,turb:0.35,lift:-0.05,calm:0.2,spread:0.3,wind:0.2,diss:0.02},det:{billow:0.15,amt:0.45,edge:0.92,brk:0.15},den:{d:0.2}},
+  hang:{label:'Hanging mist',size:[70,26,30],floor:false,profile:0,rough:0.7,icon:'<path d="M3 9c4-2 8 1 12-1s7-1 11 0"/><path d="M6 14c4-1.5 7 1 11-.5s5-1 8 0"/><path d="M4 19c3-1 6 .5 9-.3"/>',
+    sim:{age:0.55,turb:0.45,lift:0,calm:0.2,spread:0,wind:0.15,diss:0.03},det:{billow:0.2,amt:0.45,edge:0.85,brk:0.35},den:{d:0.2}},
   cloud:{label:'Cloud mass',size:[60,34,50],floor:false,profile:3,icon:'<path d="M6 19c-2.5 0-4-1.7-4-3.8 0-2 1.6-3.6 3.6-3.7C6.2 8.7 8.7 7 11.6 7c2.7 0 5 1.5 5.9 3.8.6-.2 1.3-.3 2-.3 3 0 5.5 2.3 5.5 5.2S22.5 19 19.5 19z"/>',
     sim:{age:0.55,turb:0.5,lift:0.15,calm:0.6,spread:0,wind:0.1,diss:0.03},det:{billow:0.85,amt:0.8,edge:0.45,brk:0.15},den:{d:0.78}},
   wisps:{label:'Rising wisps',size:[24,40,24],floor:true,profile:2,rough:0.5,icon:'<path d="M8 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M15 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M22 22c-2-4 2-6 0-10"/>',
@@ -500,6 +502,8 @@ function templatePrims(rec){
     for(let i=0;i<9;i++){ const a=R()*6.283, r=Math.sqrt(R())*0.3; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*(0.08+R()*0.08),H*(0.25+R()*0.15),D*(0.08+R()*0.08),0.7); }
     for(let i=0;i<4;i++){ const a=R()*6.283, r=0.15+R()*0.25; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*0.06,H*0.6,D*0.06,-0.75); } }
   else if(t==='veil'){ box(0,H*0.38,0,W*0.36,H*0.32,D*0.24,Math.min(H,D)*0.22,0.75); }
+  else if(t==='hang'){ for(let i=0;i<9;i++){ const x=(i/8-0.5)*W*0.62+(R()-0.5)*W*0.06; ell(x,H*(0.5+(R()-0.5)*0.3),(R()-0.5)*D*0.3,W*(0.09+R()*0.08),H*(0.13+R()*0.09),D*(0.16+R()*0.1),0.75); }
+    for(let i=0;i<3;i++) ell((R()-0.5)*W*0.5,H*(0.5+(R()-0.5)*0.2),(R()-0.5)*D*0.2,W*0.06,H*0.12,D*0.12,-0.6); }   // floating layer of mist for depth and separation
   else if(t==='cloud'){ ell(0,H*0.45,0,W*0.28,H*0.26,D*0.28,1);
     for(let i=0;i<13;i++){ const a=R()*6.283, r=0.15+R()*0.2; const s=0.12+R()*0.1; ell(Math.cos(a)*r*W,H*(0.38+R()*0.3),Math.sin(a)*r*D,W*s,H*s*1.6,D*s,0.95); } }
   else if(t==='wisps'){ const n=6+Math.floor(R()*3); for(let i=0;i<n;i++){ const a=R()*6.283, r=Math.sqrt(R())*0.3; let p=[Math.cos(a)*r*W,0,Math.sin(a)*r*D]; let rad=Math.min(W,D)*0.045;
@@ -945,8 +949,17 @@ function note(p,html){ const d=document.createElement('div'); d.className='note'
 const pct=v=>Math.round(v*100)+'%';
 let refreshers=[], brushRefs=[]; function refreshPanels(){ refreshers.forEach(f=>f()); brushRefs.forEach(f=>f()); }
 /* every change: what it invalidates, and an undo point when the drag ends */
-let lodRefresh=()=>{};
-const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); what(); poke(); autosave(); lodRefresh(); },fmt,log,tip,commit:pushUndo});
+/* detail styles: one click sets the character of the detail; the sliders below fine-tune it */
+const DSTYLES=[
+  {id:'smooth',label:'Smooth',tip:'Soft, even, almost no fine detail: background haze and separation layers',det:{billow:0.3,amt:0.25,edge:0.9,brk:0.1}},
+  {id:'wispy',label:'Wispy',tip:'Fine threads and veils',det:{billow:0.1,amt:0.7,edge:0.75,brk:0.25}},
+  {id:'billowy',label:'Billowy',tip:'Rounded, cauliflower lobes like cloud tops',det:{billow:0.85,amt:0.75,edge:0.45,brk:0.12}},
+  {id:'torn',label:'Torn',tip:'Ragged holes and broken edges',det:{billow:0.4,amt:0.8,edge:0.55,brk:0.55}},
+  {id:'streaky',label:'Streaky',tip:'Combed out in layers by the wind',det:{billow:0.15,amt:0.65,edge:0.7,brk:0.2},sim:{strat:0.8,wind:0.35}},
+  {id:'curly',label:'Curly',tip:'Tight swirls, like slow smoke',det:{billow:0.5,amt:0.85,edge:0.5,brk:0.1},sim:{turb:0.75}}];
+function applyStyle(id){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; Object.assign(REC.det,st.det); if(st.sim){ Object.assign(REC.sim,st.sim); markSimU(); } else markLight(); REC.style=id; pushUndo(); autosave(); refreshPanels(); toast(st.label+': '+st.tip.toLowerCase()); }
+let lodRefresh=()=>{}, styleChips=()=>{};
+const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); if(REC.style){ REC.style=null; styleChips(); } what(); poke(); autosave(); lodRefresh(); },fmt,log,tip,commit:pushUndo});
 function buildPanels(){
   refreshers=[];
   // start from
@@ -978,6 +991,7 @@ function buildPanels(){
   refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSimU,false,'Fog evaporates as it ages')));
   // detail
   const db=$('#detBody'); db.innerHTML='';
+  styleChips=chips(db,'',DSTYLES.map(st=>[st.id,st.label,st.tip]),()=>REC.style||null,v=>applyStyle(v)); refreshers.push(styleChips);
   refreshers.push(slider(db,S_('Wisps ↔ billows',0,1,()=>REC.det.billow,v=>REC.det.billow=v,v=>v<0.33?'wispy':v>0.67?'billowy':'mixed',markLight)));
   refreshers.push(slider(db,S_('Detail',0,1,()=>REC.det.amt,v=>REC.det.amt=v,pct,markLight,false,'How hard the fine detail cuts into the fog')));
   refreshers.push(slider(db,S_('Detail size',0.02,200,()=>REC.det.size,v=>REC.det.size=v,fmLen,markView,true,'Size of the largest detail; finer octaves sit under it')));
