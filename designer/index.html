@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brume Designer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<style>
+/* Layout: DCC workspace — tool rail | black void viewport | inspector; variations strip under the view.
+   One dark look on purpose: fog is judged against a dark surround. */
+:root{
+  --frame:#14181d; --panel:#1c2229; --panel-2:#252c35; --well:#0f1317;
+  --line:#2c343e; --line-2:#3a444f;
+  --fg:#dde3e9; --muted:#8b96a2; --faint:#5c6672;
+  --sun:#efb24d; --mist:#a6cbdd; --danger:#e06f5e; --ok:#8fc79b;
+  --f-ui:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --f-display:"Instrument Serif",Georgia,"Times New Roman",serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--frame);color:var(--fg);font:13px/1.35 var(--f-ui);overflow:hidden;-webkit-font-smoothing:antialiased;margin:0}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--sun);outline-offset:1px}
+#app{height:100%;box-sizing:border-box;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 12px;display:grid;grid-template-columns:46px minmax(0,1fr) 336px;grid-template-rows:50px minmax(0,1fr) auto;grid-template-areas:"top top top" "rail view insp" "rail strip insp";column-gap:8px}
+.top{grid-area:top;display:flex;align-items:center;gap:14px;min-width:0}
+.brand{display:flex;align-items:baseline;gap:10px;flex:none}
+.brand .word{font:italic 400 27px/1 var(--f-display);letter-spacing:.01em}
+.seg{display:flex;gap:2px;background:var(--well);border:1px solid var(--line);border-radius:5px;padding:2px;flex:none}
+.seg button{background:transparent;border:0;border-radius:3px;padding:4px 11px;font:500 12px var(--f-ui);color:var(--muted);white-space:nowrap}
+.seg button[aria-pressed=true]{background:var(--panel-2);color:var(--fg)}
+.seg button:disabled{color:var(--faint);cursor:default}
+.seg button .soon{font:500 9.5px var(--f-mono);color:var(--faint);margin-left:4px}
+#qFinal[aria-pressed=true]{background:var(--sun);color:#1b1408}
+.name-in{background:transparent;border:1px solid transparent;border-radius:4px;padding:4px 7px;font:500 14px var(--f-ui);width:min(260px,30vw);min-width:0}
+.name-in:hover,.name-in:focus{border-color:var(--line-2);background:var(--well)}
+.top-r{margin-left:auto;display:flex;gap:8px;flex:none;align-items:center}
+.tbtn{background:var(--panel-2);border:1px solid var(--line-2);border-radius:4px;padding:5px 11px;font:500 12px var(--f-ui)}
+.tbtn.accent{background:var(--sun);border-color:var(--sun);color:#1b1408}
+.rail{grid-area:rail;display:flex;flex-direction:column;gap:3px;padding-top:2px}
+.tool{position:relative;width:44px;height:42px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);display:grid;place-items:center;flex:none}
+.tool:hover{background:var(--panel);color:var(--fg)}
+.tool[aria-pressed=true]{background:var(--panel-2);border-color:var(--line-2);color:var(--sun)}
+.tool svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.tool .k{position:absolute;right:4px;bottom:2px;font:500 9px var(--f-mono);color:var(--faint)}
+.rail .sep{height:1px;background:var(--line);margin:3px 6px;flex:none}
+.view{grid-area:view;position:relative;background:#000;border-radius:6px;overflow:hidden;min-height:0;border:1px solid var(--line)}
+.view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#glc{pointer-events:none}
+#ov{touch-action:none;cursor:grab}
+.hint{position:absolute;left:10px;top:10px;max-width:min(520px,calc(100% - 20px));display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:rgba(14,17,21,.78);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.06);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--muted);pointer-events:none}
+.hint b{color:var(--fg);font-weight:600}
+.hud{position:absolute;left:10px;bottom:10px;font:11px var(--f-mono);color:rgba(230,234,238,.75);background:rgba(14,17,21,.6);border-radius:4px;padding:3px 7px;font-variant-numeric:tabular-nums;pointer-events:none}
+.evolve{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;align-items:center}
+.vbtn{display:flex;align-items:center;gap:6px;background:rgba(14,17,21,.82);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:5px;padding:4px 10px;font:500 12px var(--f-ui);color:var(--fg);white-space:nowrap}
+.vbtn svg{width:13px;height:13px;fill:currentColor}
+.vbtn[aria-pressed=true]{border-color:var(--sun);color:var(--sun)}
+.simbar{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.05);pointer-events:none}
+.simbar i{display:block;height:100%;width:0;background:var(--mist);transition:width .12s}
+.simbar i.fin{background:var(--sun)}
+.loader{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 60%,#1d232b 0%,#07090b 75%);z-index:4}
+.loader .card{width:min(380px,80%);display:flex;flex-direction:column;gap:10px}
+.loader .t{font:italic 28px var(--f-display)}
+.loader .s{font:12px var(--f-mono);color:var(--muted);min-height:1.4em}
+.loader .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.loader .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mist),var(--sun));transition:width .2s}
+.loader.err .s{color:var(--danger);white-space:pre-wrap;max-height:40vh;overflow:auto}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;padding:6px 12px;font-size:12px;z-index:5;white-space:nowrap;display:flex;gap:10px;align-items:center}
+.toast button{background:none;border:0;color:var(--sun);font-weight:600;padding:0}
+.drop{position:absolute;inset:10px;border:2px dashed var(--mist);border-radius:8px;display:grid;place-items:center;background:rgba(8,10,12,.75);z-index:3;font:500 15px var(--f-ui);pointer-events:none}
+.strip{grid-area:strip;display:flex;gap:8px;align-items:stretch;padding-top:8px;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.strip .lab{flex:none;display:flex;flex-direction:column;justify-content:center;gap:4px;width:88px;font-size:11.5px;color:var(--muted);line-height:1.35}
+.strip .lab b{color:var(--fg);font:600 10.5px var(--f-ui);letter-spacing:.12em;text-transform:uppercase}
+.var{flex:none;position:relative;width:176px;aspect-ratio:16/9;max-width:100%;border-radius:5px;border:1px solid var(--line);background:#000;padding:0;overflow:hidden}
+.var canvas{width:100%;height:100%;display:block}
+.var:hover{border-color:var(--mist)}
+.var span{position:absolute;left:6px;bottom:4px;font:500 10px var(--f-mono);color:rgba(220,226,232,.7)}
+.var.busy::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:sh 1.2s linear infinite}
+@keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.insp{grid-area:insp;overflow-y:auto;overflow-x:hidden;min-height:0;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent;padding-bottom:4px}
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:0 12px}
+.sec>summary{list-style:none;cursor:pointer;padding:10px 0;font:600 10.5px var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sec>summary::-webkit-details-marker{display:none}
+.sec>summary::after{content:"";margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--faint);border-bottom:1.5px solid var(--faint);transform:rotate(45deg) translateY(-2px)}
+.sec[open]>summary::after{transform:rotate(-135deg)}
+.body{display:flex;flex-direction:column;gap:6px;padding-bottom:12px}
+.sub-h{font:500 10px var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:100px minmax(0,1fr) 64px;align-items:center;gap:8px;min-height:24px}
+.row label{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row output{font:11px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row.wide{grid-template-columns:100px minmax(0,1fr)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--mist) var(--p),var(--line-2) var(--p))}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--mist) var(--p),var(--line-2) var(--p))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--fg);margin-top:-4.5px;border:2px solid var(--panel)}
+input[type=range]::-moz-range-thumb{width:9px;height:9px;border-radius:50%;background:var(--fg);border:2px solid var(--panel)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font:500 11.5px var(--f-ui);padding:3px 9px;border-radius:3px;border:1px solid var(--line-2);background:transparent;color:var(--muted)}
+.chip:hover{color:var(--fg)}
+.chip[aria-pressed=true]{color:#10161b;background:var(--mist);border-color:var(--mist)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 5px;border-radius:5px;border:1px solid var(--line);background:var(--well);color:var(--muted);font-size:11px;line-height:1.15;text-align:center}
+.tile svg{width:30px;height:22px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.tile:hover{color:var(--fg);border-color:var(--line-2)}
+.tile[aria-pressed=true]{color:var(--fg);border-color:var(--mist);box-shadow:inset 0 0 0 1px var(--mist)}
+.note{font-size:11.5px;color:var(--faint);line-height:1.45}
+.note b{color:var(--muted);font-weight:500}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btn{background:var(--panel-2);border:1px solid var(--line-2);border-radius:4px;padding:4px 10px;font:500 12px var(--f-ui)}
+.btn.prim{background:var(--mist);border-color:var(--mist);color:#0e1418}
+.dims{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.dims label{display:flex;flex-direction:column;gap:2px;font-size:10.5px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+.dims input{background:var(--well);border:1px solid var(--line);border-radius:4px;padding:4px 6px;font:12px var(--f-mono);width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums}
+.shelf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.shelf .it{position:relative;border:1px solid var(--line);border-radius:5px;background:#000;padding:0;overflow:hidden;aspect-ratio:16/9;text-align:left}
+.shelf .it img{width:100%;height:100%;object-fit:cover;display:block}
+.shelf .it span{position:absolute;left:5px;bottom:3px;right:20px;font:500 10.5px var(--f-ui);color:#dde3e9;text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shelf .it i{position:absolute;right:3px;top:2px;font:normal 13px var(--f-ui);color:#aab;padding:0 4px;border-radius:3px;background:rgba(0,0,0,.4)}
+.empty{color:var(--muted);font-size:12px;line-height:1.5}
+.kbd{font:500 10.5px var(--f-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:3px;padding:0 4px;color:var(--fg)}
+.modal{position:fixed;inset:0;background:rgba(6,8,10,.66);display:grid;place-items:center;z-index:20;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.mcard{width:min(760px,100%);max-height:calc(100% - 48px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.mhead{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.mhead h2{margin:0;font:italic 400 24px var(--f-display)}
+.mbody{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.mbody p{margin:0;max-width:68ch;color:var(--muted);line-height:1.55}
+.mbody p b{color:var(--fg);font-weight:600}
+pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-radius:6px;padding:12px;font:11.5px/1.5 var(--f-mono);color:#c9d3dc;overflow:auto;max-height:260px;white-space:pre}
+.x{margin-left:auto;background:transparent;border:0;color:var(--muted);font-size:20px;line-height:1;padding:2px 6px}
+@media (max-width:900px){
+  body{overflow:auto}
+  #app{height:auto;display:flex;flex-direction:column;gap:8px;padding-block:6px 16px}
+  .top{flex-wrap:wrap;gap:8px 10px}
+  .rail{flex-direction:row;overflow-x:auto;padding:0}
+  .rail .sep{width:1px;height:auto;margin:6px 2px}
+  .view{height:56vh;min-height:300px;flex:none}
+  .insp{overflow:visible}
+}
+@media (prefers-reduced-motion:reduce){.simbar i,.loader .bar i{transition:none}.var.busy::after{animation:none}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="word">Brume</span></div>
+    <div class="seg" role="group" aria-label="Workspace">
+      <button aria-pressed="true">Designer</button>
+      <button disabled title="Next: place designed fog into shots against the utility passes">Shot<span class="soon">next</span></button>
+    </div>
+    <input class="name-in" id="assetName" aria-label="Asset name" value="Fog bank">
+    <div class="top-r">
+      <div class="seg" role="group" aria-label="Render quality">
+        <button id="qDraft" aria-pressed="true" title="Fast interactive preview (G)">Draft</button>
+        <button id="qFinal" aria-pressed="false" title="Full resolution, every detail octave, detailed self-shadowing (G)">Final</button>
+      </div>
+      <button class="tbtn accent" id="exportBtn">Export</button>
+    </div>
+  </header>
+  <nav class="rail" id="rail" aria-label="Tools"></nav>
+  <section class="view" id="view">
+    <canvas id="glc"></canvas>
+    <canvas id="ov" aria-label="Designer viewport"></canvas>
+    <div class="hint" id="hint"></div>
+    <div class="hud" id="hud">starting</div>
+    <div class="evolve">
+      <button class="vbtn" id="playBtn" aria-pressed="false" title="Keep the fog evolving (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg>Evolve</button>
+      <button class="vbtn" id="rerunBtn" title="Run the simulation again from the sculpted shape">Re-run</button>
+    </div>
+    <div class="simbar"><i id="simBar"></i></div>
+    <div class="drop" id="drop" hidden>Drop a Brume recipe (.json) to load it</div>
+    <div class="loader" id="loader"><div class="card"><div class="t">Brume Designer</div><div class="s" id="loadMsg">Starting the GPU</div><div class="bar"><i id="loadBar"></i></div></div></div>
+    <div class="toast" id="toast" hidden></div>
+  </section>
+  <section class="strip" id="strip" hidden></section>
+  <aside class="insp" id="insp">
+    <details class="sec" open id="brushSec" hidden><summary>Brush</summary><div class="body" id="brushBody"></div></details>
+    <details class="sec" open><summary>Start from</summary><div class="body" id="startBody"></div></details>
+    <details class="sec" open><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
+    <details class="sec" open><summary>Simulate</summary><div class="body" id="simBody"></div></details>
+    <details class="sec" open><summary>Detail</summary><div class="body" id="detBody"></div></details>
+    <details class="sec"><summary>Density</summary><div class="body" id="denBody"></div></details>
+    <details class="sec"><summary>Light &amp; view</summary><div class="body" id="lightBody"></div></details>
+    <details class="sec"><summary>Shelf</summary><div class="body" id="shelfBody"></div></details>
+  </aside>
+</div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+<div class="modal" id="modal" hidden><div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="mhead"><h2 id="mTitle">Export</h2><button class="x" id="mClose" aria-label="Close">×</button></div>
+  <div class="mbody" id="mBody"></div></div></div>
+<script>
+/* =====================================================================
+   SHADERS — every volume pass renders one z-slice of a 3D texture at a time
+   ===================================================================== */
+const HEAD=`#version 300 es
+precision highp float; precision highp int; precision highp sampler2D; precision highp sampler3D;
+`;
+const VS_FS=`#version 300 es
+layout(location=0) in vec2 aPos; void main(){ gl_Position=vec4(aPos,0.,1.); }`;
+
+/* tileable noise: 0 shape (perlin-worley, worley fbm, perlin fbm), 1 detail (worley 4/8/16 + perlin fbm), 2 curl field */
+const NOISE_GLSL=`
+vec3 h33(vec3 p){ uvec3 q=uvec3(ivec3(p)+4096)*uvec3(1597334673u,3812015801u,2798796415u); q=(q.x^q.y^q.z)*uvec3(1597334673u,3812015801u,2798796415u); return vec3(q)*(1.0/4294967295.0); }
+float gd(vec3 i,vec3 c,vec3 f,float per){ vec3 g=h33(mod(i+c,per))*2.0-1.0; return dot(normalize(g+1e-5),f-c); }
+float perlin(vec3 p,float per){ vec3 i=floor(p),f=fract(p); vec3 u=f*f*f*(f*(f*6.-15.)+10.);
+  return mix(mix(mix(gd(i,vec3(0,0,0),f,per),gd(i,vec3(1,0,0),f,per),u.x),mix(gd(i,vec3(0,1,0),f,per),gd(i,vec3(1,1,0),f,per),u.x),u.y),
+             mix(mix(gd(i,vec3(0,0,1),f,per),gd(i,vec3(1,0,1),f,per),u.x),mix(gd(i,vec3(0,1,1),f,per),gd(i,vec3(1,1,1),f,per),u.x),u.y),u.z); }
+float worley(vec3 p,float per){ vec3 i=floor(p),f=fract(p); float md=1.0;
+  for(int z=-1;z<=1;z++) for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){ vec3 c=vec3(x,y,z); vec3 d=c+h33(mod(i+c,per))-f; md=min(md,dot(d,d)); }
+  return 1.0-sqrt(md); }
+float pfbm(vec3 p,float f0,int oct){ float a=0.5,s=0.,t=0.,f=f0; for(int k=0;k<5;k++){ if(k>=oct) break; s+=perlin(p*f,f)*a; t+=a; a*=0.5; f*=2.; } return clamp(s/t*1.15+0.5,0.,1.); }
+float wfbm(vec3 p,float f0){ return worley(p*f0,f0)*0.625+worley(p*f0*2.,f0*2.)*0.25+worley(p*f0*4.,f0*4.)*0.125; }
+`;
+const FS_NOISE=HEAD+NOISE_GLSL+`
+uniform float uZ; uniform float uN; uniform int uMode; out vec4 o;
+vec3 pot(vec3 p){ return vec3(perlin(p*3.,3.)+0.5*perlin(p*6.+11.,6.), perlin(p*3.+vec3(31.,7.,19.),3.)+0.5*perlin(p*6.+vec3(5.,43.,2.),6.), perlin(p*3.+vec3(13.,57.,29.),3.)+0.5*perlin(p*6.+vec3(23.,3.,61.),6.)); }
+void main(){
+  vec3 p=vec3(gl_FragCoord.xy/uN,uZ);
+  if(uMode==1){ o=vec4(worley(p*4.,4.),worley(p*8.,8.),worley(p*16.,16.),pfbm(p,4.,4)); return; }
+  if(uMode==2){ float e=0.5/uN; // curl of a tileable vector potential: divergence-free swirls
+    vec3 dx=vec3(e,0,0), dy=vec3(0,e,0), dz=vec3(0,0,e);
+    vec3 px0=pot(p-dx), px1=pot(p+dx), py0=pot(p-dy), py1=pot(p+dy), pz0=pot(p-dz), pz1=pot(p+dz);
+    vec3 c=vec3((py1.z-py0.z)-(pz1.y-pz0.y),(pz1.x-pz0.x)-(px1.z-px0.z),(px1.y-px0.y)-(py1.x-py0.x))/(2.*e);
+    o=vec4(c*0.09,0.); return; }
+  float pf=pfbm(p,4.,3), wf=wfbm(p,4.);
+  float pw=clamp((pf-(wf-1.0))/(2.0-wf),0.,1.); pw=smoothstep(0.28,0.95,pw);
+  o=vec4(pw, wfbm(p,6.), wfbm(p,8.), pfbm(p,3.,4));
+}`;
+
+/* voxel helpers shared by the volume passes */
+const VOX_GLSL=`
+uniform vec3 uDims, uSize; uniform float uZ;
+vec3 vU(){ return vec3(gl_FragCoord.xy/uDims.xy,uZ); }
+vec3 u2p(vec3 u){ return vec3((u.x-0.5)*uSize.x,u.y*uSize.y,(u.z-0.5)*uSize.z); }
+vec3 p2u(vec3 p){ return vec3(p.x/uSize.x+0.5,p.y/uSize.y,p.z/uSize.z+0.5); }
+`;
+
+/* template mass from primitives: ellipsoids, tapered capsules, rounded boxes, soft-unioned and roughened */
+const FS_GEN=HEAD+VOX_GLSL+`
+#define NP 40
+uniform int uNP; uniform vec4 uP0[NP], uP1[NP], uP2[NP];
+uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft; uniform vec3 uSeedOff; uniform int uProfile;
+out vec4 o;
+float sdPrim(vec3 p,int i){ vec4 a=uP0[i], b=uP1[i], c=uP2[i]; int ty=int(a.w+0.5);
+  if(ty==0){ vec3 q=(p-a.xyz)/b.xyz; float k=length(q); return (k-1.)*min(b.x,min(b.y,b.z)); }
+  if(ty==1){ vec3 pa=p-a.xyz, ba=c.xyz-a.xyz; float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-6),0.,1.); return length(pa-ba*h)-mix(b.x,c.w,h); }
+  vec3 q=abs(p-a.xyz)-b.xyz+c.x; return length(max(q,0.))+min(max(q.x,max(q.y,q.z)),0.)-c.x; }
+void main(){
+  vec3 u=vU(), p=u2p(u);
+  float n=textureLod(uNT,p/uNoiseScale+uSeedOff,0.).a-0.5, n2=textureLod(uNT,p/(uNoiseScale*0.4)+uSeedOff.zxy,0.).a-0.5;
+  float disp=(n+n2*0.45)*uNoiseAmp;
+  float m=0.;
+  for(int i=0;i<NP;i++){ if(i>=uNP) break; float w=uP1[i].w; float d=sdPrim(p,i)+disp;
+    float v=smoothstep(uSoft,-uSoft,d);
+    if(w>=0.) m=1.-(1.-m)*(1.-w*v); else m*=1.+w*v; }
+  float y=u.y;
+  if(uProfile==1) m*=exp(-y*2.2)*1.15;            // densest at the ground
+  else if(uProfile==2) m*=mix(1.,0.3,y);           // wisps thin as they rise
+  else if(uProfile==3) m*=smoothstep(0.05,0.22,y);  // floating mass with a ragged base
+  m*=smoothstep(0.,0.04,u.x)*smoothstep(1.,0.96,u.x)*smoothstep(1.,0.96,u.y)*smoothstep(0.,0.04,u.z)*smoothstep(1.,0.96,u.z);
+  o=vec4(clamp(m,0.,1.),0.,0.,1.);
+}`;
+
+/* one brush dab on the mass grid (only the slices and rect the dab touches are drawn) */
+const FS_DAB=HEAD+VOX_GLSL+`
+uniform sampler3D uM; uniform sampler3D uNT; uniform int uOp; uniform vec3 uC, uDir; uniform float uR, uS; out vec4 o;
+void main(){
+  vec3 u=vU(), p=u2p(u); float m=textureLod(uM,u,0.).r;
+  float d=length(p-uC)/uR; if(d>=1.){ o=vec4(m,0,0,1); return; }
+  float f=(1.-d*d); f*=f; float s=uS*f;
+  if(uOp==0) m=m+s*(1.-m)*0.9;                                  // add
+  else if(uOp==1) m=m*(1.-s*0.9);                               // erase
+  else if(uOp==2){ vec3 e=vec3(uR*0.18)/uSize; float a=0.;      // smooth
+    a+=textureLod(uM,u+vec3(e.x,0,0),0.).r+textureLod(uM,u-vec3(e.x,0,0),0.).r+textureLod(uM,u+vec3(0,e.y,0),0.).r+textureLod(uM,u-vec3(0,e.y,0),0.).r+textureLod(uM,u+vec3(0,0,e.z),0.).r+textureLod(uM,u-vec3(0,0,e.z),0.).r;
+    m=mix(m,a/6.,clamp(s*1.4,0.,1.)); }
+  else if(uOp==3){ m=textureLod(uM,p2u(p-uDir*f),0.).r; }      // pull: drag the mass along
+  else if(uOp==4){ float a=0.; for(int k=0;k<6;k++) a+=textureLod(uM,p2u(p-uDir*f*(float(k)/5.)*1.6),0.).r; m=mix(m,a/6.,clamp(f*1.2,0.,1.)); } // smear / comb
+  else { float n=textureLod(uNT,p/(uR*0.45)+vec3(0.37,0.11,0.73),0.).r; m=m*(1.-s*smoothstep(0.4,0.62,n)); } // tear
+  o=vec4(clamp(m,0.,1.),0,0,1);
+}`;
+const FS_COPY=HEAD+VOX_GLSL+`uniform sampler3D uSrc; out vec4 o; void main(){ o=textureLod(uSrc,vU(),0.); }`;
+
+/* simulation: density + rest coordinates advected by a swirling, divergence-free velocity field */
+const VEL_GLSL=`
+uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uStrat, uCalm, uSpread, uTime, uDt, uFloor; uniform vec3 uWind, uCurlOff;
+vec3 curlAt(vec3 p,float s){ return textureLod(uCurl,p/s+uCurlOff+vec3(0.,uTime*0.06,0.),0.).xyz; }
+vec3 vel(vec3 p,vec3 u,sampler3D den){
+  float d=textureLod(den,u,0.).r;
+  vec3 v=curlAt(p,uEddy)+0.55*curlAt(p+vec3(17.),uEddy*0.38)+0.75*curlAt(p+vec3(41.),uEddy*2.7);
+  v.y*=1.-uStrat*0.75; v.xz*=1.+uStrat*0.35;
+  v*=uU*mix(1.,1.-uCalm,smoothstep(0.3,0.85,d));          // calm core, lively edges
+  v+=uWind+vec3(0.,uLift,0.);
+  if(uFloor>0.5){ float band=max(uSize.y*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,p.y);
+    vec3 e=vec3(1.5)/uDims; float gx=textureLod(den,u+vec3(e.x,0,0),0.).r-textureLod(den,u-vec3(e.x,0,0),0.).r, gz=textureLod(den,u+vec3(0,0,e.z),0.).r-textureLod(den,u-vec3(0,0,e.z),0.).r;
+    v.xz-=vec2(gx,gz)*uSpread*uU*6.*k;                      // a gravity current spreads out along the ground
+    v.y=mix(v.y,max(v.y,0.),k); }
+  return v; }
+`;
+const FS_SIMINIT=HEAD+VOX_GLSL+`uniform sampler3D uM; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
+void main(){ vec3 u=vU(); oD=vec4(textureLod(uM,u,0.).r,0,0,1); oR=vec4(u2p(u),1.); }`;
+const FS_SIMA=HEAD+VOX_GLSL+VEL_GLSL+`uniform sampler3D uD, uR; uniform float uReseed; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
+void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD); vec3 pb=p-v*uDt; vec3 ub=p2u(pb);
+  if(uFloor>0.5&&pb.y<0.){ pb.y=0.; ub=p2u(pb); }
+  float d=all(greaterThanEqual(ub,vec3(0.)))&&all(lessThanEqual(ub,vec3(1.)))?textureLod(uD,ub,0.).r:0.;
+  vec3 r=textureLod(uR,clamp(ub,0.,1.),0.).xyz; r=mix(r,p,clamp(uReseed*uDt,0.,1.));
+  oD=vec4(d,0,0,1); oR=vec4(r,1.); }`;
+const FS_SIMB=HEAD+VOX_GLSL+VEL_GLSL+`uniform sampler3D uD, uH; uniform float uDiss; out vec4 o;
+void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
+  float h=textureLod(uH,u,0.).r; vec3 uf=p2u(p+v*uDt); float hb=textureLod(uH,clamp(uf,0.,1.),0.).r; float d0=textureLod(uD,u,0.).r;
+  float d=h+0.5*(d0-hb);                                       // MacCormack: undo most of the numerical blur
+  vec3 ub=p2u(p-v*uDt)*uDims-0.5; vec3 i0=floor(ub); float mn=1e9, mx=-1e9;
+  for(int k=0;k<8;k++){ vec3 c=i0+vec3(k&1,(k>>1)&1,(k>>2)&1); float s=texelFetch(uD,ivec3(clamp(c,vec3(0.),uDims-1.)),0).r; mn=min(mn,s); mx=max(mx,s); }
+  d=clamp(d,mn,mx); d*=exp(-uDiss*uDt);
+  vec3 em=min(u,1.-u); float sp=smoothstep(0.,0.06,em.x)*smoothstep(0.,0.06,em.z)*smoothstep(0.,0.06,1.-u.y)*(uFloor>0.5?1.:smoothstep(0.,0.06,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
+  o=vec4(max(d,0.),0,0,1); }`;
+
+/* the fog itself: grid density, broken up and detailed by noise carried along with the simulation */
+const DENS_GLSL=`
+uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize;
+uniform float uSigma, uTh, uW, uAmt, uBillow, uTurb, uDet, uBreak, uBreakS, uFadeT, uFadeB; uniform int uOct, uFloorOn; uniform vec3 uSeedV;
+float gFoot=0.01;
+float transferG(float d){ return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
+float densGrid(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
+  return uSigma*transferG(textureLod(uD,u,0.).r); }
+float dens(vec3 p,int lvl){
+  vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
+  float d=textureLod(uD,u,0.).r; if(d<0.008) return 0.;
+  vec3 em=min(u,1.-u); d*=smoothstep(0.,0.07,em.x)*smoothstep(0.,0.07,em.z)*smoothstep(0.,0.07,1.-u.y)*(uFloorOn==1?1.:smoothstep(0.,0.07,u.y));  // no hard cut at the box walls
+  d*=smoothstep(0.,uFadeB+1e-4,u.y)*(1.-smoothstep(1.-uFadeT-1e-4,1.,u.y));
+  vec3 rc=textureLod(uR,u,0.).xyz+uSeedV;
+  if(uBreak>0.){ float nb=textureLod(uNT,rc/uBreakS,0.).r*0.7+textureLod(uNT,rc/(uBreakS*0.45),0.).a*0.3; d*=smoothstep(uBreak*0.75-0.18,uBreak*0.75+0.1,nb); }
+  float f0=d-uTh; if(f0+uAmt*0.5<=0.) return 0.;
+  float f=f0, inner=1.;
+  if(lvl>0&&uAmt>0.){
+    float billow=0., wisp=0.; vec3 pv=vec3(0.5); vec3 q=rc;
+    for(int k=0;k<6;k++){ if(k>=uOct) break;
+      float L=uDet*pow(0.42,float(k));
+      float wk=smoothstep(0.6,1.6,L*0.3/gFoot); if(wk<=0.) break;
+      float lod=max(log2(gFoot*128./L)-0.5,0.);
+      vec4 dn=textureLod(uND,(q+(pv-0.5)*L*(0.25+1.3*uTurb))/L+vec3(0.13*float(k),0.,0.29*float(k)),lod);
+      pv=dn.rgb; float kw=k==0?0.5:k==1?0.3:k==2?0.18:k==3?0.11:0.07;
+      billow+=((dn.r*0.625+dn.g*0.25+dn.b*0.125)-0.56)*kw*wk;
+      wisp+=mix(dn.a-0.5,(1.-abs(dn.a*2.-1.))-0.55,0.3+0.45*uTurb)*kw*wk; }
+    float var=mix(wisp,billow,uBillow);
+    inner=clamp(1.+var*2.8*uAmt,0.05,2.4);
+    float disp=var*uAmt*1.9; f+= disp<0.? disp : disp*0.5*smoothstep(-0.1*uAmt,0.03,f0);
+  } else f-=uAmt*0.06;
+  return uSigma*smoothstep(0.,uW,f)*(0.45+0.55*clamp(d,0.,1.2))*inner;
+}
+`;
+
+/* light cache: optical depth toward the key light, and how much sky each voxel sees */
+const FS_LIGHT=HEAD+VOX_GLSL+`uniform sampler3D uD; uniform vec3 uL; uniform float uTh, uW, uAmt, uMaxL; out vec4 o;
+float tg(vec3 p){ vec3 u=p2u(p); if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; float d=textureLod(uD,u,0.).r; return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
+void main(){ vec3 u=vU(), p=u2p(u); float ds=uMaxL/40.; float s=0.;
+  for(int i=0;i<40;i++){ s+=tg(p+uL*(ds*(float(i)+0.5)))*ds; }
+  float a=0.; const vec3 D[5]=vec3[5](vec3(0,1,0),vec3(0.7,0.7,0),vec3(-0.7,0.7,0),vec3(0,0.7,0.7),vec3(0,0.7,-0.7)); float ds2=uMaxL*0.45/10.;
+  for(int k=0;k<5;k++){ float t=0.; for(int i=0;i<10;i++) t+=tg(p+D[k]*(ds2*(float(i)+0.5)))*ds2; a+=t; }
+  o=vec4(s,a/5.,0,1); }`;
+
+/* view: camera rays through the asset, over a void or a floor */
+const FS_RENDER=HEAD+DENS_GLSL+`
+uniform sampler3D uLV; uniform vec3 uCam,uCR,uCU,uCF; uniform vec2 uRes; uniform float uTanY, uFrame, uBlend; uniform int uSteps, uFinal, uBg;
+uniform vec3 uL, uSunC, uSkyC; uniform float uMS, uFloorAlb, uGrid; uniform vec4 uPh; uniform sampler2D uPrev;
+out vec4 o;
+float hash13(vec3 p){ uvec3 q=uvec3(ivec3(p))*uvec3(1597334673u,3812015801u,2798796415u); uint n=(q.x^q.y^q.z)*1597334673u; n^=n>>16; n*=2246822519u; n^=n>>13; return float(n)*(1.0/4294967296.0); }
+float hg(float c,float g){ float d=1.+g*g-2.*g*c; return (1.-g*g)/(12.566371*d*sqrt(max(d,1e-5))); }
+float draine(float c,float g,float a){ float d=1.+g*g-2.*g*c; return (1.-g*g)*(1.+a*c*c)/(12.566371*(1.+a*(1.+2.*g*g)/3.)*d*sqrt(max(d,1e-5))); }
+float phaseMie(float c){ return mix(hg(c,uPh.x),draine(c,uPh.y,uPh.z),uPh.w); }
+vec2 box(vec3 ro,vec3 rd,vec3 a,vec3 b){ vec3 ir=1./rd; vec3 t0=(a-ro)*ir, t1=(b-ro)*ir; vec3 mn=min(t0,t1), mx=max(t0,t1); return vec2(max(max(mn.x,mn.y),mn.z),min(min(mx.x,mx.y),mx.z)); }
+vec3 bgCol(vec3 rd){ if(uBg==0) return vec3(0.); if(uBg==1) return vec3(0.045); float h=rd.y; return mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,h))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.); }
+vec4 lvAt(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return vec4(0.); return textureLod(uLV,u,0.); }
+void main(){
+  vec2 fc=gl_FragCoord.xy; vec2 j2=vec2(hash13(vec3(fc,uFrame*1.7+3.)),hash13(vec3(fc.yx+17.,uFrame*2.3+7.)))-0.5;
+  vec2 ndc=((fc+j2)/uRes)*2.-1.; float asp=uRes.x/uRes.y;
+  vec3 rd=normalize(uCF+uCR*ndc.x*uTanY*asp+uCU*ndc.y*uTanY);
+  float tF=1e9; if(uFloorOn==1&&rd.y<-1e-4) tF=-uCam.y/rd.y;
+  vec3 col=bgCol(rd);
+  if(tF<1e8){ vec3 fp=uCam+rd*tF; vec4 lv=lvAt(fp+vec3(0.,0.01,0.)); float sh=exp(-uSigma*lv.r), ao=exp(-uSigma*lv.g*0.6);
+    float g1=uGrid, g2=uGrid*10.; vec2 a=abs(fract(fp.xz/g1+0.5)-0.5)*g1, b=abs(fract(fp.xz/g2+0.5)-0.5)*g2; float fw=max(fwidth(fp.x),fwidth(fp.z));
+    float line=max((1.-smoothstep(fw*0.5,fw*1.5,min(a.x,a.y)))*0.35,(1.-smoothstep(fw*0.7,fw*2.,min(b.x,b.y)))*0.7)*exp(-tF/(uGrid*60.));
+    vec3 fl=uFloorAlb*(uSunC*max(uL.y,0.)*sh+uSkyC*ao*3.14159*0.6)/3.14159;
+    fl*=1.+line*1.6; float fade=exp(-tF/(uGrid*220.)); col=mix(col,fl,fade); }
+  vec3 Lc=vec3(0.); float T=1.;
+  vec2 tb=box(uCam,rd,uBMin,uBMin+uBSize); float t0=max(tb.x,0.), t1=min(tb.y,tF);
+  if(t1>t0){
+    float jit=hash13(vec3(fc,uFrame+1.)); float cosT=dot(rd,uL), ph0=phaseMie(cosT);
+    float span=t1-t0; float dt=span/float(uSteps); float pixA=2.*uTanY/uRes.y;
+    float lMax=length(uBSize);
+    for(int i=0;i<480;i++){ if(i>=uSteps) break;
+      float t=t0+(float(i)+jit)*dt; vec3 p=uCam+rd*t; gFoot=max(t*pixA,1e-4);
+      float d=dens(p,1); if(d<1e-6) continue;
+      vec4 lv=lvAt(p); float tau=uSigma*lv.r;
+      // local self-shadowing with the full detail, on top of the cached grid shadow
+      float sl=uDet*0.35, corr=0.;
+      for(int k=0;k<3;k++){ if(k==2&&uFinal==0) break; float s=sl*(k==0?0.6:k==1?1.8:4.); vec3 q=p+uL*s; corr+=(dens(q,1)-densGrid(q))*(k==0?1.2:k==1?1.6:3.)*sl; }
+      tau=max(tau+corr,0.);
+      // multiple scattering needs optical depth around the point: thin wisps are lit almost purely by single scattering
+      float msW=1.-exp(-uSigma*(lv.r*0.5+lv.g)*0.8);
+      float Ls=ph0*exp(-tau); float a=0.5, b=uMS*msW, c=0.55;
+      for(int k=1;k<4;k++){ Ls+=b*hg(cosT,0.75*c)*exp(-a*tau); a*=0.5; b*=uMS; c*=0.55; }
+      float sky=exp(-uSigma*lv.g*0.55);
+      vec3 S=uSunC*Ls+uSkyC*(0.7*sky+0.3*sqrt(sky));
+      if(uFloorOn==1) S+=uFloorAlb*(uSunC*max(uL.y,0.)+uSkyC*3.14159*0.6)*0.5/3.14159*exp(-p.y/max(uBSize.y,1e-3)*2.);
+      float tr=exp(-d*dt);
+      Lc+=T*S*0.985*(1.-tr); T*=tr; if(T<0.003) break;
+    }
+  }
+  vec4 cur=vec4(Lc+T*col,1.-T);
+  vec4 prev=texelFetch(uPrev,ivec2(fc),0);
+  o=mix(prev,cur,uBlend);
+}`;
+
+/* first point along a ray where the fog gets solid — where a brush lands */
+const FS_PICK=HEAD+DENS_GLSL+`uniform vec3 uCam, uRd; out vec4 o;
+vec2 box(vec3 ro,vec3 rd,vec3 a,vec3 b){ vec3 ir=1./rd; vec3 t0=(a-ro)*ir, t1=(b-ro)*ir; vec3 mn=min(t0,t1), mx=max(t0,t1); return vec2(max(max(mn.x,mn.y),mn.z),min(min(mx.x,mx.y),mx.z)); }
+void main(){ vec2 tb=box(uCam,uRd,uBMin,uBMin+uBSize); float t0=max(tb.x,0.), t1=tb.y; float hit=-1.;
+  if(t1>t0){ float dt=(t1-t0)/240.; float T=1.; for(int i=0;i<240;i++){ float t=t0+(float(i)+0.5)*dt; float d=densGrid(uCam+uRd*t); T*=exp(-d*dt); if(T<0.6){ hit=t; break; } } }
+  o=vec4(hit,t0,t1,1.); }`;
+
+/* export: the final density, detail included, written out voxel by voxel */
+const FS_BAKE=HEAD+DENS_GLSL+`uniform vec3 uEDims; uniform float uEZ; out vec4 o;
+void main(){ vec3 u=vec3(gl_FragCoord.xy/uEDims.xy,uEZ); vec3 p=uBMin+u*uBSize; gFoot=min(uBSize.x/uEDims.x,min(uBSize.y/uEDims.y,uBSize.z/uEDims.z))*0.8; o=vec4(dens(p,1),0,0,1); }`;
+
+const FS_DISP=HEAD+`uniform sampler2D uA; uniform float uExpo; uniform vec2 uRes; out vec4 o;
+vec3 aces(vec3 c){ const mat3 I=mat3(0.59719,0.07600,0.02840, 0.35458,0.90834,0.13383, 0.04823,0.01566,0.83777); const mat3 O=mat3(1.60475,-0.10208,-0.00327, -0.53108,1.10813,-0.07276, -0.07367,-0.00605,1.07602);
+  vec3 v=I*c; vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return clamp(O*(a/b),0.,1.); }
+vec3 srgb(vec3 c){ return mix(c*12.92,1.055*pow(c,vec3(1./2.4))-0.055,step(0.0031308,c)); }
+void main(){ vec2 uv=gl_FragCoord.xy/uRes; vec3 c=texture(uA,uv).rgb; c=srgb(aces(max(c,0.)*uExpo));
+  c+=(fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-0.5)/255.; o=vec4(c,1.); }`;
+'use strict';
+/* =====================================================================
+   Brume Designer — design one fog asset at a time, in a black void.
+   Sculpted mass → short GPU smoke simulation (curl turbulence, lift,
+   wind, spreading on the ground) → detail carried along by the flow →
+   cached lighting → raymarched view. Export the baked density for Houdini.
+   ===================================================================== */
+const $=s=>document.querySelector(s);
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x)), lerp=(a,b,t)=>a+(b-a)*t;
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]], sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2], cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const len=a=>Math.hypot(a[0],a[1],a[2]), norm=a=>{const l=len(a)||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const D2R=Math.PI/180;
+const yieldUI=()=>new Promise(r=>setTimeout(r,0));
+const IS_MOBILE=matchMedia('(max-width: 900px)').matches||/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+function mulberry(a){ return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const store={ get(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(_){ return null; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch(_){ return false; } } };
+
+/* ---------------- what you can start from ---------------- */
+const CLASSES={close:{label:'Close',range:'1–10 m',k:0.1,strat:0.1,grid:0.1},mid:{label:'Mid',range:'10–100 m',k:1,strat:0.35,grid:1},large:{label:'Large',range:'100 m–2 km',k:10,strat:0.6,grid:10}};
+/* sizes are given at the Mid scale; Close is a tenth, Large ten times */
+const TEMPLATES={
+  bank:{label:'Fog bank',size:[80,22,32],floor:true,profile:0,icon:'<path d="M2 17h26"/><path d="M3 17c0-3 2-5 5-5 .5-3 3-4.5 6-4.5s5.2 1.6 5.7 4c2.6.2 6.3 2 6.3 5.5"/>',
+    sim:{age:0.55,turb:0.55,lift:-0.15,calm:0.45,spread:0.45,wind:0.12,diss:0.04},det:{billow:0.55,amt:0.7,edge:0.6,brk:0.2},den:{d:0.42}},
+  sheet:{label:'Ground fog',size:[110,7,110],floor:true,profile:1,icon:'<path d="M2 15c3-1.5 6-1.5 9 0s6 1.5 9 0 4.5-1.5 8 0"/><path d="M2 19h26"/><path d="M6 11c2-1 4-1 6 0"/>',
+    sim:{age:0.6,turb:0.45,lift:-0.45,calm:0.35,spread:0.7,wind:0.1,diss:0.03},det:{billow:0.25,amt:0.65,edge:0.75,brk:0.35},den:{d:0.24}},
+  veil:{label:'Mist veil',size:[90,30,24],floor:true,profile:1,icon:'<path d="M3 8h22"/><path d="M5 12h20"/><path d="M3 16h22"/><path d="M6 20h16"/>',
+    sim:{age:0.5,turb:0.35,lift:-0.05,calm:0.2,spread:0.3,wind:0.2,diss:0.02},det:{billow:0.15,amt:0.45,edge:0.92,brk:0.15},den:{d:0.2}},
+  cloud:{label:'Cloud mass',size:[60,34,50],floor:false,profile:3,icon:'<path d="M6 19c-2.5 0-4-1.7-4-3.8 0-2 1.6-3.6 3.6-3.7C6.2 8.7 8.7 7 11.6 7c2.7 0 5 1.5 5.9 3.8.6-.2 1.3-.3 2-.3 3 0 5.5 2.3 5.5 5.2S22.5 19 19.5 19z"/>',
+    sim:{age:0.55,turb:0.5,lift:0.15,calm:0.6,spread:0,wind:0.1,diss:0.03},det:{billow:0.85,amt:0.8,edge:0.45,brk:0.15},den:{d:0.78}},
+  wisps:{label:'Rising wisps',size:[24,40,24],floor:true,profile:2,rough:0.5,icon:'<path d="M8 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M15 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M22 22c-2-4 2-6 0-10"/>',
+    sim:{age:0.65,turb:0.7,lift:0.7,calm:0.15,spread:0.1,wind:0.15,diss:0.08},det:{billow:0.15,amt:0.8,edge:0.7,brk:0.2},den:{d:0.4}},
+  tendril:{label:'Tendrils',size:[60,10,40],floor:true,profile:0,rough:0.3,icon:'<path d="M3 17c4-6 8 2 12-3s7 1 11-4"/><path d="M4 21c5-3 8 1 13-1s5-2 9-1"/>',
+    sim:{age:0.45,turb:0.6,lift:0,calm:0.25,spread:0.1,wind:0.2,diss:0.05},det:{billow:0.25,amt:0.8,edge:0.65,brk:0.1},den:{d:0.5}},
+  puff:{label:'Smoke puff',size:[30,20,22],floor:false,profile:0,icon:'<circle cx="15" cy="13" r="6"/><path d="M8 17c-3 0-5-2-5-4s2-4 4-4"/><path d="M22 17c3 0 5-2 5-4s-2-4-4-4"/>',
+    sim:{age:0.6,turb:0.7,lift:0.1,calm:0.35,spread:0,wind:0.08,diss:0.04},det:{billow:0.5,amt:0.85,edge:0.55,brk:0.1},den:{d:0.7}},
+};
+function makeRecipe(tpl,cls='mid',seed=Math.floor(Math.random()*9999)){
+  const T=TEMPLATES[tpl], C=CLASSES[cls]; const size=T.size.map(v=>+(v*C.k).toPrecision(3)); const md=Math.max(...size), mn=Math.min(...size);
+  const eddy=+(Math.max(mn*0.55,md*0.14)).toPrecision(3);
+  return {v:1,name:T.label,template:tpl,cls,seed,size,floor:T.floor,
+    sim:{age:T.sim.age,turb:T.sim.turb,eddy,lift:T.sim.lift,strat:C.strat,calm:T.sim.calm,spread:T.sim.spread,wind:T.sim.wind,windDir:70,diss:T.sim.diss},
+    det:{billow:T.det.billow,amt:T.det.amt,size:+(eddy*0.42).toPrecision(3),edge:T.det.edge,brk:T.det.brk,brkSize:+(md*0.35).toPrecision(3)},
+    den:{d:T.den.d,fadeT:0,fadeB:0,drop:12,ms:0.5},
+    strokes:[]};
+}
+/* primitives for each starting shape, in metres, laid out from the seed */
+function templatePrims(rec){
+  const [W,H,D]=rec.size, R=mulberry(rec.seed*7919+13), P=[];
+  const ell=(x,y,z,rx,ry,rz,w=1)=>P.push([x,y,z,0, rx,ry,rz,w, 0,0,0,0]);
+  const cap=(a,b,ra,rb,w=1)=>P.push([a[0],a[1],a[2],1, ra,0,0,w, b[0],b[1],b[2],rb]);
+  const box=(x,y,z,hx,hy,hz,rr,w=1)=>P.push([x,y,z,2, hx,hy,hz,w, rr,0,0,0]);
+  const t=rec.template;
+  if(t==='bank'){ box(0,H*0.12,0,W*0.33,H*0.12,D*0.22,Math.min(H,D)*0.1,0.85);
+    for(let i=0;i<11;i++){ const x=(i/10-0.5)*W*0.66+(R()-0.5)*W*0.05; ell(x,H*(0.22+R()*0.16),(R()-0.5)*D*0.2,W*(0.08+R()*0.05),H*(0.24+R()*0.12),D*(0.18+R()*0.08),0.9); } }
+  else if(t==='sheet'){ box(0,H*0.18,0,W*0.33,H*0.16,D*0.33,H*0.15,0.9);
+    for(let i=0;i<9;i++){ const a=R()*6.283, r=Math.sqrt(R())*0.3; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*(0.08+R()*0.08),H*(0.25+R()*0.15),D*(0.08+R()*0.08),0.7); }
+    for(let i=0;i<4;i++){ const a=R()*6.283, r=0.15+R()*0.25; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*0.06,H*0.6,D*0.06,-0.75); } }
+  else if(t==='veil'){ box(0,H*0.38,0,W*0.36,H*0.32,D*0.24,Math.min(H,D)*0.22,0.75); }
+  else if(t==='cloud'){ ell(0,H*0.45,0,W*0.28,H*0.26,D*0.28,1);
+    for(let i=0;i<13;i++){ const a=R()*6.283, r=0.15+R()*0.2; const s=0.12+R()*0.1; ell(Math.cos(a)*r*W,H*(0.38+R()*0.3),Math.sin(a)*r*D,W*s,H*s*1.6,D*s,0.95); } }
+  else if(t==='wisps'){ const n=6+Math.floor(R()*3); for(let i=0;i<n;i++){ const a=R()*6.283, r=Math.sqrt(R())*0.3; let p=[Math.cos(a)*r*W,0,Math.sin(a)*r*D]; let rad=Math.min(W,D)*0.045;
+      const top=H*(0.55+R()*0.35); for(let s=0;s<3;s++){ const q=[p[0]+(R()-0.5)*W*0.1,top*(s+1)/3,p[2]+(R()-0.5)*D*0.1]; cap(p,q,rad,rad*1.35,0.9); p=q; rad*=1.35; } } }
+  else if(t==='tendril'){ for(let i=0;i<4;i++){ let p=[-W*0.36,H*(0.18+R()*0.25),(R()-0.5)*D*0.7]; const zd=(R()-0.5)*D*0.3; let rad=H*(0.09+R()*0.06);
+      for(let s=0;s<5;s++){ const q=[p[0]+W*0.145,H*(0.15+R()*0.35),p[2]+zd*0.25+(R()-0.5)*D*0.16]; cap(p,q,rad,rad*(0.8+R()*0.4),0.95); p=q; rad*=0.85+R()*0.3; } } }
+  else { ell(0,H*0.5,0,W*0.24,H*0.28,D*0.26,1); for(let i=0;i<5;i++){ const a=R()*6.283; ell(Math.cos(a)*W*0.2,H*(0.4+R()*0.25),Math.sin(a)*D*0.18,W*0.13,H*0.2,D*0.14,0.9); } }
+  return P.slice(0,40);
+}
+
+/* ---------------- state ---------------- */
+const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,grid:128,preset:'backlit'};
+let REC=makeRecipe('bank','mid',1234);
+try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) LOOK.grid=window.__BRUME_TEST.grid; }catch(_){}
+const UI={tool:'orbit',brushR:0,brushStr:0.5,quality:'draft',playing:false};
+const CAM={yaw:0.55,pitch:0.22,dist:100,tgt:[0,8,0],tanY:Math.tan(20*D2R)};
+const sunDir=()=>{ const e=LOOK.el*D2R, a=LOOK.az*D2R; return [Math.cos(e)*Math.sin(a),Math.sin(e),-Math.cos(e)*Math.cos(a)]; };
+function kelvin(K){ const t=K/100; let r,g,b; if(t<=66){ r=255; g=99.47*Math.log(t)-161.12; b=t<=19?0:138.52*Math.log(t-10)-305.04; } else { r=329.7*Math.pow(t-60,-0.1332); g=288.12*Math.pow(t-60,-0.0755); b=255; }
+  const s=v=>{ v=clamp(v,0,255)/255; return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4); }; const c=[s(r),s(g),s(b)]; const l=0.2126*c[0]+0.7152*c[1]+0.0722*c[2]; return c.map(x=>x/l); }
+function mieParams(d){ return [Math.exp(-0.0990567/(d-1.67154)),Math.exp(-2.20679/(d+3.91029)-0.428934),Math.exp(3.62489-8.29288/(d+5.52825)),Math.exp(-0.599085/(d-0.641583)-0.665888)]; }
+/* density: how many optical depths through the asset's own thickness; scale-free, so a look carries across sizes */
+const tau0=r=>0.25*Math.pow(48,r.den.d);
+const sigmaOf=r=>tau0(r)/(Math.min(...r.size)*0.6);
+const visOf=r=>3.912/sigmaOf(r);
+/* =====================================================================
+   GPU — programs, volumes, and the pipeline passes
+   ===================================================================== */
+const glc=$('#glc'), ov=$('#ov'), octx=ov.getContext('2d');
+let gl=null; const PR={}, T={}, X={}; let VAfs=null, FB1=null, FB2=null;
+function mkShader(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s); return s; }
+function mkProg(name,fs){ const p=gl.createProgram(); const v=mkShader(gl.VERTEX_SHADER,VS_FS), f=mkShader(gl.FRAGMENT_SHADER,fs); gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p); PR[name]={p,v,f,u:{},name}; }
+function progDone(pr){ return !X.par||gl.getProgramParameter(pr.p,X.par.COMPLETION_STATUS_KHR); }
+function progCheck(pr){ if(!gl.getProgramParameter(pr.p,gl.LINK_STATUS)){ const log=(gl.getShaderInfoLog(pr.v)||'')+(gl.getShaderInfoLog(pr.f)||'')+(gl.getProgramInfoLog(pr.p)||''); throw new Error(pr.name+' shader failed:\n'+log.slice(0,1500)); } }
+function use(name){ const pr=PR[name]; gl.useProgram(pr.p); return pr; }
+function U(pr,n){ let l=pr.u[n]; if(l===undefined){ l=gl.getUniformLocation(pr.p,n); pr.u[n]=l; } return l; }
+const u1i=(pr,n,v)=>gl.uniform1i(U(pr,n),v), u1f=(pr,n,v)=>gl.uniform1f(U(pr,n),v), u2f=(pr,n,a,b)=>gl.uniform2f(U(pr,n),a,b), u3v=(pr,n,v)=>gl.uniform3fv(U(pr,n),v), u4v=(pr,n,v)=>gl.uniform4fv(U(pr,n),v);
+function tex3D(w,h,d,ifmt,fmt,type,wrap=gl.CLAMP_TO_EDGE,filter=gl.LINEAR){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D,t); gl.texImage3D(gl.TEXTURE_3D,0,ifmt,w,h,d,0,fmt,type,null);
+  gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,filter===gl.LINEAR_MIPMAP_LINEAR?gl.LINEAR:filter); for(const k of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,k,wrap); t.w=w; t.h=h; t.d=d; return t; }
+function tex2D(w,h,ifmt,fmt,type,filter=gl.NEAREST){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t); gl.texImage2D(gl.TEXTURE_2D,0,ifmt,w,h,0,fmt,type,null);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,filter],[gl.TEXTURE_MAG_FILTER,filter],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v); t.w=w; t.h=h; return t; }
+function bindTex(unit,target,t){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(target,t); }
+function bind3(pr,unit,name,t){ bindTex(unit,gl.TEXTURE_3D,t); u1i(pr,name,unit); }
+function fullscreen(){ gl.bindVertexArray(VAfs); gl.drawArrays(gl.TRIANGLES,0,3); }
+/* draw a pass into every z-slice (or a sub-box) of one or two 3D targets */
+function volPass(pr,targets,dims,box){
+  const two=targets.length>1; const fb=two?FB2:FB1; gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+  gl.drawBuffers(two?[gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]:[gl.COLOR_ATTACHMENT0]);
+  u3v(pr,'uDims',dims); gl.viewport(0,0,dims[0],dims[1]);
+  let z0=0,z1=dims[2]; if(box){ gl.enable(gl.SCISSOR_TEST); gl.scissor(box[0],box[1],box[3]-box[0],box[4]-box[1]); z0=box[2]; z1=box[5]; }
+  for(let z=z0;z<z1;z++){ targets.forEach((t,i)=>gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0+i,t,0,z)); u1f(pr,'uZ',(z+0.5)/dims[2]); fullscreen(); }
+  if(box) gl.disable(gl.SCISSOR_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null); }
+
+/* a volume context: one asset's grids. The main view has one, variations and thumbnails share a small one */
+function dimsFor(size,N){ const m=Math.max(...size); return size.map(v=>Math.max(12,Math.round(N*v/m))); }
+function mkCtx(N){ return {N,dims:null,ldims:null,mass:[],den:[],rc:[],light:null,sim:{step:0,steps:0,dt:0,t:0},acc:{w:0,h:0,tex:[],fb:[],cur:0}}; }
+function ensureVols(ctx,rec){ const d=dimsFor(rec.size,ctx.N); if(ctx.dims&&d.every((v,i)=>v===ctx.dims[i])) return false;
+  for(const t of [...ctx.mass,...ctx.den,...ctx.rc,ctx.light]) if(t) gl.deleteTexture(t);
+  ctx.dims=d; ctx.ldims=d.map(v=>Math.max(8,Math.ceil(v/2)));
+  ctx.mass=[0,1].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT)); ctx.den=[0,1,2].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT));
+  ctx.rc=[0,1].map(()=>tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT)); ctx.light=tex3D(...ctx.ldims,gl.RG16F,gl.RG,gl.HALF_FLOAT);
+  return true; }
+function ensureAcc(ctx,w,h){ const A=ctx.acc; if(A.w===w&&A.h===h) return; for(let i=0;i<2;i++){ if(A.tex[i]){ gl.deleteTexture(A.tex[i]); gl.deleteFramebuffer(A.fb[i]); }
+    A.tex[i]=tex2D(w,h,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR); A.fb[i]=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[i]); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,A.tex[i],0); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); A.w=w; A.h=h; A.cur=0; }
+const voxSize=(ctx,rec)=>Math.min(...rec.size.map((v,i)=>v/ctx.dims[i]));
+
+/* ---- 1. mass: the starting shape, then every brush stroke replayed on top ---- */
+function genMass(ctx,rec){
+  ensureVols(ctx,rec); const pr=use('gen'); const P=templatePrims(rec);
+  const p0=new Float32Array(160), p1=new Float32Array(160), p2=new Float32Array(160);
+  P.forEach((q,i)=>{ p0.set(q.slice(0,4),i*4); p1.set(q.slice(4,8),i*4); p2.set(q.slice(8,12),i*4); });
+  gl.uniform4fv(U(pr,'uP0[0]'),p0); gl.uniform4fv(U(pr,'uP1[0]'),p1); gl.uniform4fv(U(pr,'uP2[0]'),p2); u1i(pr,'uNP',P.length);
+  const md=Math.max(...rec.size), mn=Math.min(...rec.size);
+  const rough=TEMPLATES[rec.template].rough??1; bind3(pr,0,'uNT',T.noise); u1f(pr,'uNoiseAmp',mn*0.35*rough); u1f(pr,'uNoiseScale',md*0.45); u1f(pr,'uSoft',Math.max(mn*0.08,voxSize(ctx,rec)*1.5));
+  const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile); u3v(pr,'uSize',rec.size);
+  volPass(pr,[ctx.mass[0]],ctx.dims);
+  for(const s of rec.strokes) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);
+}
+function dab(ctx,rec,op,d,r,s){ // d: [u,v,w, du,dv,dw] in normalized coords; r: radius / largest side
+  const md=Math.max(...rec.size), R=r*md; const C=[(d[0]-0.5)*rec.size[0],d[1]*rec.size[1],(d[2]-0.5)*rec.size[2]]; const Dm=[d[3]*rec.size[0],d[4]*rec.size[1],d[5]*rec.size[2]];
+  const ext=(R+len(Dm)*1.6)*1.05; const dm=ctx.dims;
+  const box=[0,1,2].map(i=>{ const c=d[i]*dm[i], e=ext/rec.size[i]*dm[i]; return [clamp(Math.floor(c-e)-1,0,dm[i]),clamp(Math.ceil(c+e)+1,0,dm[i])]; });
+  const B=[box[0][0],box[1][0],box[2][0],box[0][1],box[1][1],box[2][1]]; if(B[3]<=B[0]||B[4]<=B[1]||B[5]<=B[2]) return;
+  let pr=use('dab'); bind3(pr,0,'uM',ctx.mass[0]); bind3(pr,1,'uNT',T.noise); u1i(pr,'uOp',op); u3v(pr,'uC',C); u3v(pr,'uDir',Dm); u1f(pr,'uR',R); u1f(pr,'uS',s); u3v(pr,'uSize',rec.size);
+  volPass(pr,[ctx.mass[1]],dm,B);
+  pr=use('copy'); bind3(pr,0,'uSrc',ctx.mass[1]); u3v(pr,'uSize',rec.size); volPass(pr,[ctx.mass[0]],dm,B);
+}
+/* ---- 2. simulation ---- */
+let CURL_RMS=1;
+/* motion is budgeted against the asset's own size, so fog drifts and curls but stays inside its box */
+function simParams(ctx,rec){ const S=rec.sim; const U_=Math.max(S.turb,0.02)*S.eddy*0.6/CURL_RMS; const Uw=Math.max(S.turb,0.02)*S.eddy*0.6;
+  const T_=S.age*1.3*S.eddy/Uw;                                   // about one and a third eddy turnovers at full age
+  const wd=S.windDir*D2R, wsp=T_>0?S.wind*0.3*Math.hypot(rec.size[0],rec.size[2])*0.5/T_:0; const wind=[Math.sin(wd)*wsp,0,-Math.cos(wd)*wsp];
+  const liftV=T_>0?S.lift*0.3*rec.size[1]/T_:0;                   // full lift moves fog about a third of the box height
+  const vmax=Uw*2.2+len(wind)+Math.abs(liftV); const vx=voxSize(ctx,rec);
+  let steps=S.age<=0.001?0:Math.ceil(T_/(vx/vmax)); steps=clamp(steps,S.age>0?6:0,140); const dt=steps?T_/steps:0;
+  return {U:U_,wind,steps,dt,lift:liftV}; }
+function simReset(ctx,rec){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); u3v(pr,'uSize',rec.size); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
+  const sp=simParams(ctx,rec); ctx.sim={step:0,steps:sp.steps,dt:sp.dt,t:0,U:sp.U,wind:sp.wind,lift:sp.lift}; }
+function velUniforms(pr,ctx,rec){ const S=rec.sim; u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread);
+  u1f(pr,'uTime',ctx.sim.t/Math.max(S.eddy/Math.max(S.turb*S.eddy*0.6,1e-3),1e-3)); u1f(pr,'uDt',ctx.sim.dt); u1f(pr,'uFloor',rec.floor?1:0); u3v(pr,'uWind',ctx.sim.wind);
+  const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); u3v(pr,'uSize',rec.size); }
+function simStep(ctx,rec,dtOverride){
+  if(dtOverride) ctx.sim.dt=dtOverride;
+  let pr=use('simA'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u1f(pr,'uReseed',0.7/Math.max(rec.sim.eddy/Math.max(rec.sim.turb*rec.sim.eddy*0.6,1e-3),1e-3));
+  volPass(pr,[ctx.den[1],ctx.rc[1]],ctx.dims);
+  pr=use('simB'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uH',ctx.den[1]); u1f(pr,'uDiss',rec.sim.diss*0.6*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));
+  volPass(pr,[ctx.den[2]],ctx.dims);
+  ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.dt; ctx.sim.step++; }
+/* ---- 3. transfer + light cache ---- */
+function transfer(rec){ return {th:0.12,w:0.04+0.66*rec.det.edge,amt:rec.det.amt*0.42}; }
+function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(rec.size)); u3v(pr,'uSize',rec.size);
+  volPass(pr,[ctx.light],ctx.ldims); }
+/* ---- 4. view ---- */
+function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
+  bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
+  u3v(pr,'uBMin',[-rec.size[0]/2,0,-rec.size[2]/2]); u3v(pr,'uBSize',rec.size); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
+  u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uTurb',rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
+  u1i(pr,'uOct',final?6:4); u1i(pr,'uFloorOn',rec.floor?1:0); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
+function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
+function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps){
+  ensureAcc(ctx,w,h); const A=ctx.acc, src=A.cur, dst=1-src; gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[dst]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,w,h);
+  const pr=use('render'); densUniforms(pr,ctx,rec,final); bind3(pr,4,'uLV',ctx.light); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr,'uPrev',6);
+  const B=camBasis(cam); u3v(pr,'uCam',B.pos); u3v(pr,'uCR',B.r); u3v(pr,'uCU',B.u); u3v(pr,'uCF',B.f); u1f(pr,'uTanY',B.tanY); u2f(pr,'uRes',w,h);
+  u1f(pr,'uFrame',frameNo); u1f(pr,'uBlend',blend); u1i(pr,'uSteps',steps); u1i(pr,'uFinal',final?1:0); u1i(pr,'uBg',LOOK.bg);
+  const L=sunDir(); u3v(pr,'uL',L); const sunI=LOOK.sunI*3.2*clamp(L[1]*4+0.25,0,1); u3v(pr,'uSunC',kelvin(LOOK.sunK).map(v=>v*sunI)); u3v(pr,'uSkyC',kelvin(LOOK.skyK).map(v=>v*LOOK.sky*0.32));
+  u1f(pr,'uMS',rec.den.ms); u4v(pr,'uPh',mieParams(rec.den.drop)); u1f(pr,'uFloorAlb',LOOK.bg===0?0.07:0.16); u1f(pr,'uGrid',Math.pow(10,Math.floor(Math.log10(Math.max(...rec.size)*0.12))));
+  fullscreen(); A.cur=dst; gl.bindFramebuffer(gl.FRAMEBUFFER,null); }
+function displayPass(ctx,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,w,h); const pr=use('disp'); bindTex(0,gl.TEXTURE_2D,ctx.acc.tex[ctx.acc.cur]); u1i(pr,'uA',0); u1f(pr,'uExpo',Math.pow(2,LOOK.expo)); u2f(pr,'uRes',w,h); fullscreen(); }
+/* where a brush lands: first solid fog along the ray */
+let PICKT=null, PICKFB=null;
+function pickRay(ctx,rec,ro,rd){ if(!PICKT){ PICKT=tex2D(1,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); PICKFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,PICKT,0); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.viewport(0,0,1,1); const pr=use('pick'); densUniforms(pr,ctx,rec,false); u3v(pr,'uCam',ro); u3v(pr,'uRd',rd); fullscreen();
+  const a=new Float32Array(4); gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return {t:a[0],t0:a[1],t1:a[2]}; }
+/* bake the final density (detail included) to a voxel array for export */
+async function bake(ctx,rec,N,prog){ const ed=dimsFor(rec.size,N); const out=new Float32Array(ed[0]*ed[1]*ed[2]);
+  const t=tex2D(ed[0],ed[1],gl.RGBA32F,gl.RGBA,gl.FLOAT); const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  const pr=use('bake'); densUniforms(pr,ctx,rec,true); u3v(pr,'uEDims',ed); const buf=new Float32Array(ed[0]*ed[1]*4);
+  for(let z=0;z<ed[2];z++){ gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.viewport(0,0,ed[0],ed[1]); u1f(pr,'uEZ',(z+0.5)/ed[2]); fullscreen(); gl.readPixels(0,0,ed[0],ed[1],gl.RGBA,gl.FLOAT,buf);
+    const o=z*ed[0]*ed[1]; for(let i=0;i<ed[0]*ed[1];i++) out[o+i]=buf[i*4]; if(z%8===7){ prog&&prog(z/ed[2]); await yieldUI(); } }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.deleteFramebuffer(fb); gl.deleteTexture(t); return {dims:ed,data:out}; }
+
+function initGL(){
+  gl=glc.getContext('webgl2',{antialias:false,alpha:false,depth:false,stencil:false,premultipliedAlpha:false,preserveDrawingBuffer:false,powerPreference:'high-performance'});
+  if(!gl){ fail('WebGL 2 is not available in this browser. Brume needs a GPU-enabled Chrome, Edge, Firefox or Safari.'); return false; }
+  X.cbf=gl.getExtension('EXT_color_buffer_float'); X.par=gl.getExtension('KHR_parallel_shader_compile'); gl.getExtension('OES_texture_float_linear');
+  if(!X.cbf){ fail('This GPU cannot render to floating-point targets, which Brume needs.'); return false; }
+  VAfs=gl.createVertexArray(); gl.bindVertexArray(VAfs); const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
+  FB1=gl.createFramebuffer(); FB2=gl.createFramebuffer();
+  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
+  T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR);
+  T.curl=tex3D(64,64,64,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.REPEAT,gl.LINEAR);
+  return true; }
+async function buildNoise(){
+  const pr=use('noise'); gl.bindFramebuffer(gl.FRAMEBUFFER,FB1); gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+  for(const [tex,N,mode,p0,p1] of [[T.noise,128,0,0.2,0.12],[T.detail,128,1,0.32,0.12],[T.curl,64,2,0.44,0.08]]){ gl.viewport(0,0,N,N); u1f(pr,'uN',N); u1i(pr,'uMode',mode);
+    for(let z=0;z<N;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,tex,0,z); u1f(pr,'uZ',(z+0.5)/N); fullscreen(); if(z%16===15){ showLoader('Building the noise volumes',p0+p1*z/N); await yieldUI(); } } }
+  // measure the curl field so turbulence speeds come out in metres
+  gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.curl,0,17); const a=new Float32Array(64*64*4); gl.readPixels(0,0,64,64,gl.RGBA,gl.FLOAT,a); let s=0; for(let i=0;i<64*64;i++) s+=a[i*4]**2+a[i*4+1]**2+a[i*4+2]**2; CURL_RMS=Math.sqrt(s/(64*64))||1;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  for(const t of [T.noise,T.detail]){ gl.bindTexture(gl.TEXTURE_3D,t); gl.generateMipmap(gl.TEXTURE_3D); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); } }
+/* =====================================================================
+   SCHEDULER — sculpt → simulate (visibly, a few steps a frame) → light → view
+   ===================================================================== */
+const MAIN=mkCtx(128);
+const dirty={mass:true,sim:false,light:true};
+let frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
+function resetAccum(){ frames=0; }
+function poke(){ interacting=true; interactUntil=performance.now()+180; resetAccum(); }
+function markMass(){ dirty.mass=true; resetAccum(); }
+function markSim(){ dirty.sim=true; resetAccum(); }
+function markLight(){ dirty.light=true; resetAccum(); }
+function markView(){ resetAccum(); }
+function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; resetAccum(); }
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(0.1,(now-lastT)/1000); ftAvg=lerp(ftAvg,now-lastT,0.1); lastT=now;
+  if(!ready) return;
+  try{
+    if(interacting&&now>interactUntil){ interacting=false; resetAccum(); }
+    if(MAIN.N!==LOOK.grid){ MAIN.N=LOOK.grid; dirty.mass=true; }
+    if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
+    if(dirty.sim){ simReset(MAIN,REC); dirty.sim=false; dirty.light=true; evolveStep=0; }
+    const S=MAIN.sim; let simmed=false;
+    if(!brushing&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
+    else if(UI.playing&&!brushing){ simStep(MAIN,REC,S.dt||(S.steps?S.dt:0.02*REC.sim.eddy/Math.max(S.U,1e-3))); simmed=true; evolveStep++; }
+    if(simmed){ if(S.step>=S.steps||S.step%4===0||UI.playing&&evolveStep%3===0) dirty.light=true; resetAccum(); }
+    if(dirty.light){ lightUpdate(MAIN,REC); dirty.light=false; resetAccum(); }
+    const fin=UI.quality==='final'&&!interacting&&!brushing&&!simmed&&!UI.playing;
+    const moving=interacting||brushing||simmed||UI.playing;
+    const sc=moving?(IS_MOBILE?0.4:0.5):fin?1:(IS_MOBILE?0.6:0.75); const vw=Math.max(16,Math.round(cw*sc)), vh=Math.max(16,Math.round(ch*sc));
+    const target=fin?256:48;
+    if(frames<target||moving){ const blend=moving?1:1/(frames+1); renderPass(MAIN,REC,CAM,vw,vh,blend,fin,frames,moving?72:fin?300:140); frames++; }
+    displayPass(MAIN,cw,ch);
+    if(capture){ const c=capture; capture=null; try{ c(glc); }catch(e){ console.error(e); } }
+    drawOverlay();
+    if(now-hudT>200){ hudT=now; updateHud(vw,vh,fin,target); }
+  }catch(err){ console.error(err); fail('Renderer error: '+err.message); }
+}
+
+/* =====================================================================
+   OVERLAY — bounds, scale reference, brush, wind and sun
+   ===================================================================== */
+function project(p){ const B=camBasis(CAM); const v=sub(p,B.pos); const z=dot(v,B.f); if(z<1e-4) return null; const s=(cssH/2)/B.tanY; return [cssW/2+dot(v,B.r)/z*s, cssH/2-dot(v,B.u)/z*s, z]; }
+function mouseRay(mx,my){ const B=camBasis(CAM); const s=B.tanY/(cssH/2); return {ro:B.pos,rd:norm(add(B.f,add(mul(B.r,(mx-cssW/2)*s),mul(B.u,-(my-cssH/2)*s))))}; }
+function line3(a,b){ const p=project(a), q=project(b); if(!p||!q) return; octx.beginPath(); octx.moveTo(p[0],p[1]); octx.lineTo(q[0],q[1]); octx.stroke(); }
+function niceLen(x){ const e=Math.pow(10,Math.floor(Math.log10(x))); const m=x/e; return (m>=5?5:m>=2?2:1)*e; }
+const fmLen=v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+' km':v>=10?v.toFixed(0)+' m':v>=1?v.toFixed(1)+' m':(v*100).toFixed(0)+' cm';
+let hover=null;
+function drawOverlay(){
+  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH);
+  const [W,H,D]=REC.size, x0=-W/2,x1=W/2,z0=-D/2,z1=D/2;
+  // bounds
+  octx.strokeStyle='rgba(166,203,221,.22)'; octx.lineWidth=1; octx.setLineDash([3,5]);
+  const C=[[x0,0,z0],[x1,0,z0],[x1,0,z1],[x0,0,z1]]; for(let i=0;i<4;i++){ const a=C[i], b=C[(i+1)%4]; line3(a,b); line3([a[0],H,a[2]],[b[0],H,b[2]]); line3(a,[a[0],H,a[2]]); } octx.setLineDash([]);
+  const lab=project([x0,H,z1]); if(lab){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(166,203,221,.6)'; octx.fillText(`${fmLen(W)} × ${fmLen(H)} × ${fmLen(D)}`,lab[0]+4,lab[1]-6); }
+  // scale reference: a 1.8 m figure at the front corner, and a ruler along the front edge
+  if(LOOK.figure){ const base=[x0-Math.max(W*0.04,0.6),0,z1], top=[base[0],1.8,base[2]]; const a=project(base), b=project(top);
+    if(a&&b&&a[1]-b[1]>6){ const h=a[1]-b[1], x=a[0]; octx.fillStyle='rgba(220,226,232,.55)'; octx.beginPath(); octx.arc(x,b[1]+h*0.07,h*0.07,0,Math.PI*2); octx.fill();
+      octx.beginPath(); octx.moveTo(x-h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.08,b[1]+h*0.55); octx.lineTo(x+h*0.06,a[1]); octx.lineTo(x+h*0.015,a[1]); octx.lineTo(x,b[1]+h*0.6); octx.lineTo(x-h*0.015,a[1]); octx.lineTo(x-h*0.06,a[1]); octx.lineTo(x-h*0.08,b[1]+h*0.55); octx.closePath(); octx.fill();
+      octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillText('1.8 m',x+h*0.14,b[1]+8); }
+    const L=niceLen(W*0.25); const r0=[x0,0,z1+Math.max(D*0.03,0.3)]; const r1=[x0+L,0,r0[2]]; const p=project(r0), q=project(r1);
+    if(p&&q){ octx.strokeStyle='rgba(220,226,232,.5)'; octx.lineWidth=1.5; octx.beginPath(); octx.moveTo(p[0],p[1]); octx.lineTo(q[0],q[1]); octx.stroke(); for(const k of [0,0.5,1]){ const t=project([x0+L*k,0,r0[2]]); if(t){ octx.beginPath(); octx.moveTo(t[0],t[1]-4); octx.lineTo(t[0],t[1]+4); octx.stroke(); } }
+      octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(220,226,232,.6)'; octx.fillText(fmLen(L),q[0]+6,q[1]+4); } }
+  // brush ring, on the camera plane at the depth the stroke will land
+  if(BRUSHES[UI.tool]&&hover){ const B=camBasis(CAM); const c=project(hover.p); if(c){ const rpx=UI.brushR/c[2]*(cssH/2)/B.tanY; const op=brushOp(hover.ctrl);
+      octx.strokeStyle=op===1||op===5?'rgba(224,111,94,.95)':op===2?'rgba(166,203,221,.95)':'rgba(239,178,77,.95)'; octx.lineWidth=1.5; octx.setLineDash(op===1?[4,3]:[]);
+      octx.beginPath(); octx.arc(c[0],c[1],rpx,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.globalAlpha=0.5; octx.beginPath(); octx.arc(c[0],c[1],rpx*0.5,0,Math.PI*2); octx.stroke(); octx.globalAlpha=1; } }
+  // wind arrow on the ground, sun glyph in the sky
+  if(UI.tool==='wind'||drag&&drag.mode==='wind'||REC.sim.wind>0.02){ const wd=REC.sim.windDir*D2R; const L=Math.max(W,D)*0.32*(0.3+REC.sim.wind); const c=[0,Math.min(H*0.04,1),0]; const e=[Math.sin(wd)*L,c[1],-Math.cos(wd)*L];
+    const a=project(add(c,mul(e,-0.5))), b=project(add(c,mul(e,0.5))); if(a&&b){ octx.globalAlpha=UI.tool==='wind'?0.95:0.35; octx.strokeStyle='#a6cbdd'; octx.lineWidth=2; octx.beginPath(); octx.moveTo(a[0],a[1]); octx.lineTo(b[0],b[1]); octx.stroke();
+      const ang=Math.atan2(b[1]-a[1],b[0]-a[0]); octx.fillStyle='#a6cbdd'; octx.beginPath(); octx.moveTo(b[0]+Math.cos(ang)*8,b[1]+Math.sin(ang)*8); octx.lineTo(b[0]+Math.cos(ang+2.5)*9,b[1]+Math.sin(ang+2.5)*9); octx.lineTo(b[0]+Math.cos(ang-2.5)*9,b[1]+Math.sin(ang-2.5)*9); octx.fill(); octx.globalAlpha=1; } }
+  if(UI.tool==='light'||drag&&drag.mode==='light'){ const B=camBasis(CAM); const s=project(add(CAM.tgt,mul(sunDir(),CAM.dist*0.7))); if(s){ octx.strokeStyle='#efb24d'; octx.fillStyle='rgba(239,178,77,.25)'; octx.lineWidth=1.5; octx.beginPath(); octx.arc(s[0],s[1],11,0,Math.PI*2); octx.fill(); octx.stroke();
+      for(let i=0;i<8;i++){ const a=i/8*Math.PI*2; octx.beginPath(); octx.moveTo(s[0]+Math.cos(a)*15,s[1]+Math.sin(a)*15); octx.lineTo(s[0]+Math.cos(a)*20,s[1]+Math.sin(a)*20); octx.stroke(); }
+      octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='#efb24d'; octx.fillText(`el ${LOOK.el.toFixed(0)}°  az ${LOOK.az.toFixed(0)}°`,s[0]+24,s[1]+4); } }
+  if(drag&&drag.label){ octx.font='500 11px "IBM Plex Mono", monospace'; const w=octx.measureText(drag.label).width; octx.fillStyle='rgba(14,17,21,.82)'; octx.fillRect(drag.lx+12,drag.ly-22,w+10,18); octx.fillStyle='#efb24d'; octx.fillText(drag.label,drag.lx+17,drag.ly-9); }
+}
+
+/* =====================================================================
+   INTERACTION — Maya navigation, fog brushes, wind and light by hand
+   ===================================================================== */
+const BRUSHES={add:0,erase:1,smooth:2,pull:3,smear:4,tear:5};
+function brushOp(ctrl){ const o=BRUSHES[UI.tool]; if(o===0&&ctrl) return 1; if(o===1&&ctrl) return 0; return o; }
+let drag=null; const pointers=new Map();
+function tumble(dx,dy){ CAM.yaw-=dx*0.006; CAM.pitch=clamp(CAM.pitch+dy*0.006,-1.45,1.45); poke(); }
+function track(dx,dy){ const B=camBasis(CAM); const s=2*CAM.dist*CAM.tanY/cssH; CAM.tgt=add(CAM.tgt,add(mul(B.r,-dx*s),mul(B.u,dy*s))); poke(); }
+function dolly(k){ CAM.dist=clamp(CAM.dist*k,Math.max(...REC.size)*0.05,Math.max(...REC.size)*12); poke(); }
+function frameAll(){ const [W,H,D]=REC.size; CAM.tgt=[0,H*0.42,0]; CAM.dist=Math.hypot(W,H,D)*0.5/Math.tan(Math.atan(CAM.tanY)*0.92)*1.05; poke(); }
+function brushDepthPoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const z=drag.depth; return add(ro,mul(rd,z/Math.max(dot(rd,B.f),1e-4))); }
+function startStroke(mx,my,ev){
+  const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pk=pickRay(MAIN,REC,ro,rd); let p;
+  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else { const c=[0,REC.size[1]*0.4,0]; const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
+  const op=brushOp(ev.ctrlKey||ev.metaKey); const r=UI.brushR/Math.max(...REC.size);
+  drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:UI.brushStr*(op===3?1:op===4?0.9:0.45),dabs:[]},lx:mx,ly:my};
+  brushing=true; if(op!==3&&op!==4) putDab(p,[0,0,0]); }
+function putDab(p,dm){ const s=drag.stroke; const u=[p[0]/REC.size[0]+0.5,p[1]/REC.size[1],p[2]/REC.size[2]+0.5]; const du=[dm[0]/REC.size[0],dm[1]/REC.size[1],dm[2]/REC.size[2]];
+  const d=[...u,...du].map(v=>+v.toFixed(5)); s.dabs.push(d); dab(MAIN,REC,s.op,d,s.r,s.s); dirty.sim=true; resetAccum(); }
+function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
+  if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.06){ putDab(p,dm); drag.last=p; } }
+  else if(L>UI.brushR*0.22){ const n=Math.min(8,Math.floor(L/(UI.brushR*0.22))); for(let i=1;i<=n;i++) putDab(add(drag.last,mul(dm,i/n)),[0,0,0]); drag.last=p; }
+  hover={p,ctrl:drag.op===1}; }
+function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); pushUndo(); } dirty.sim=true; resetAccum(); }
+ov.addEventListener('contextmenu',e=>e.preventDefault());
+ov.addEventListener('pointerdown',ev=>{
+  if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
+  if(pointers.size===2){ const [a,b]=[...pointers.values()]; if(drag&&drag.mode==='brush') endStroke(); drag={mode:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; return; }
+  if(ev.altKey||UI.tool==='orbit'||ev.button!==0){ ev.preventDefault(); const m=ev.button===1?'track':ev.button===2?'dolly':((ev.buttons&4)?'dolly':'tumble'); drag={mode:m,x:mx,y:my}; return; }
+  if(BRUSHES[UI.tool]!=null){ startStroke(mx,my,ev); return; }
+  if(UI.tool==='wind'){ drag={mode:'wind',x0:mx,y0:my,lx:mx,ly:my}; return; }
+  if(UI.tool==='light'){ drag={mode:'light',x:mx,y:my,lx:mx,ly:my}; return; }
+});
+ov.addEventListener('pointermove',ev=>{
+  const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
+  if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const c=[0,REC.size[1]*0.4,0]; const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }
+  if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); track(cx-drag.cx,cy-drag.cy); drag.d=d; drag.cx=cx; drag.cy=cy; return; }
+  if(drag.mode==='tumble'){ tumble(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
+  if(drag.mode==='track'){ track(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
+  if(drag.mode==='dolly'){ dolly(Math.exp(-((mx-drag.x)+(my-drag.y))*0.005)); drag.x=mx; drag.y=my; return; }
+  if(drag.mode==='brush'){ drag.lx=mx; drag.ly=my; moveStroke(mx,my); return; }
+  if(drag.mode==='wind'){ drag.lx=mx; drag.ly=my; const B=camBasis(CAM); const dx=mx-drag.x0, dy=my-drag.y0; const r=norm([B.r[0],0,B.r[2]]), f=norm([B.f[0],0,B.f[2]]);
+    const w=add(mul(r,dx),mul(f,-dy)); REC.sim.windDir=((Math.atan2(w[0],-w[2])/D2R)+360)%360; REC.sim.wind=clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1); drag.label=`wind ${(REC.sim.wind*100).toFixed(0)}% toward ${REC.sim.windDir.toFixed(0)}°`; refreshPanels(); return; }
+  if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
+});
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSim(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
+ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
+ov.addEventListener('pointerleave',()=>{ if(!drag) hover=null; });
+ov.addEventListener('wheel',ev=>{ ev.preventDefault(); dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
+const typing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); };
+addEventListener('keydown',ev=>{
+  if(ev.key==='Alt') ev.preventDefault(); if(typing()) return; const k=ev.key;
+  if(k==='Escape'){ if(!$('#modal').hidden) closeModal(); return; }
+  if((ev.ctrlKey||ev.metaKey)&&k.toLowerCase()==='z'){ ev.preventDefault(); ev.shiftKey?redo():undo(); return; }
+  if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
+  const t=TOOLS.find(x=>x.key===k.toLowerCase()); if(t){ setTool(t.id); return; }
+  if(k===' '){ ev.preventDefault(); togglePlay(); return; }
+  if(k==='['){ setBrushR(UI.brushR/1.15); return; } if(k===']'){ setBrushR(UI.brushR*1.15); return; }
+  if(k==='f'||k==='F'){ frameAll(); return; } if(k==='g'||k==='G'){ setQuality(UI.quality==='final'?'draft':'final'); return; }
+  if(k==='r'||k==='R'){ rerun(); return; }
+});
+/* =====================================================================
+   UI
+   ===================================================================== */
+const ICONS={
+  orbit:'<circle cx="12" cy="12" r="3"/><path d="M12 3c5 0 9 4 9 9"/><path d="M12 21c-5 0-9-4-9-9"/><path d="M19.5 9.5L21 12l2-2"/><path d="M4.5 14.5L3 12l-2 2"/>',
+  add:'<circle cx="11" cy="12" r="6.5"/><path d="M11 9v6M8 12h6"/><path d="M18 6c1.5-.5 3 .2 3.5 1.5"/>',
+  erase:'<circle cx="11" cy="12" r="6.5" stroke-dasharray="2.5 2"/><path d="M8 12h6"/>',
+  smooth:'<path d="M3 15c3-5 5 3 9-1s6-4 9 0"/><path d="M3 19h18"/>',
+  pull:'<circle cx="7" cy="14" r="3.5"/><path d="M10.5 13c3-1 6-3 9-6"/><path d="M15 7h4.5v4.5"/>',
+  smear:'<path d="M3 9h14"/><path d="M3 13h17"/><path d="M3 17h12"/><path d="M17 6l4 3-4 3"/>',
+  tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
+  wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
+  light:'<circle cx="12" cy="12" r="3.6"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/>',
+};
+const TOOLS=[
+  {id:'orbit',key:'v',name:'Look around',hint:'Drag to orbit, middle-drag to pan, right-drag or wheel to zoom. Alt works with any tool, like Maya.'},
+  {id:'add',key:'1',name:'Add fog',hint:'Paint fog into the air. It lands on the fog under the cursor, or in the middle of the box. Ctrl erases.'},
+  {id:'erase',key:'2',name:'Erase',hint:'Carve fog away. Ctrl adds.'},
+  {id:'smooth',key:'3',name:'Smooth',hint:'Soften and even out what you painted.'},
+  {id:'pull',key:'4',name:'Pull',hint:'Grab fog and drag it out into tendrils, or push a bulge back in.'},
+  {id:'smear',key:'5',name:'Comb',hint:'Streak fog along the stroke, like wind combing it out.'},
+  {id:'tear',key:'6',name:'Tear',hint:'Rip ragged holes and torn edges.'},
+  {id:'wind',key:'7',name:'Wind',hint:'Drag across the view to blow wind that way. Longer drags blow harder; it re-simulates when you let go.'},
+  {id:'light',key:'8',name:'Light',hint:'Drag to move the sun around the fog. Try it behind the fog: backlit fog glows.'},
+];
+function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===7){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
+  const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
+function setTool(id){ UI.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='orbit'?'grab':'crosshair'; hover=null; buildBrushRow(); }
+function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(BRUSHES[UI.tool]!=null?`<span>brush <b style="font-family:var(--f-mono)">${fmLen(UI.brushR)}</b> · [ ] to size</span>`:''); }
+function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.01,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
+function setQuality(q){ UI.quality=q; $('#qDraft').setAttribute('aria-pressed',q==='draft'); $('#qFinal').setAttribute('aria-pressed',q==='final'); resetAccum(); if(q==='final') toast('Final: full resolution, every detail octave, detailed self-shadowing'); }
+$('#qDraft').onclick=()=>setQuality('draft'); $('#qFinal').onclick=()=>setQuality('final');
+function togglePlay(){ UI.playing=!UI.playing; $('#playBtn').setAttribute('aria-pressed',UI.playing); $('#playIco').innerHTML=UI.playing?'<path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z"/>':'<path d="M2.5 1.5v9l7.5-4.5z"/>'; resetAccum(); }
+function rerun(){ markSim(); toast('Simulating again from the sculpted shape'); }
+$('#playBtn').onclick=togglePlay; $('#rerunBtn').onclick=rerun;
+$('#assetName').oninput=ev=>{ REC.name=ev.target.value; autosave(); };
+$('#assetName').onchange=()=>pushUndo();
+
+/* controls */
+function slider(parent,o){
+  const row=document.createElement('div'); row.className='row'; const id='s'+Math.random().toString(36).slice(2,8); if(o.tip) row.title=o.tip;
+  row.innerHTML=`<label for="${id}">${o.label}</label><input type="range" id="${id}" min="0" max="1000" step="1"><output></output>`;
+  const inp=row.querySelector('input'), out=row.querySelector('output');
+  const toS=v=>o.log?Math.log(v/o.min)/Math.log(o.max/o.min):(v-o.min)/(o.max-o.min), fromS=s=>o.log?o.min*Math.pow(o.max/o.min,s):o.min+s*(o.max-o.min);
+  const refresh=()=>{ const v=o.get(); const s=clamp(toS(v),0,1); inp.value=Math.round(s*1000); inp.style.setProperty('--p',(s*100)+'%'); out.textContent=o.fmt?o.fmt(v):v.toFixed(2); };
+  inp.addEventListener('input',()=>{ let v=fromS(inp.value/1000); if(o.step) v=Math.round(v/o.step)*o.step; o.set(v); inp.style.setProperty('--p',(inp.value/10)+'%'); out.textContent=o.fmt?o.fmt(v):v.toFixed(2); });
+  inp.addEventListener('change',()=>{ o.commit&&o.commit(); });
+  refresh(); parent.appendChild(row); return refresh; }
+function chips(parent,label,opts,get,set){ const row=document.createElement('div'); row.className=label?'row wide':''; if(label) row.innerHTML=`<label>${label}</label>`; const c=document.createElement('div'); c.className='chips'; row.appendChild(c);
+  const draw=()=>{ c.innerHTML=''; for(const [v,t,title] of opts){ const b=document.createElement('button'); b.className='chip'; if(title) b.title=title; b.setAttribute('aria-pressed',get()===v); b.textContent=t; b.onclick=()=>{ set(v); draw(); }; c.appendChild(b); } };
+  draw(); parent.appendChild(row); return draw; }
+function subH(p,t){ const d=document.createElement('div'); d.className='sub-h'; d.textContent=t; p.appendChild(d); return d; }
+function note(p,html){ const d=document.createElement('div'); d.className='note'; d.innerHTML=html; p.appendChild(d); return d; }
+const pct=v=>Math.round(v*100)+'%';
+let refreshers=[], brushRefs=[]; function refreshPanels(){ refreshers.forEach(f=>f()); brushRefs.forEach(f=>f()); }
+/* every change: what it invalidates, and an undo point when the drag ends */
+const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); what(); poke(); autosave(); },fmt,log,tip,commit:pushUndo});
+function buildPanels(){
+  refreshers=[];
+  // start from
+  const sb=$('#startBody'); sb.innerHTML=''; const tiles=document.createElement('div'); tiles.className='tiles'; sb.appendChild(tiles);
+  for(const [k,t] of Object.entries(TEMPLATES)){ const b=document.createElement('button'); b.className='tile'; b.setAttribute('aria-pressed',REC.template===k); b.innerHTML=`<svg viewBox="0 0 30 24">${t.icon}</svg>${t.label}`; b.title='Start a new '+t.label.toLowerCase(); b.onclick=()=>startFrom(k); tiles.appendChild(b); }
+  const vb=document.createElement('div'); vb.className='btns'; vb.innerHTML='<button class="btn prim" id="varBtn">Variations</button><button class="btn" id="seedBtn">New seed</button>'; sb.appendChild(vb);
+  vb.querySelector('#varBtn').onclick=makeVariations; vb.querySelector('#seedBtn').onclick=()=>{ REC.seed=Math.floor(Math.random()*9999); markMass(); pushUndo(); toast('New seed: same settings, a different shape'); };
+  // size & scale
+  const zb=$('#sizeBody'); zb.innerHTML='';
+  refreshers.push(chips(zb,'Scale',Object.entries(CLASSES).map(([k,c])=>[k,c.label,c.range]),()=>REC.cls,v=>setClass(v)));
+  const dims=document.createElement('div'); dims.className='dims'; dims.innerHTML=['Width','Height','Depth'].map((n,i)=>`<label>${n}<input type="number" id="dim${i}" min="0.1" step="any"></label>`).join(''); zb.appendChild(dims);
+  const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
+  [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } REC.size[i]=clamp(v,0.1,5000); markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }; }); refreshers.push(dimRefresh);
+  refreshers.push(chips(zb,'Sits on',[[true,'Ground','Fog rests on a floor and spreads along it'],[false,'Nothing','Floating: clouds, puffs']],()=>REC.floor,v=>{ REC.floor=v; markSim(); pushUndo(); autosave(); }));
+  note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch.');
+  // simulate
+  const mb=$('#simBody'); mb.innerHTML=''; const s=REC.sim;
+  const md=()=>Math.max(...REC.size);
+  refreshers.push(slider(mb,S_('Age',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.02?'as sculpted':v<0.35?'young':v<0.7?'settled':'old & torn',markSim,false,'How long the fog has been drifting: young is dense and soft, old is torn into wisps')));
+  refreshers.push(slider(mb,S_('Turbulence',0,1,()=>REC.sim.turb,v=>REC.sim.turb=v,pct,markSim,false,'How hard it swirls')));
+  refreshers.push(slider(mb,S_('Eddy size',0.1,1500,()=>REC.sim.eddy,v=>REC.sim.eddy=v,fmLen,markSim,true,'Size of the biggest swirls')));
+  refreshers.push(slider(mb,S_('Sink ↔ rise',-1,1,()=>REC.sim.lift,v=>REC.sim.lift=v,v=>v<-0.05?'sinks':v>0.05?'rises':'neutral',markSim,false,'Cold fog sinks and spreads; steam and warm mist rise')));
+  refreshers.push(slider(mb,S_('Layering',0,1,()=>REC.sim.strat,v=>REC.sim.strat=v,pct,markSim,false,'Flattens the swirls into horizontal layers, as in calm, stable air')));
+  refreshers.push(slider(mb,S_('Calm core',0,1,()=>REC.sim.calm,v=>REC.sim.calm=v,pct,markSim,false,'Keeps the inside dense and quiet while the edges churn')));
+  if(REC.floor) refreshers.push(slider(mb,S_('Spread on ground',0,1,()=>REC.sim.spread,v=>REC.sim.spread=v,pct,markSim,false,'Fog piled on the ground slumps outward')));
+  refreshers.push(slider(mb,S_('Wind',0,1,()=>REC.sim.wind,v=>REC.sim.wind=v,pct,markSim,false,'Or use the Wind tool (7) and drag in the view')));
+  refreshers.push(slider(mb,S_('Wind toward',0,360,()=>REC.sim.windDir,v=>REC.sim.windDir=v,v=>v.toFixed(0)+'°',markSim)));
+  refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSim,false,'Fog evaporates as it ages')));
+  // detail
+  const db=$('#detBody'); db.innerHTML='';
+  refreshers.push(slider(db,S_('Wisps ↔ billows',0,1,()=>REC.det.billow,v=>REC.det.billow=v,v=>v<0.33?'wispy':v>0.67?'billowy':'mixed',markLight)));
+  refreshers.push(slider(db,S_('Detail',0,1,()=>REC.det.amt,v=>REC.det.amt=v,pct,markLight,false,'How hard the fine detail cuts into the fog')));
+  refreshers.push(slider(db,S_('Detail size',0.02,200,()=>REC.det.size,v=>REC.det.size=v,fmLen,markView,true,'Size of the largest detail; finer octaves sit under it')));
+  refreshers.push(slider(db,S_('Edge softness',0,1,()=>REC.det.edge,v=>REC.det.edge=v,pct,markLight,false,'Crisp defined edges or a soft graded falloff')));
+  refreshers.push(slider(db,S_('Breakup',0,1,()=>REC.det.brk,v=>REC.det.brk=v,pct,markView,false,'Holes and separate clumps')));
+  refreshers.push(slider(db,S_('Breakup size',0.1,2000,()=>REC.det.brkSize,v=>REC.det.brkSize=v,fmLen,markView,true)));
+  // density
+  const nb=$('#denBody'); nb.innerHTML='';
+  refreshers.push(slider(nb,S_('Density',0,1,()=>REC.den.d,v=>REC.den.d=v,()=>'vis '+fmLen(visOf(REC)),markLight,false,'How far you can see inside it')));
+  refreshers.push(slider(nb,S_('Fade top',0,1,()=>REC.den.fadeT,v=>REC.den.fadeT=v,pct,markLight)));
+  refreshers.push(slider(nb,S_('Fade bottom',0,1,()=>REC.den.fadeB,v=>REC.den.fadeB=v,pct,markLight)));
+  refreshers.push(slider(nb,S_('Droplet size',3,40,()=>REC.den.drop,v=>REC.den.drop=v,v=>v.toFixed(0)+' µm',markView,true,'Bigger droplets scatter more light forward: backlit fog glows harder')));
+  refreshers.push(slider(nb,S_('Inner glow',0,0.85,()=>REC.den.ms,v=>REC.den.ms=v,pct,markView,false,'Light bouncing around inside thick fog')));
+  // light & view
+  const lb=$('#lightBody'); lb.innerHTML='';
+  refreshers.push(chips(lb,'',[['backlit','Backlit'],['side','Side'],['front','Front'],['overcast','Overcast'],['dusk','Dusk'],['night','Night']],()=>LOOK.preset,v=>applyLight(v)));
+  const L_=(label,min,max,get,set,fmt,what,log)=>({label,min,max,get,set:v=>{ set(v); LOOK.preset=null; what(); poke(); saveLook(); },fmt,log});
+  refreshers.push(slider(lb,L_('Sun height',-5,88,()=>LOOK.el,v=>LOOK.el=v,v=>v.toFixed(0)+'°',markLight)));
+  refreshers.push(slider(lb,L_('Sun direction',-180,180,()=>LOOK.az,v=>LOOK.az=v,v=>v.toFixed(0)+'°',markLight)));
+  refreshers.push(slider(lb,L_('Sun strength',0,3,()=>LOOK.sunI,v=>LOOK.sunI=v,v=>v.toFixed(2),markView)));
+  refreshers.push(slider(lb,L_('Sun colour',1800,9000,()=>LOOK.sunK,v=>LOOK.sunK=v,v=>v.toFixed(0)+' K',markView)));
+  refreshers.push(slider(lb,L_('Sky',0,3,()=>LOOK.sky,v=>LOOK.sky=v,v=>v.toFixed(2),markView)));
+  refreshers.push(slider(lb,L_('Exposure',-5,5,()=>LOOK.expo,v=>LOOK.expo=v,v=>(v>=0?'+':'')+v.toFixed(1)+' EV',markView)));
+  refreshers.push(chips(lb,'Background',[[0,'Black'],[1,'Grey'],[2,'Sky']],()=>LOOK.bg,v=>{ LOOK.bg=v; markView(); saveLook(); }));
+  refreshers.push(chips(lb,'Scale guide',[[true,'On'],[false,'Off']],()=>LOOK.figure,v=>{ LOOK.figure=v; saveLook(); }));
+  refreshers.push(chips(lb,'Grid',[[96,'96'],[128,'128'],[160,'160']].map(([v,t])=>[v,t,'Simulation voxels along the longest side']),()=>LOOK.grid,v=>{ LOOK.grid=v; saveLook(); }));
+  buildBrushRow(); buildShelf();
+}
+let brushRow=null;
+function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null; $('#brushSec').hidden=!on; if(!on) return;
+  brushRow=lb;
+  brushRefs=[]; brushRefs.push(slider(lb,{label:'Radius',min:0.05,max:2000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen}));
+  brushRefs.push(slider(lb,{label:'Strength',min:0.05,max:1,get:()=>UI.brushStr,set:v=>{ UI.brushStr=v; },fmt:pct}));
+  note(lb,'[ and ] change the radius. Ctrl+Z undoes a stroke.'); }
+function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are looking from
+  const set=(el,rel,I,K,sky,skyK)=>{ LOOK.el=el; LOOK.az=((-yaw+rel)%360+540)%360-180; LOOK.sunI=I; LOOK.sunK=K; LOOK.sky=sky; LOOK.skyK=skyK; };
+  if(v==='backlit') set(12,28,1,5200,0.35,10500); else if(v==='side') set(18,90,1,5600,0.4,10500); else if(v==='front') set(25,180,1,5800,0.45,10000);
+  else if(v==='overcast') set(55,30,0.12,6500,1.6,7000); else if(v==='dusk') set(3,-25,0.9,2600,0.3,13000); else set(28,60,0.06,7800,0.08,14000);
+  LOOK.preset=v; markLight(); refreshPanels(); saveLook(); }
+function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls; REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
+  UI.brushR*=k; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); buildHint(); }
+function startFrom(k){ const keepName=REC.name===TEMPLATES[REC.template].label; const r=makeRecipe(k,REC.cls); if(!keepName) r.name=REC.name; REC=r; $('#assetName').value=REC.name;
+  UI.brushR=Math.max(...REC.size)*0.12; markMass(); pushUndo(); autosave(); buildPanels(); frameAll(); hideVariations(); toastUndo('Started a new '+TEMPLATES[k].label.toLowerCase()); }
+
+/* ---------------- undo ---------------- */
+const undoS=[], redoS=[];
+function pushUndo(){ const s=JSON.stringify(REC); if(undoS[undoS.length-1]===s) return; undoS.push(s); if(undoS.length>60) undoS.shift(); redoS.length=0; autosave(); }
+function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&old.strokes.length===REC.strokes.length&&MAIN.N===LOOK.grid;
+  if(shapeSame) markSim(); else markMass(); buildPanels(); autosave(); }
+function undo(){ if(undoS.length<2){ toast('Nothing to undo'); return; } redoS.push(undoS.pop()); restore(undoS[undoS.length-1]); toast('Undone'); }
+function redo(){ if(!redoS.length){ toast('Nothing to redo'); return; } const s=redoS.pop(); undoS.push(s); restore(s); toast('Redone'); }
+let saveH=0; function autosave(){ clearTimeout(saveH); saveH=setTimeout(()=>store.set('brume.designer.current',REC),400); }
+function saveLook(){ store.set('brume.designer.look',LOOK); }
+
+/* ---------------- variations: six takes on the current asset, side by side ---------------- */
+const THUMB=mkCtx(56); let varRun=0;
+function jitterRecipe(base,i){ const r=JSON.parse(JSON.stringify(base)); const R=mulberry(base.seed*31+i*977+Date.now()%1000); const j=(v,a,lo,hi)=>clamp(v+(R()*2-1)*a,lo,hi);
+  r.seed=Math.floor(R()*9999); r.sim.turb=j(r.sim.turb,0.22,0.05,1); r.sim.eddy=+(r.sim.eddy*Math.exp((R()*2-1)*0.45)).toPrecision(3); r.sim.age=j(r.sim.age,0.22,0.1,1); r.sim.lift=j(r.sim.lift,0.25,-1,1);
+  r.det.billow=j(r.det.billow,0.3,0,1); r.det.brk=j(r.det.brk,0.2,0,0.9); r.det.amt=j(r.det.amt,0.15,0.2,1); r.sim.windDir=(r.sim.windDir+(R()*2-1)*60+360)%360; return r; }
+async function renderThumb(rec,canvas,w,h){
+  genMass(THUMB,rec); simReset(THUMB,rec); while(THUMB.sim.step<THUMB.sim.steps){ simStep(THUMB,rec); if(THUMB.sim.step%20===0) await yieldUI(); }
+  lightUpdate(THUMB,rec); const cam={...CAM,tgt:CAM.tgt.slice()};
+  // keep the same framing relative to the asset's size
+  const k=Math.hypot(...rec.size)/Math.hypot(...REC.size); cam.dist*=k; cam.tgt=mul(cam.tgt,k);
+  for(let f=0;f<6;f++) renderPass(THUMB,rec,cam,w,h,1/(f+1),false,f,110);
+  const fb=THUMB.acc.fb[THUMB.acc.cur]; gl.bindFramebuffer(gl.FRAMEBUFFER,fb); const px=new Float32Array(w*h*4); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,px); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  const c2=canvas.getContext('2d'); const im=c2.createImageData(w,h); const ex=Math.pow(2,LOOK.expo);
+  const tm=v=>{ v=Math.max(v*ex,0); v=(v*(2.51*v+0.03))/(v*(2.43*v+0.59)+0.14); v=clamp(v,0,1); return 255*(v<=0.0031308?v*12.92:1.055*Math.pow(v,1/2.4)-0.055); };
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const s=((h-1-y)*w+x)*4, d=(y*w+x)*4; im.data[d]=tm(px[s]); im.data[d+1]=tm(px[s+1]); im.data[d+2]=tm(px[s+2]); im.data[d+3]=255; }
+  c2.putImageData(im,0,0); }
+async function makeVariations(){ const run=++varRun; const strip=$('#strip'); strip.hidden=false; strip.innerHTML='<div class="lab"><b>Variations</b>Click one to use it. Your strokes are kept.</div>';
+  const base=JSON.parse(JSON.stringify(REC)); const W=224,H=126;
+  const items=[0,1,2,3,4,5].map(i=>{ const r=jitterRecipe(base,i); const b=document.createElement('button'); b.className='var busy'; b.innerHTML=`<canvas width="${W}" height="${H}"></canvas><span>take ${i+1}</span>`; b.onclick=()=>{ const keep={name:REC.name,strokes:REC.strokes}; REC={...r,...keep}; markMass(); pushUndo(); buildPanels(); toastUndo('Using take '+(i+1)); }; strip.appendChild(b); return {r,b}; });
+  const close=document.createElement('button'); close.className='btn'; close.textContent='Close'; close.style.alignSelf='center'; close.onclick=hideVariations; strip.appendChild(close);
+  resize();
+  for(const it of items){ if(run!==varRun) return; await renderThumb(it.r,it.b.querySelector('canvas'),W,H); it.b.classList.remove('busy'); await yieldUI(); }
+  resetAccum(); }
+function hideVariations(){ varRun++; $('#strip').hidden=true; requestAnimationFrame(resize); }
+
+/* ---------------- shelf: designed assets kept in this browser ---------------- */
+function shelf(){ return store.get('brume.designer.shelf')||[]; }
+function buildShelf(){ const b=$('#shelfBody'); b.innerHTML=''; const items=shelf();
+  const bt=document.createElement('div'); bt.className='btns'; bt.innerHTML='<button class="btn prim" id="shelfSave">Save to shelf</button><button class="btn" id="recipeOut">Save recipe…</button><button class="btn" id="recipeIn">Open recipe…</button>'; b.appendChild(bt);
+  bt.querySelector('#shelfSave').onclick=saveToShelf; bt.querySelector('#recipeOut').onclick=saveRecipeFile; bt.querySelector('#recipeIn').onclick=()=>$('#fileIn').click();
+  if(!items.length){ note(b,'Saved assets show up here, kept in this browser. A recipe file holds the whole asset, strokes and all, for sharing.'); return; }
+  const g=document.createElement('div'); g.className='shelf'; b.appendChild(g);
+  items.forEach((it,i)=>{ const e=document.createElement('button'); e.className='it'; e.title='Open '+it.rec.name; e.innerHTML=`<img alt=""><span></span><i aria-label="Remove" title="Remove from shelf">×</i>`; e.querySelector('img').src=it.thumb||''; e.querySelector('span').textContent=it.rec.name;
+    e.onclick=ev=>{ if(ev.target.tagName==='I'){ const s=shelf(); s.splice(i,1); store.set('brume.designer.shelf',s); buildShelf(); return; } REC=JSON.parse(JSON.stringify(it.rec)); $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); };
+    g.appendChild(e); }); }
+function saveToShelf(){ capture=c=>{ const t=document.createElement('canvas'); t.width=320; t.height=180; const x=t.getContext('2d'); const a=c.width/c.height, b=16/9; let sw=c.width, sh=c.height, sx=0, sy=0; if(a>b){ sw=c.height*b; sx=(c.width-sw)/2; } else { sh=c.width/b; sy=(c.height-sh)/2; } x.drawImage(c,sx,sy,sw,sh,0,0,320,180);
+    const items=shelf().filter(it=>it.rec.name!==REC.name); items.unshift({rec:JSON.parse(JSON.stringify(REC)),thumb:t.toDataURL('image/jpeg',0.8)}); if(!store.set('brume.designer.shelf',items.slice(0,24))) toast('This browser would not keep it. Save a recipe file instead.'); else toast('Saved '+REC.name+' to the shelf'); buildShelf(); }; }
+async function offerFile(name,data,mime){
+  try{ const dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null; if(dl){ await dl.save({filename:name,data}); return true; } }catch(e){ if(e&&e.code==='declined') return false; }
+  const blob=data instanceof Blob?data:new Blob([data],{type:mime}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); return true; }
+const slug=s=>(s||'fog').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||'fog';
+function saveRecipeFile(){ offerFile(slug(REC.name)+'.brume.json',JSON.stringify({brume:'designer-recipe',look:LOOK,...REC},null,1),'application/json'); }
+function loadRecipeText(txt){ try{ const j=JSON.parse(txt); if(!j.size||!j.sim||!j.template) throw new Error('not a Brume recipe'); const r=makeRecipe(j.template,j.cls||'mid',j.seed||1);
+    REC={...r,...j,sim:{...r.sim,...j.sim},det:{...r.det,...j.det},den:{...r.den,...j.den},strokes:j.strokes||[]}; delete REC.brume; delete REC.look; $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); }
+  catch(e){ toast('That file is not a Brume recipe ('+e.message+')'); } }
+$('#fileIn').addEventListener('change',ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(f) f.text().then(loadRecipeText); });
+['dragenter','dragover'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=false; }));
+['dragleave','drop'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=true; }));
+$('#view').addEventListener('drop',ev=>{ const f=[...ev.dataTransfer.files].find(f=>/\.json$/i.test(f.name)); if(f) f.text().then(loadRecipeText); else toast('Drop a .json recipe'); });
+
+/* ---------------- export: baked density + loader for Houdini ---------------- */
+let exportN=160;
+function f32to16(v){ const f=new Float32Array(1), i=new Uint32Array(f.buffer); f[0]=v; const x=i[0]; const s=(x>>>16)&0x8000; let e=((x>>>23)&0xff)-112, m=x&0x7fffff;
+  if(e<=0){ if(e<-10) return s; m=(m|0x800000)>>>(1-e); return s|(m+0x1000>>>13); } if(e>=31) return s|0x7c00; return s|(e<<10)|(m+0x1000>>>13); }
+function houdiniPy(name,meta){ return `# Brume Designer -> Houdini volume
+# Python SOP. Unzip ${slug(name)}_brume.zip, then point FOLDER at it. Append a Convert VDB SOP for a VDB.
+import hou, json, os
+import numpy as np
+FOLDER = hou.expandString("$HIP/brume/${slug(name)}")
+meta = json.load(open(os.path.join(FOLDER, "meta.json")))
+nx, ny, nz = meta["resolution"]
+data = np.fromfile(os.path.join(FOLDER, "density.f16"), dtype="<f2").astype(np.float32)
+geo = hou.pwd().geometry()
+bmin, bmax = meta["bbox_min"], meta["bbox_max"]
+vol = geo.createVolume(nx, ny, nz, hou.BoundingBox(bmin[0], bmin[1], bmin[2], bmax[0], bmax[1], bmax[2]))
+vol.setAllVoxelsFromString(data.tobytes())   # x varies fastest, then y, then z
+geo.addAttrib(hou.attribType.Prim, "name", "")
+vol.setAttribValue("name", "density")
+# density is extinction per metre: render with density scale 1, scattering ~0.98, droplet phase g ~${mieParams(meta.droplet_um)[0].toFixed(2)}
+`; }
+function openExport(){ const m=$('#mBody'); const ed=dimsFor(REC.size,exportN);
+  m.innerHTML=`<p>Exports the fog as you see it, detail included, as a voxel grid in metres: <b>${fmLen(REC.size[0])} × ${fmLen(REC.size[1])} × ${fmLen(REC.size[2])}</b>. The zip holds the density (half float), its bounds and settings, the recipe to reopen it here, and a Python SOP that loads it in Houdini.</p>
+    <div class="row wide"><label>Resolution</label><div class="chips" id="exRes"></div></div>
+    <p id="exInfo" style="font-family:var(--f-mono);font-size:12px"></p>
+    <div class="btns"><button class="btn prim" id="exGo">Bake and save .zip</button></div>
+    <p id="exStatus"></p>
+    <div style="display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--f-mono);color:var(--faint)">Houdini · Python SOP</span><button class="btn" id="exCopy" style="margin-left:auto">Copy</button></div><pre class="code" id="exPy"></pre>`;
+  const draw=()=>{ const d=dimsFor(REC.size,exportN); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...REC.size)/exportN)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const n of [128,192,256,320]){ const b=document.createElement('button'); b.className='chip'; b.textContent=n; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
+  draw(); const py=houdiniPy(REC.name,{droplet_um:REC.den.drop}); $('#exPy').textContent=py;
+  $('#exCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
+  $('#exGo').onclick=doExport; $('#modal').hidden=false; $('#mClose').focus(); }
+async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disabled=true;
+  try{ if(MAIN.sim.step<MAIN.sim.steps){ st.textContent='Finishing the simulation…'; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(MAIN.sim.step%10===0) await yieldUI(); } lightUpdate(MAIN,REC); }
+    const b=await bake(MAIN,REC,exportN,p=>{ st.textContent='Baking '+Math.round(p*100)+'%'; }); st.textContent='Packing…'; await yieldUI();
+    const h=new Uint16Array(b.data.length); let mx=0; for(let i=0;i<b.data.length;i++){ h[i]=f32to16(b.data[i]); if(b.data[i]>mx) mx=b.data[i]; }
+    const meta={format:'brume-designer-volume',version:1,name:REC.name,resolution:b.dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:[-REC.size[0]/2,0,-REC.size[2]/2],bbox_max:[REC.size[0]/2,REC.size[1],REC.size[2]/2],
+      voxel_size_m:REC.size.map((v,i)=>v/b.dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor};
+    const name=slug(REC.name); const enc=new TextEncoder();
+    if(!window.fflate) throw new Error('The zip library did not load; check the connection and try again.');
+    const zip=fflate.zipSync({[name+'/density.f16']:[new Uint8Array(h.buffer),{level:0}],[name+'/meta.json']:enc.encode(JSON.stringify(meta,null,1)),[name+'/recipe.brume.json']:enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC})),[name+'/load_in_houdini.py']:enc.encode(houdiniPy(REC.name,meta))});
+    st.textContent=''; const ok=await offerFile(name+'_brume.zip',new Blob([zip],{type:'application/zip'}),'application/zip'); st.textContent=ok?`Saved ${name}_brume.zip · ${b.dims.join(' × ')} voxels`:'Not saved.'; }
+  catch(e){ console.error(e); st.textContent='Export failed: '+e.message; }
+  go.disabled=false; }
+function closeModal(){ $('#modal').hidden=true; }
+$('#exportBtn').onclick=openExport; $('#mClose').onclick=closeModal; $('#modal').addEventListener('click',ev=>{ if(ev.target.id==='modal') closeModal(); });
+
+/* ---------------- status ---------------- */
+function updateHud(vw,vh,fin,target){ const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
+  const bar=$('#simBar'); bar.style.width=(simDone?Math.min(1,frames/target):p)*100+'%'; bar.classList.toggle('fin',fin);
+  const st=brushing?'sculpting':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'evolving':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
+  $('#hud').textContent=`${MAIN.dims?MAIN.dims.join('×'):''} voxels · ${fin?'final':'draft'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
+function toast(msg){ const t=$('#toast'); t.innerHTML=''; t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2400); }
+function toastUndo(msg){ const t=$('#toast'); t.innerHTML=''; const s=document.createElement('span'); s.textContent=msg; const b=document.createElement('button'); b.textContent='Undo'; b.onclick=()=>{ undo(); t.hidden=true; }; t.append(s,b); t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,4000); }
+function showLoader(msg,p){ const l=$('#loader'); l.hidden=false; l.classList.remove('err'); $('#loadMsg').textContent=msg; if(p!=null) $('#loadBar').style.width=(p*100).toFixed(1)+'%'; }
+function hideLoader(){ $('#loader').hidden=true; }
+function fail(msg){ const l=$('#loader'); l.hidden=false; l.classList.add('err'); $('#loadMsg').textContent=msg; ready=false; }
+
+/* ---------------- boot ---------------- */
+async function boot(){
+  const saved=store.get('brume.designer.current'); if(saved&&saved.size&&saved.sim&&TEMPLATES[saved.template]){ const r=makeRecipe(saved.template,saved.cls||'mid',saved.seed); REC={...r,...saved,sim:{...r.sim,...saved.sim},det:{...r.det,...saved.det},den:{...r.den,...saved.den}}; }
+  const lk=store.get('brume.designer.look'); if(lk) Object.assign(LOOK,lk); else applyLight('backlit');
+  try{ if(window.__BRUME_TEST){ Object.assign(LOOK,window.__BRUME_TEST.look||{}); if(window.__BRUME_TEST.rec) REC=window.__BRUME_TEST.rec; } }catch(_){}
+  $('#assetName').value=REC.name; UI.brushR=Math.max(...REC.size)*0.12;
+  buildRail(); buildHint(); buildPanels();
+  if(!initGL()) return;
+  const t0=performance.now();
+  while(true){ const done=Object.values(PR).filter(progDone).length, n=Object.keys(PR).length; showLoader(`Compiling shaders ${done}/${n} · ${((performance.now()-t0)/1000).toFixed(1)} s`,0.02+0.16*done/n); if(done===n) break; await new Promise(r=>setTimeout(r,60)); }
+  try{ for(const p of Object.values(PR)) progCheck(p); }catch(e){ fail(e.message); return; }
+  await buildNoise();
+  showLoader('Shaping the first asset',0.6); await yieldUI();
+  resize(); new ResizeObserver(()=>resize()).observe($('#view'));
+  frameAll(); pushUndo(); hideLoader(); ready=true; requestAnimationFrame(frame);
+}
+glc.addEventListener('webglcontextlost',ev=>{ ev.preventDefault(); ready=false; showLoader('The GPU reset. Reload the page to continue.',0); });
+boot();
+</script>
+</body>
+</html>

@@ -25,3 +25,9 @@ Each shot's utility EXR (world position `P`, normals `N`, alpha, and a beauty or
 The shot menu is a stand-in for the sequence's shot list. It holds two generated test shots: `tst_0010`, a wide on a valley village, and `tst_0020`, a medium shot up a winding lane through a hillside village for smaller volumes. Dropping a utility EXR on the view still loads it (multipart scanline, NONE / RLE / ZIPS / ZIP); the camera comes from EXR metadata when present, or is solved from `P`. Files never leave your machine.
 
 Live: https://x14halo.github.io/brume/
+
+## Designer (rebuild, step 1)
+
+`designer/` is the start of the rebuild: a black void for designing one fog asset at a time. Pick a starting shape (fog bank, ground fog, mist veil, cloud mass, rising wisps, tendrils, smoke puff), sculpt it with brushes (add, erase, smooth, pull, comb, tear), let it drift and churn in a small GPU simulation, then set detail, density and look-dev light. Sizes are real metres in three scale classes, so changing size re-runs the fog instead of stretching it. Variations gives six takes, the shelf keeps favourites, recipes save as JSON, and Export bakes the density with a Houdini loader script.
+
+Live: https://x14halo.github.io/brume/designer/
