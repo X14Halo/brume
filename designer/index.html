@@ -71,7 +71,7 @@ button{cursor:pointer}
 .loader .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
 .loader .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mist),var(--sun));transition:width .2s}
 .loader.err .s{color:var(--danger);white-space:pre-wrap;max-height:40vh;overflow:auto}
-.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;padding:6px 12px;font-size:12px;z-index:5;white-space:nowrap;display:flex;gap:10px;align-items:center}
+.toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;padding:6px 12px;font-size:12px;z-index:5;white-space:nowrap;display:flex;gap:10px;align-items:center}
 .toast button{background:none;border:0;color:var(--sun);font-weight:600;padding:0}
 .drop{position:absolute;inset:10px;border:2px dashed var(--mist);border-radius:8px;display:grid;place-items:center;background:rgba(8,10,12,.75);z-index:3;font:500 15px var(--f-ui);pointer-events:none}
 .strip{grid-area:strip;display:flex;gap:8px;align-items:stretch;padding-top:8px;min-width:0;overflow-x:auto;scrollbar-width:thin}
@@ -862,7 +862,7 @@ function buildPanels(){
   refreshers.push(chips(zb,'Scale',Object.entries(CLASSES).map(([k,c])=>[k,c.label,c.range]),()=>REC.cls,v=>setClass(v)));
   const dims=document.createElement('div'); dims.className='dims'; dims.innerHTML=['Width','Height','Depth'].map((n,i)=>`<label>${n}<input type="number" id="dim${i}" min="0.1" step="any"></label>`).join(''); zb.appendChild(dims);
   const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
-  [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } REC.size[i]=clamp(v,0.1,5000); markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }; }); refreshers.push(dimRefresh);
+  dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } REC.size[i]=clamp(v,0.1,5000); markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }; }); refreshers.push(dimRefresh);
   refreshers.push(chips(zb,'Sits on',[[true,'Ground','Fog rests on a floor and spreads along it'],[false,'Nothing','Floating: clouds, puffs']],()=>REC.floor,v=>{ REC.floor=v; markSim(); pushUndo(); autosave(); }));
   note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch.');
   // simulate
