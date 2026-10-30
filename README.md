@@ -26,8 +26,18 @@ The shot menu is a stand-in for the sequence's shot list. It holds two generated
 
 Live: https://x14halo.github.io/brume/
 
-## Designer (rebuild, step 1)
+## Designer
 
-`designer/` is the start of the rebuild: a black void for designing one fog asset at a time. Pick a starting shape (fog bank, ground fog, mist veil, hanging mist for floating depth and separation layers, cloud mass, rising wisps, tendrils, smoke puff), sculpt it with brushes (add, erase, smooth, pull, comb, tear), let it drift and churn in a small GPU simulation, then set detail (one-click styles: smooth, wispy, billowy, torn, streaky, curly), density and look-dev light. Sizes are real metres in three scale classes, so changing size re-runs the fog instead of stretching it. The dashed box is only the simulation's room: on Auto it fits itself around the fog, grows ahead of a stroke that reaches a wall, and gives the fog more room if a simulation piles it against one; Locked keeps it fixed. Each asset has a detail level (Soft, Medium, Detailed, Hero, or Auto, which reads the look) that sets the simulation grid, the detail octaves and the export resolution, with the export size and render weight shown as you go. Variations gives six takes, the shelf keeps favourites, recipes save as JSON, and Export bakes the density with a Houdini loader script.
+`designer/` is the rebuild: a black void for designing one volume at a time, then exporting it to Houdini.
+
+- **Library** of 30 volume types, each with what it is, when to use it and what it needs: fog (radiation, valley, advection, upslope, freezing, ice, evaporation), clouds (cap, banner, deck, scud, rain curtain, cloud mass), atmosphere (depth haze, light-shaft haze, interior haze, inversion layer), lingering (residual smoke, settled dust, spray mist), emitters (sulfur smoke, steam vent, smoke source), stylized (glowing mist, magic swirl) and sculptable shapes (fog bank, hanging mist, ground fog patch, mist veil, rising wisps, tendrils, smoke puff).
+- **Stand-in ground** to design against (flat, slope, peak, valley, bowl, street, pool, lake). Fog rests on it, drains down it, flows over and along it, and it casts shadows. Fog types that form by a rule (a layer that pools in hollows, fill to a level, upslope on the windward side, stacked sheets, a deck, a lid, even haze) form relative to it.
+- **Emitters**: draw the source on the ground (disc, rectangle, line, ring) with the Source tool, then set soft edge, patchiness, pulse, rate, push, heat, spread, lifetime, tail fade and source fade. Plumes rise, level off as they cool and bend over in the wind.
+- **Wind** gusts and lulls that roll through with the wind, veer slowly and slow near the ground.
+- **Sculpt** with brushes (add, erase, smooth, pull, comb, tear), one-click detail styles, density, tint, brightness, self glow and look-dev light.
+- **Real sizes** in three scale classes; the simulation box fits itself around the fog (Auto) or stays put (Locked).
+- **Detail level** per asset (Soft, Medium, Detailed, Hero, or Auto) sets the sim grid, detail octaves and export resolution, with export size and render weight shown.
+- **Timeline**: scrub the simulation, set In and Out on the stretch you like, set frames and fps, retime (slow motion re-simulates in finer steps rather than blending frames), extend a range for a longer shot, or Hold so the fog churns in place.
+- **Export** this frame or the whole In–Out sequence as half-float density with a Houdini Python SOP that loads the right frame; recipes save as JSON.
 
 Live: https://x14halo.github.io/brume/designer/

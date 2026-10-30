@@ -28,7 +28,7 @@ body{background:var(--frame);color:var(--fg);font:13px/1.35 var(--f-ui);overflow
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--sun);outline-offset:1px}
-#app{height:100%;box-sizing:border-box;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 12px;display:grid;grid-template-columns:46px minmax(0,1fr) 336px;grid-template-rows:50px minmax(0,1fr) auto;grid-template-areas:"top top top" "rail view insp" "rail strip insp";column-gap:8px}
+#app{height:100%;box-sizing:border-box;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 12px;display:grid;grid-template-columns:46px minmax(0,1fr) 336px;grid-template-rows:50px minmax(0,1fr) auto auto;grid-template-areas:"top top top" "rail view insp" "rail tl insp" "rail strip insp";column-gap:8px}
 .top{grid-area:top;display:flex;align-items:center;gap:14px;min-width:0}
 .brand{display:flex;align-items:baseline;gap:10px;flex:none}
 .brand .word{font:italic 400 27px/1 var(--f-display);letter-spacing:.01em}
@@ -57,7 +57,18 @@ button{cursor:pointer}
 .hint{position:absolute;left:10px;top:10px;max-width:min(520px,calc(100% - 20px));display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:rgba(14,17,21,.78);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.06);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--muted);pointer-events:none}
 .hint b{color:var(--fg);font-weight:600}
 .hud{position:absolute;left:10px;bottom:10px;font:11px var(--f-mono);color:rgba(230,234,238,.75);background:rgba(14,17,21,.6);border-radius:4px;padding:3px 7px;font-variant-numeric:tabular-nums;pointer-events:none}
-.evolve{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;align-items:center}
+.tl{grid-area:tl;display:flex;align-items:center;gap:10px;padding:8px 2px 0;min-width:0;flex-wrap:wrap}
+.tl .vbtn{background:var(--panel-2)}
+.tlinfo{display:flex;flex-direction:column;gap:1px;min-width:118px;font-variant-numeric:tabular-nums}
+.tlinfo b{font:600 12px var(--f-mono);color:var(--fg)} .tlinfo span{font:11px var(--f-mono);color:var(--faint)}
+.track{position:relative;flex:1 1 220px;min-width:160px;height:26px;border-radius:4px;background:var(--well);border:1px solid var(--line);cursor:pointer;touch-action:none}
+.track .pre{position:absolute;left:0;top:0;bottom:0;background:repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.03) 5px 10px);border-radius:4px 0 0 4px}
+.track .rng{position:absolute;top:4px;bottom:4px;background:rgba(166,203,221,.22);border:1px solid rgba(166,203,221,.55);border-radius:3px}
+.track .h{position:absolute;top:-3px;bottom:-3px;width:8px;margin-left:-4px;background:var(--mist);border-radius:2px;cursor:ew-resize}
+.track .h.out{background:var(--mist)} .track .ph{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--sun);pointer-events:none}
+.tlnum{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+.tlnum input{width:62px;background:var(--well);border:1px solid var(--line);border-radius:4px;padding:3px 5px;font:12px var(--f-mono);color:var(--fg)}
+.tlspd{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .vbtn{display:flex;align-items:center;gap:6px;background:rgba(14,17,21,.82);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:5px;padding:4px 10px;font:500 12px var(--f-ui);color:var(--fg);white-space:nowrap}
 .vbtn svg{width:13px;height:13px;fill:currentColor}
 .vbtn[aria-pressed=true]{border-color:var(--sun);color:var(--sun)}
@@ -110,6 +121,18 @@ input[type=range]::-moz-range-thumb{width:9px;height:9px;border-radius:50%;backg
 .tile:hover{color:var(--fg);border-color:var(--line-2)}
 .tile[aria-pressed=true]{color:var(--fg);border-color:var(--mist);box-shadow:inset 0 0 0 1px var(--mist)}
 .note{font-size:11.5px;color:var(--faint);line-height:1.45}
+.cur{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:start;background:var(--well);border:1px solid var(--line);border-radius:6px;padding:9px 10px}
+.cur svg,.card svg{width:36px;height:28px;fill:none;stroke:var(--mist);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.cur b{display:block;font:600 13px var(--f-ui);color:var(--fg)} .cur span{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.cur em{display:block;font-style:normal;font-size:11px;color:var(--faint);margin-top:4px}
+.libtabs{display:flex;flex-wrap:wrap;gap:4px}
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.card{display:grid;grid-template-columns:38px minmax(0,1fr);gap:9px;text-align:left;align-items:start;background:var(--well);border:1px solid var(--line);border-radius:6px;padding:10px;color:var(--fg)}
+.card:hover{border-color:var(--mist)} .card[aria-current=true]{border-color:var(--sun)}
+.card b{display:block;font:600 13px var(--f-ui)} .card span{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:3px}
+.card em{display:block;font-style:normal;font-size:11px;color:var(--faint);margin-top:5px;line-height:1.35} .card em i{font-style:normal;color:var(--mist)}
+.libcat{font:600 10.5px var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.colr{display:flex;align-items:center;gap:8px} .colr input[type=color]{width:34px;height:22px;padding:0;border:1px solid var(--line-2);border-radius:4px;background:none}
 .note b{color:var(--muted);font-weight:500}
 .btns{display:flex;flex-wrap:wrap;gap:6px}
 .btn{background:var(--panel-2);border:1px solid var(--line-2);border-radius:4px;padding:4px 10px;font:500 12px var(--f-ui)}
@@ -169,20 +192,19 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <canvas id="ov" aria-label="Designer viewport"></canvas>
     <div class="hint" id="hint"></div>
     <div class="hud" id="hud">starting</div>
-    <div class="evolve">
-      <button class="vbtn" id="playBtn" aria-pressed="false" title="Keep the fog evolving (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg>Evolve</button>
-      <button class="vbtn" id="rerunBtn" title="Run the simulation again from the sculpted shape">Re-run</button>
-    </div>
     <div class="simbar"><i id="simBar"></i></div>
     <div class="drop" id="drop" hidden>Drop a Brume recipe (.json) to load it</div>
     <div class="loader" id="loader"><div class="card"><div class="t">Brume Designer</div><div class="s" id="loadMsg">Starting the GPU</div><div class="bar"><i id="loadBar"></i></div></div></div>
     <div class="toast" id="toast" hidden></div>
   </section>
+  <div class="tl" id="tl"></div>
   <section class="strip" id="strip" hidden></section>
   <aside class="insp" id="insp">
     <details class="sec" open id="brushSec" hidden><summary>Brush</summary><div class="body" id="brushBody"></div></details>
     <details class="sec" open><summary>Start from</summary><div class="body" id="startBody"></div></details>
     <details class="sec" open><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
+    <details class="sec" open id="formSec" hidden><summary>Formation</summary><div class="body" id="formBody"></div></details>
+    <details class="sec" open id="emitSec"><summary>Emitter</summary><div class="body" id="emitBody"></div></details>
     <details class="sec" open><summary>Simulate</summary><div class="body" id="simBody"></div></details>
     <details class="sec" open><summary>Detail</summary><div class="body" id="detBody"></div></details>
     <details class="sec" open><summary>Detail level</summary><div class="body" id="lodBody"></div></details>
@@ -191,6 +213,9 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <details class="sec"><summary>Shelf</summary><div class="body" id="shelfBody"></div></details>
   </aside>
 </div>
+<div class="modal" id="libModal" hidden><div class="mcard" role="dialog" aria-modal="true" aria-labelledby="libTitle" style="width:min(1040px,100%)">
+  <div class="mhead"><h2 id="libTitle">Library</h2><div class="libtabs" id="libTabs"></div><button class="x" id="libClose" aria-label="Close">×</button></div>
+  <div class="mbody" id="libBody"></div></div></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
 <div class="modal" id="modal" hidden><div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="mhead"><h2 id="mTitle">Export</h2><button class="x" id="mClose" aria-label="Close">×</button></div>
@@ -242,11 +267,32 @@ vec3 u2p(vec3 u){ return uLo+u*uSize; }
 vec3 p2u(vec3 p){ return (p-uLo)/uSize; }
 `;
 
+/* stand-in ground: 0 none, 1 flat, 2 slope, 3 peak, 4 valley, 5 bowl, 6 street, 7 pool, 8 lake (mirrored in JS: terrHJ) */
+const TERR_GLSL=`
+uniform int uGround; uniform vec4 uGP; uniform vec4 uWater;   // uGP: relief, feature size, street half-width, seed · uWater: centre xz, radius, on
+float thash(float n){ return fract(sin(n*127.1+311.7)*43758.5453); }
+float tn(vec2 p){ return sin(p.x*1.7+sin(p.y*1.3))*0.5+sin(p.y*2.1+sin(p.x*0.9)*1.4)*0.35+sin((p.x+p.y)*3.7)*0.15; }
+float terrH(vec2 q){
+  if(uGround<2||uGround>6) return 0.;
+  float Hg=uGP.x, L=uGP.y; vec2 s=q/L; float n=tn(s*4.+uGP.w)*0.06+tn(s*9.+uGP.w*1.7)*0.025;
+  if(uGround==2) return Hg*(smoothstep(-0.6,0.6,s.x)+n);
+  if(uGround==3){ float r2=dot(s,s); return Hg*(exp(-r2/0.06)+n*0.7); }
+  if(uGround==4) return Hg*((1.-exp(-s.y*s.y/0.045))*(0.8+0.2*sin(s.x*5.+uGP.w))+n);
+  if(uGround==5){ float r2=dot(s,s); return Hg*((1.-exp(-r2/0.06))+n); }
+  float w=uGP.z; if(abs(q.y)<w) return 0.; float lot=w*1.8; if(abs(q.y)>w+lot*1.6) return 0.;
+  float c=floor(q.x/lot); if(fract(q.x/lot)<0.1) return 0.; return Hg*(0.45+0.55*thash(c*2.+(q.y>0.?1.:0.)));
+}
+float isWater(vec2 q){ if(uWater.w<0.5) return 0.; float r=length(q-uWater.xy); float rr=uWater.z*(1.+0.05*tn(q/uWater.z*3.)); return 1.-smoothstep(rr-uWater.z*0.02,rr,r); }
+vec2 terrG(vec2 q){ float e=max(uGP.y*0.004,0.03); return vec2(terrH(q+vec2(e,0))-terrH(q-vec2(e,0)),terrH(q+vec2(0,e))-terrH(q-vec2(0,e)))/(2.*e); }
+vec3 terrN(vec2 q){ vec2 g=terrG(q); return normalize(vec3(-g.x,1.,-g.y)); }
+`;
+
 /* template mass from primitives: ellipsoids, tapered capsules, rounded boxes, soft-unioned and roughened */
-const FS_GEN=HEAD+VOX_GLSL+`
+const FS_GEN=HEAD+VOX_GLSL+TERR_GLSL+`
 #define NP 40
 uniform int uNP; uniform vec4 uP0[NP], uP1[NP], uP2[NP];
 uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft, uFl; uniform vec3 uSeedOff; uniform int uProfile;
+uniform int uForm; uniform vec4 uF0, uF1; uniform vec2 uWdir;
 out vec4 o;
 float sdPrim(vec3 p,int i){ vec4 a=uP0[i], b=uP1[i], c=uP2[i]; int ty=int(a.w+0.5);
   if(ty==0){ vec3 q=(p-a.xyz)/b.xyz; float k=length(q); return (k-1.)*min(b.x,min(b.y,b.z)); }
@@ -264,6 +310,21 @@ void main(){
   if(uProfile==1) m*=exp(-y*2.2)*1.15;            // densest at the ground
   else if(uProfile==2) m*=mix(1.,0.3,y);           // wisps thin as they rise
   else if(uProfile==3) m*=smoothstep(0.05,0.22,y);  // floating mass with a ragged base
+  // formation: fog that forms by a rule relative to the ground (layer, fill to a level, upslope, sheets, deck, lid, even haze)
+  float gh=uGround>0?terrH(p.xz):-1e6, hy=p.y-gh; float mf=0.;
+  vec2 rq=abs(p.xz)-uF1.xy; float rgn=1.-smoothstep(-uF1.z,0.,max(rq.x,rq.y)+disp*0.6);
+  if(uForm==1){ float T=uF0.x; float R=max(T*5.,uF0.z); float hm=0.25*(terrH(p.xz+vec2(R,0))+terrH(p.xz-vec2(R,0))+terrH(p.xz+vec2(0,R))+terrH(p.xz-vec2(0,R)));
+    float low=clamp((hm-terrH(p.xz))/T,-1.,3.); float Te=T*(1.+uF0.y*max(low,0.)*0.8)*(1.-0.35*uF0.y*max(-low,0.));
+    float h=hy+disp*0.5; mf=smoothstep(Te,Te*0.25,h)*exp(-max(h,0.)/Te*0.9)*1.15; }
+  else if(uForm==2){ float lv=uF0.x+disp*0.4, e=uF0.y; mf=smoothstep(lv+e,lv-e,p.y)*(0.75+0.25*smoothstep(lv,lv-e*6.,p.y)); }
+  else if(uForm==3){ vec2 g=terrG(p.xz); float gl=length(g); float wv=gl>0.02?dot(g/gl,uWdir)*smoothstep(0.02,0.25,gl):0.;
+    float T=uF0.x; float h=hy+disp*0.5; mf=smoothstep(T,T*0.2,h)*smoothstep(-0.1,0.5,wv)*smoothstep(uF0.y-T*1.5,uF0.y+T*0.5,p.y); }
+  else if(uForm==4){ float y=p.y+disp*0.35; for(int k=0;k<6;k++){ if(float(k)>=uF0.x) break; float yk=uF0.z+(uF0.w-uF0.z)*(float(k)+0.5)/uF0.x; mf=max(mf,exp(-pow((y-yk)/uF0.y,2.))*(1.-0.12*float(k))); } }
+  else if(uForm==5){ float b=uF0.x+disp*0.7, t=uF0.y+disp*1.1, e=uF0.z; mf=smoothstep(b-e,b+e,p.y)*smoothstep(t+e,t-e,p.y); }
+  else if(uForm==6){ float t=uF0.x+disp*0.3, e=uF0.y; mf=smoothstep(t+e,t-e,p.y)*(0.45+0.55*exp(-pow((p.y-t+e*1.5)/(e*1.5),2.))); }
+  else if(uForm==7){ mf=exp(-max(hy,0.)/uF0.x)*(0.85+disp/max(uNoiseAmp,1e-3)*0.15); }
+  m=1.-(1.-m)*(1.-clamp(mf*rgn,0.,1.));
+  if(uGround>0) m*=smoothstep(-uSoft*0.5,uSoft*0.5,hy);                         // nothing inside the ground
   m*=smoothstep(0.,0.04,u.x)*smoothstep(1.,0.96,u.x)*smoothstep(1.,0.96,u.y)*smoothstep(0.,0.04,u.z)*smoothstep(1.,0.96,u.z)*(uFl>0.5?1.:smoothstep(0.,0.04,u.y));
   o=vec4(clamp(m,0.,1.),0.,0.,1.);
 }`;
@@ -289,37 +350,68 @@ const FS_COPY=HEAD+VOX_GLSL+`uniform sampler3D uSrc; out vec4 o; void main(){ o=
 
 /* simulation: density + rest coordinates advected by a swirling, divergence-free velocity field */
 const VEL_GLSL=`
-uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uStrat, uCalm, uSpread, uSpreadK, uTime, uDt, uFloor; uniform vec3 uWind, uCurlOff;
+uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uLiftN, uStrat, uCalm, uSpread, uSpreadK, uTime, uDt, uFloor, uFloorIn, uSimT, uGust, uGustL; uniform vec3 uWind, uCurlOff;
+uniform int uEmit, uSrcShape; uniform vec3 uSrcC; uniform vec4 uSrcS; uniform float uRise, uRiseH, uPush, uPushH, uSpreadE, uSrcTh;
+float n1(float x){ float i=floor(x), f=fract(x); float a=fract(sin(i*127.1)*43758.5453), b=fract(sin((i+1.)*127.1)*43758.5453); f=f*f*(3.-2.*f); return mix(a,b,f)*2.-1.; }
+/* real wind: gusts and lulls that roll through with the wind and vary across it, a slow veer, and slower air near the ground */
+vec3 windAt(vec3 p,float hy){ float U=length(uWind); if(U<1e-5) return vec3(0.); vec2 dir=uWind.xz/U;
+  float s=(uSimT*U-dot(p.xz,dir))/uGustL; float lat=dot(p.xz,vec2(-dir.y,dir.x))/(uGustL*1.7);
+  float g=n1(s+n1(lat)*0.8)*0.65+n1(s*2.3+lat*0.6+11.)*0.35; float veer=n1(s*0.45+31.+lat*0.3);
+  float sp=U*max(0.15,1.+uGust*0.75*g); float a=uGust*0.38*veer; float c=cos(a), sn=sin(a); vec2 d2=vec2(dir.x*c-dir.y*sn,dir.x*sn+dir.y*c);
+  float sh=1.; if(uFloor>0.5){ float z0=max(uHgt*0.03,0.05); sh=clamp(log(1.+max(hy,0.)/z0)/log(1.+uHgt*0.8/z0),0.2,1.25); }
+  return vec3(d2.x,0.,d2.y)*sp*sh; }
+/* emitter source: signed distance to the drawn shape on the ground */
+float srcSD(vec2 xz){ vec2 q=xz-uSrcC.xz; float c=cos(uSrcS.z), s=sin(uSrcS.z); q=vec2(c*q.x+s*q.y,-s*q.x+c*q.y); vec2 h=max(uSrcS.xy,vec2(1e-3));
+  if(uSrcShape==0) return (length(q/h)-1.)*min(h.x,h.y);
+  if(uSrcShape==1){ vec2 d=abs(q)-h; return length(max(d,0.))+min(max(d.x,d.y),0.); }
+  if(uSrcShape==2) return length(vec2(max(abs(q.x)-h.x,0.),q.y))-h.y;
+  return abs(length(q)-h.x)-h.y; }
+float srcEdge(){ float vx=min(uSize.x/uDims.x,min(uSize.y/uDims.y,uSize.z/uDims.z)); return max(uSrcS.w*(uSrcShape<2?min(uSrcS.x,uSrcS.y):uSrcS.y),vx*1.5); }
 vec3 curlAt(vec3 p,float s){ return textureLod(uCurl,p/s+uCurlOff+vec3(0.,uTime*0.06,0.),0.).xyz; }
 vec3 vel(vec3 p,vec3 u,sampler3D den){
-  float d=textureLod(den,u,0.).r;
+  float d=textureLod(den,u,0.).r; float gh=uGround>0?terrH(p.xz):0.; float hy=uGround>0?p.y-gh:1e5;
   vec3 v=curlAt(p,uEddy)+0.55*curlAt(p+vec3(17.),uEddy*0.38)+0.75*curlAt(p+vec3(41.),uEddy*2.7);
   v.y*=1.-uStrat*0.75; v.xz*=1.+uStrat*0.35;
-  v*=uU*mix(1.,1.-uCalm,smoothstep(0.3,0.85,d));          // calm core, lively edges
-  v+=uWind+vec3(0.,uLift,0.);
-  if(uFloor>0.5){ float band=max(uHgt*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,p.y);
+  float y0=gh+uSrcC.y, hs=max(p.y-y0,0.);
+  float sprE=uEmit==1?1.+uSpreadE*1.5*clamp(hs/uHgt,0.,1.5):1.;          // a plume widens as it entrains air
+  v*=uU*mix(1.,1.-uCalm,smoothstep(0.3,0.85,d))*sprE;          // calm core, lively edges
+  v+=windAt(p,hy)+vec3(0.,uLift,0.);
+  if(uEmit==1){ v.y+=uRise*exp(-hs/uRiseH)*(0.35+0.65*smoothstep(0.,0.5,d));   // warm smoke rises, then levels off as it cools
+    v.y+=uPush*exp(-hs/uPushH)*smoothstep(uSrcS.y*0.6+uSrcTh,-uSrcTh,srcSD(p.xz)); }  // jet out of the source
+  if(uFloor>0.5){ float band=max(uHgt*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,hy);
     vec3 e=vec3(1.5)/uDims; float gx=textureLod(den,u+vec3(e.x,0,0),0.).r-textureLod(den,u-vec3(e.x,0,0),0.).r, gz=textureLod(den,u+vec3(0,0,e.z),0.).r-textureLod(den,u-vec3(0,0,e.z),0.).r;
     v.xz-=vec2(gx,gz)*uSpread*uU*6.*uSpreadK*k;             // a gravity current slumps out along the ground, a set distance
-    v.y=mix(v.y,max(v.y,0.),k); }
+    if(uGround>1&&uGround<7){ vec2 g=terrG(p.xz); v.xz-=g*uU*(max(-uLiftN,0.)*1.2+uSpread*0.6)*uSpreadK*k;   // cold fog drains downhill
+      vec3 n=normalize(vec3(-g.x,1.,-g.y)); float vn=dot(v,n); if(vn<0.) v-=n*vn*k; }               // flows over and along the ground, not into it
+    else v.y=mix(v.y,max(v.y,0.),k); }
   return v; }
 `;
 const FS_SIMINIT=HEAD+VOX_GLSL+`uniform sampler3D uM; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
-void main(){ vec3 u=vU(); oD=vec4(textureLod(uM,u,0.).r,0,0,1); oR=vec4(u2p(u),1.); }`;
-const FS_SIMA=HEAD+VOX_GLSL+VEL_GLSL+`uniform sampler3D uD, uR; uniform float uReseed; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
+void main(){ vec3 u=vU(); oD=vec4(textureLod(uM,u,0.).r,0,0,1); oR=vec4(u2p(u),0.); }`;   // rest position, and age-mass (density x seconds since the fog was made)
+const FS_SIMA=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler3D uD, uR; uniform float uReseed; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
 void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD); vec3 pb=p-v*uDt; vec3 ub=p2u(pb);
-  if(uFloor>0.5&&pb.y<0.){ pb.y=0.; ub=p2u(pb); }
+  if(uFloor>0.5){ float g=terrH(pb.xz); if(pb.y<g){ pb.y=g; ub=p2u(pb); } }
   float d=all(greaterThanEqual(ub,vec3(0.)))&&all(lessThanEqual(ub,vec3(1.)))?textureLod(uD,ub,0.).r:0.;
-  vec3 r=textureLod(uR,clamp(ub,0.,1.),0.).xyz; r=mix(r,p,clamp(uReseed*uDt,0.,1.));
-  oD=vec4(d,0,0,1); oR=vec4(r,1.); }`;
-const FS_SIMB=HEAD+VOX_GLSL+VEL_GLSL+`uniform sampler3D uD, uH; uniform float uDiss; out vec4 o;
+  vec4 r4=textureLod(uR,clamp(ub,0.,1.),0.); vec3 r=mix(r4.xyz,p,clamp(uReseed*uDt,0.,1.));
+  oD=vec4(d,0,0,1); oR=vec4(r,r4.a+d*uDt); }`;   // .a is age carried by the fog itself (density x seconds)
+const FS_SIMB=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler3D uD, uH, uR, uNT; uniform float uDiss, uRate, uPatch, uPatchS, uLife; layout(location=0) out vec4 o; layout(location=1) out vec4 oR;
 void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   float h=textureLod(uH,u,0.).r; vec3 uf=p2u(p+v*uDt); float hb=textureLod(uH,clamp(uf,0.,1.),0.).r; float d0=textureLod(uD,u,0.).r;
   float d=h+0.5*(d0-hb);                                       // MacCormack: undo most of the numerical blur
   vec3 ub=p2u(p-v*uDt)*uDims-0.5; vec3 i0=floor(ub); float mn=1e9, mx=-1e9;
   for(int k=0;k<8;k++){ vec3 c=i0+vec3(k&1,(k>>1)&1,(k>>2)&1); float s=texelFetch(uD,ivec3(clamp(c,vec3(0.),uDims-1.)),0).r; mn=min(mn,s); mx=max(mx,s); }
   d=clamp(d,mn,mx); d*=exp(-uDiss*uDt);
-  vec3 em=min(u,1.-u); float sp=smoothstep(0.,0.06,em.x)*smoothstep(0.,0.06,em.z)*smoothstep(0.,0.06,1.-u.y)*(uFloor>0.5?1.:smoothstep(0.,0.06,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
-  o=vec4(max(d,0.),0,0,1); }`;
+  vec3 em=min(u,1.-u); float sp=smoothstep(0.,0.06,em.x)*smoothstep(0.,0.06,em.z)*smoothstep(0.,0.06,1.-u.y)*(uFloorIn>0.5?1.:smoothstep(0.,0.06,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
+  vec4 rc=textureLod(uR,u,0.); float gh=uGround>0?terrH(p.xz):0.;
+  if(uGround>0&&p.y<gh) d=0.;
+  float age=rc.a/max(h,1e-4); rc.a=age*max(d,0.);                // keep age per unit of fog through the corrections above
+  if(uEmit==1){ float hs=p.y-(gh+uSrcC.y); float e=srcEdge();
+    float mk=smoothstep(e*0.5,-e*0.5,srcSD(p.xz))*smoothstep(uSrcTh,uSrcTh*0.3,hs)*step(-uSrcTh*0.5,hs);
+    if(uPatch>0.){ float n=textureLod(uNT,vec3(p.x/uPatchS,uSimT*0.07,p.z/uPatchS)+uCurlOff,0.).r; mk*=smoothstep(uPatch*0.75-0.12,uPatch*0.75+0.12,n); }  // patchy, drifting source
+    float inj=clamp(mk*uRate*uDt,0.,1.); float dn=d+(1.-d)*inj; float f=(dn-d)/max(dn,1e-4);
+    rc.xyz=mix(rc.xyz,p,f); rc.a*=1.-inj; d=dn;              // fresh smoke replaces a share of what is there: new rest position, age zero
+    if(rc.a/max(d,1e-4)>uLife*1.08){ d=0.; rc.a=0.; } }
+  o=vec4(max(d,0.),0,0,1); oR=rc; }`;
 
 /* after a simulation: how much fog reached each wall of the box (one pixel per face: -x +x -y +y -z +z) */
 const FS_WALL=HEAD+`uniform sampler3D uD; out vec4 o;
@@ -328,8 +420,9 @@ void main(){ int f=int(gl_FragCoord.x); int ax=f/2; float w=(f%2==0)?0.05:0.95; 
   o=vec4(m,0,0,1); }`;
 
 /* the fog itself: grid density, broken up and detailed by noise carried along with the simulation */
-const DENS_GLSL=`
-uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize;
+const DENS_GLSL=TERR_GLSL+`
+uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
+float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
 uniform float uSigma, uTh, uW, uAmt, uBillow, uTurb, uDet, uBreak, uBreakS, uFadeT, uFadeB; uniform int uOct, uFloorOn; uniform vec3 uSeedV;
 float gFoot=0.01;
 float transferG(float d){ return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
@@ -340,7 +433,9 @@ float dens(vec3 p,int lvl){
   float d=textureLod(uD,u,0.).r; if(d<0.008) return 0.;
   vec3 em=min(u,1.-u); d*=smoothstep(0.,0.07,em.x)*smoothstep(0.,0.07,em.z)*smoothstep(0.,0.07,1.-u.y)*(uFloorOn==1?1.:smoothstep(0.,0.07,u.y));  // no hard cut at the box walls
   d*=smoothstep(0.,uFadeB+1e-4,u.y)*(1.-smoothstep(1.-uFadeT-1e-4,1.,u.y));
-  vec3 rc=textureLod(uR,u,0.).xyz+uSeedV;
+  vec4 rcs=textureLod(uR,u,0.); vec3 rc=rcs.xyz+uSeedV;
+  if(uEmit==1){ d*=ageFade(rcs.a/max(textureLod(uD,u,0.).r,1e-3)); if(d<0.008) return 0.; }            // fade the tail of the plume, and right at the source
+  if(uGround>1&&uGround<7&&p.y<terrH(p.xz)) return 0.;
   if(uBreak>0.){ float nb=textureLod(uNT,rc/uBreakS,0.).r*0.7+textureLod(uNT,rc/(uBreakS*0.45),0.).a*0.3; d*=smoothstep(uBreak*0.75-0.18,uBreak*0.75+0.1,nb); }
   float f0=d-uTh; if(f0+uAmt*0.5<=0.) return 0.;
   float f=f0, inner=1.;
@@ -363,18 +458,21 @@ float dens(vec3 p,int lvl){
 `;
 
 /* light cache: optical depth toward the key light, and how much sky each voxel sees */
-const FS_LIGHT=HEAD+VOX_GLSL+`uniform sampler3D uD; uniform vec3 uL; uniform float uTh, uW, uAmt, uMaxL; out vec4 o;
-float tg(vec3 p){ vec3 u=p2u(p); if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; float d=textureLod(uD,u,0.).r; return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
-void main(){ vec3 u=vU(), p=u2p(u); float ds=uMaxL/40.; float s=0.;
-  for(int i=0;i<40;i++){ s+=tg(p+uL*(ds*(float(i)+0.5)))*ds; }
-  float a=0.; const vec3 D[5]=vec3[5](vec3(0,1,0),vec3(0.7,0.7,0),vec3(-0.7,0.7,0),vec3(0,0.7,0.7),vec3(0,0.7,-0.7)); float ds2=uMaxL*0.45/10.;
-  for(int k=0;k<5;k++){ float t=0.; for(int i=0;i<10;i++) t+=tg(p+D[k]*(ds2*(float(i)+0.5)))*ds2; a+=t; }
-  o=vec4(s,a/5.,0,1); }`;
+const FS_LIGHT=HEAD+VOX_GLSL+TERR_GLSL+`uniform sampler3D uD, uR; uniform vec3 uL; uniform float uTh, uW, uAmt, uMaxL, uSigmaL; uniform int uEmit; uniform float uLife, uTailF, uSrcF; out vec4 o;
+float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
+bool inGround(vec3 p){ return uGround>1&&uGround<7&&p.y<terrH(p.xz); }
+float tg(vec3 p){ vec3 u=p2u(p); if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; float d=textureLod(uD,u,0.).r; if(uEmit==1) d*=ageFade(textureLod(uR,u,0.).a/max(d,1e-3)); return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
+void main(){ vec3 u=vU(), p=u2p(u); float ds=uMaxL/40.; float s=0.; float vis=1.;
+  for(int i=0;i<40;i++){ vec3 q=p+uL*(ds*(float(i)+0.5)); if(inGround(q)){ vis=0.; break; } s+=tg(q)*ds; }
+  if(vis>0.&&uGround>1&&uGround<7){ float t=uMaxL; for(int i=0;i<16;i++){ vec3 q=p+uL*t; if(q.y>uGP.x*1.3+1.) break; if(inGround(q)){ vis=0.; break; } t+=max(uMaxL*0.25,uGP.y*0.05); } }   // hills beyond the box
+  float a=0., gb=0.; const vec3 D[5]=vec3[5](vec3(0,1,0),vec3(0.7,0.7,0),vec3(-0.7,0.7,0),vec3(0,0.7,0.7),vec3(0,0.7,-0.7)); float ds2=uMaxL*0.45/10.;
+  for(int k=0;k<5;k++){ float t=0.; for(int i=0;i<10;i++){ vec3 q=p+D[k]*(ds2*(float(i)+0.5)); if(inGround(q)){ gb+=1.; break; } t+=tg(q)*ds2; } a+=t; }
+  o=vec4(min(s,6e4),min(a/5.,6e4),vis,gb/5.); }`;   // fog optical depth to the sun · fog over the sky · sun past the ground · sky the ground hides
 
 /* view: camera rays through the asset, over a void or a floor */
 const FS_RENDER=HEAD+DENS_GLSL+`
 uniform sampler3D uLV; uniform vec3 uCam,uCR,uCU,uCF; uniform vec2 uRes; uniform float uTanY, uFrame, uBlend; uniform int uSteps, uFinal, uBg;
-uniform vec3 uL, uSunC, uSkyC; uniform float uMS, uFloorAlb, uGrid; uniform vec4 uPh; uniform sampler2D uPrev;
+uniform vec3 uL, uSunC, uSkyC, uAlbC, uGlowC; uniform float uMS, uFloorAlb, uGrid, uFar; uniform vec4 uPh; uniform sampler2D uPrev;
 out vec4 o;
 float hash13(vec3 p){ uvec3 q=uvec3(ivec3(p))*uvec3(1597334673u,3812015801u,2798796415u); uint n=(q.x^q.y^q.z)*1597334673u; n^=n>>16; n*=2246822519u; n^=n>>13; return float(n)*(1.0/4294967296.0); }
 float hg(float c,float g){ float d=1.+g*g-2.*g*c; return (1.-g*g)/(12.566371*d*sqrt(max(d,1e-5))); }
@@ -382,18 +480,33 @@ float draine(float c,float g,float a){ float d=1.+g*g-2.*g*c; return (1.-g*g)*(1
 float phaseMie(float c){ return mix(hg(c,uPh.x),draine(c,uPh.y,uPh.z),uPh.w); }
 vec2 box(vec3 ro,vec3 rd,vec3 a,vec3 b){ vec3 ir=1./rd; vec3 t0=(a-ro)*ir, t1=(b-ro)*ir; vec3 mn=min(t0,t1), mx=max(t0,t1); return vec2(max(max(mn.x,mn.y),mn.z),min(min(mx.x,mx.y),mx.z)); }
 vec3 bgCol(vec3 rd){ if(uBg==0) return vec3(0.); if(uBg==1) return vec3(0.045); float h=rd.y; return mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,h))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.); }
-vec4 lvAt(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return vec4(0.); return textureLod(uLV,u,0.); }
+/* where a camera ray meets the ground: a plane, or marched over the stand-in terrain */
+float groundT(vec3 ro,vec3 rd){
+  if(uGround==1||uGround>=7) return rd.y<-1e-4?-ro.y/rd.y:1e9;
+  float mxH=uGP.x*1.25+1.; float tp=0., hp=ro.y-terrH(ro.xz); if(hp<0.) return 0.;
+  float stMax=uGround==6?uGP.z*0.3:uGP.y*0.04;
+  for(int i=0;i<220;i++){ float st=clamp(hp*0.5,tp*0.002+0.02,stMax); float t=tp+st; if(t>uFar) return 1e9; vec3 p=ro+rd*t;
+    if(rd.y>=0.&&p.y>mxH) return 1e9; float h=p.y-terrH(p.xz);
+    if(h<0.){ float a=tp,b=t; for(int k=0;k<7;k++){ float m=(a+b)*0.5; vec3 q=ro+rd*m; if(q.y-terrH(q.xz)<0.) b=m; else a=m; } return b; }
+    tp=t; hp=h; }
+  return 1e9; }
+vec4 lvAt(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return vec4(0.,0.,1.,0.); return textureLod(uLV,u,0.); }
 void main(){
   vec2 fc=gl_FragCoord.xy; vec2 j2=vec2(hash13(vec3(fc,uFrame*1.7+3.)),hash13(vec3(fc.yx+17.,uFrame*2.3+7.)))-0.5;
   vec2 ndc=((fc+j2)/uRes)*2.-1.; float asp=uRes.x/uRes.y;
   vec3 rd=normalize(uCF+uCR*ndc.x*uTanY*asp+uCU*ndc.y*uTanY);
-  float tF=1e9; if(uFloorOn==1&&rd.y<-1e-4) tF=-uCam.y/rd.y;
+  float tF=uGround>0?groundT(uCam,rd):1e9;
   vec3 col=bgCol(rd);
-  if(tF<1e8){ vec3 fp=uCam+rd*tF; vec4 lv=lvAt(fp+vec3(0.,0.01,0.)); float sh=exp(-uSigma*lv.r), ao=exp(-uSigma*lv.g*0.6);
+  if(tF<1e8){ vec3 fp=uCam+rd*tF; bool flat_=uGround==1||uGround>=7; vec3 N=flat_?vec3(0,1,0):terrN(fp.xz);
+    vec4 lv=lvAt(fp+N*0.02); float sh=exp(-uSigma*lv.r), ao=exp(-uSigma*lv.g*0.6);
+    float tsh=1.; if(!flat_&&uL.y>0.){ float tt=uGP.y*0.004; for(int i=0;i<28;i++){ vec3 q=fp+N*uGP.y*0.002+uL*tt; float h=q.y-terrH(q.xz); if(h<0.){ tsh=0.; break; } if(q.y>uGP.x*1.3+1.) break; tt+=max(h*0.5,uGP.y*0.008); } }
     float g1=uGrid, g2=uGrid*10.; vec2 a=abs(fract(fp.xz/g1+0.5)-0.5)*g1, b=abs(fract(fp.xz/g2+0.5)-0.5)*g2; float fw=max(fwidth(fp.x),fwidth(fp.z));
-    float line=max((1.-smoothstep(fw*0.5,fw*1.5,min(a.x,a.y)))*0.35,(1.-smoothstep(fw*0.7,fw*2.,min(b.x,b.y)))*0.7)*exp(-tF/(uGrid*60.));
-    vec3 fl=uFloorAlb*(uSunC*max(uL.y,0.)*sh+uSkyC*ao*3.14159*0.6)/3.14159;
-    fl*=1.+line*1.6; float fade=exp(-tF/(uGrid*220.)); col=mix(col,fl,fade); }
+    float line=max((1.-smoothstep(fw*0.5,fw*1.5,min(a.x,a.y)))*0.35,(1.-smoothstep(fw*0.7,fw*2.,min(b.x,b.y)))*0.7)*exp(-tF/(uGrid*60.))*N.y*N.y;
+    vec3 fl=uFloorAlb*(uSunC*max(dot(N,uL),0.)*sh*tsh+uSkyC*ao*3.14159*0.6*(0.55+0.45*N.y))/3.14159;
+    fl*=1.+line*1.6;
+    float wv=isWater(fp.xz); if(wv>0.){ vec3 Rr=reflect(rd,vec3(0,1,0)); float fr=0.02+0.98*pow(1.-max(-rd.y,0.),5.);
+      vec3 wc=mix(vec3(0.003,0.005,0.006),bgCol(Rr)+uSkyC*0.35*ao,fr)+uSunC*sh*pow(max(dot(Rr,uL),0.),300.)*6.; fl=mix(fl,wc,wv); }
+    float fade=exp(-tF/(uGrid*220.)); col=mix(col,fl,fade); }
   vec3 Lc=vec3(0.); float T=1.;
   vec2 tb=box(uCam,rd,uBMin,uBMin+uBSize); float t0=max(tb.x,0.), t1=min(tb.y,tF);
   if(t1>t0){
@@ -403,7 +516,7 @@ void main(){
     for(int i=0;i<480;i++){ if(i>=uSteps) break;
       float t=t0+(float(i)+jit)*dt; vec3 p=uCam+rd*t; gFoot=max(t*pixA,1e-4);
       float d=dens(p,1); if(d<1e-6) continue;
-      vec4 lv=lvAt(p); float tau=uSigma*lv.r;
+      vec4 lv=lvAt(p); float tau=uSigma*lv.r; float gv=lv.b;
       // local self-shadowing with the full detail, on top of the cached grid shadow
       float sl=uDet*0.35, corr=0.;
       for(int k=0;k<3;k++){ if(k==2&&uFinal==0) break; float s=sl*(k==0?0.6:k==1?1.8:4.); vec3 q=p+uL*s; corr+=(dens(q,1)-densGrid(q))*(k==0?1.2:k==1?1.6:3.)*sl; }
@@ -412,11 +525,11 @@ void main(){
       float msW=1.-exp(-uSigma*(lv.r*0.5+lv.g)*0.8);
       float Ls=ph0*exp(-tau); float a=0.5, b=uMS*msW, c=0.55;
       for(int k=1;k<4;k++){ Ls+=b*hg(cosT,0.75*c)*exp(-a*tau); a*=0.5; b*=uMS; c*=0.55; }
-      float sky=exp(-uSigma*lv.g*0.55);
+      Ls*=gv; float sky=exp(-uSigma*lv.g*0.55)*(1.-lv.a*0.75);
       vec3 S=uSunC*Ls+uSkyC*(0.7*sky+0.3*sqrt(sky));
-      if(uFloorOn==1) S+=uFloorAlb*(uSunC*max(uL.y,0.)+uSkyC*3.14159*0.6)*0.5/3.14159*exp(-p.y/max(uBSize.y,1e-3)*2.);
+      if(uFloorOn==1){ float hy=p.y-(uGround>0?terrH(p.xz):0.); S+=uFloorAlb*(uSunC*max(uL.y,0.)+uSkyC*3.14159*0.6)*0.5/3.14159*exp(-max(hy,0.)/max(uBSize.y,1e-3)*2.); }
       float tr=exp(-d*dt);
-      Lc+=T*S*0.985*(1.-tr); T*=tr; if(T<0.003) break;
+      Lc+=T*(S*uAlbC+uGlowC)*(1.-tr); T*=tr; if(T<0.003) break;
     }
   }
   vec4 cur=vec4(Lc+T*col,1.-T);
@@ -462,31 +575,196 @@ const store={ get(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(
 /* ---------------- what you can start from ---------------- */
 const CLASSES={close:{label:'Close',range:'1–10 m',k:0.1,strat:0.1,grid:0.1},mid:{label:'Mid',range:'10–100 m',k:1,strat:0.35,grid:1},large:{label:'Large',range:'100 m–2 km',k:10,strat:0.6,grid:10}};
 /* sizes are given at the Mid scale; Close is a tenth, Large ten times */
-const TEMPLATES={
-  bank:{label:'Fog bank',size:[80,22,32],floor:true,profile:0,icon:'<path d="M2 17h26"/><path d="M3 17c0-3 2-5 5-5 .5-3 3-4.5 6-4.5s5.2 1.6 5.7 4c2.6.2 6.3 2 6.3 5.5"/>',
-    sim:{age:0.55,turb:0.55,lift:-0.15,calm:0.45,spread:0.45,wind:0.12,diss:0.04},det:{billow:0.55,amt:0.7,edge:0.6,brk:0.2},den:{d:0.42}},
-  sheet:{label:'Ground fog',size:[110,7,110],floor:true,profile:1,icon:'<path d="M2 15c3-1.5 6-1.5 9 0s6 1.5 9 0 4.5-1.5 8 0"/><path d="M2 19h26"/><path d="M6 11c2-1 4-1 6 0"/>',
-    sim:{age:0.6,turb:0.45,lift:-0.45,calm:0.35,spread:0.7,wind:0.1,diss:0.03},det:{billow:0.25,amt:0.65,edge:0.75,brk:0.35},den:{d:0.24}},
-  veil:{label:'Mist veil',size:[90,30,24],floor:true,profile:1,icon:'<path d="M3 8h22"/><path d="M5 12h20"/><path d="M3 16h22"/><path d="M6 20h16"/>',
-    sim:{age:0.5,turb:0.35,lift:-0.05,calm:0.2,spread:0.3,wind:0.2,diss:0.02},det:{billow:0.15,amt:0.45,edge:0.92,brk:0.15},den:{d:0.2}},
-  hang:{label:'Hanging mist',size:[70,26,30],floor:false,profile:0,rough:0.7,icon:'<path d="M3 9c4-2 8 1 12-1s7-1 11 0"/><path d="M6 14c4-1.5 7 1 11-.5s5-1 8 0"/><path d="M4 19c3-1 6 .5 9-.3"/>',
-    sim:{age:0.55,turb:0.45,lift:0,calm:0.2,spread:0,wind:0.15,diss:0.03},det:{billow:0.2,amt:0.45,edge:0.85,brk:0.35},den:{d:0.2}},
-  cloud:{label:'Cloud mass',size:[60,34,50],floor:false,profile:3,icon:'<path d="M6 19c-2.5 0-4-1.7-4-3.8 0-2 1.6-3.6 3.6-3.7C6.2 8.7 8.7 7 11.6 7c2.7 0 5 1.5 5.9 3.8.6-.2 1.3-.3 2-.3 3 0 5.5 2.3 5.5 5.2S22.5 19 19.5 19z"/>',
+/* ---------------- the library: every kind of volume, what it is and when to use it ----------------
+   Sizes and ground relief are given at the Mid scale; Close is a tenth, Large ten times.
+   form: fog that forms by a rule relative to the ground · emit: a source that keeps making smoke or steam
+   prims: a sculpted starting shape (made of primitives) · ground: the stand-in set it is designed against */
+const CATS=[['fog','Fog'],['cloud','Clouds'],['atmos','Atmosphere'],['linger','Lingering'],['emit','Emitters'],['style','Stylized'],['shape','Shapes']];
+const IC={
+  bank:'<path d="M2 17h26"/><path d="M3 17c0-3 2-5 5-5 .5-3 3-4.5 6-4.5s5.2 1.6 5.7 4c2.6.2 6.3 2 6.3 5.5"/>',
+  layer:'<path d="M2 15c3-1.5 6-1.5 9 0s6 1.5 9 0 4.5-1.5 8 0"/><path d="M2 19h26"/><path d="M6 11c2-1 4-1 6 0"/>',
+  valley:'<path d="M2 8c4 0 6 9 13 9s9-9 13-9"/><path d="M7 14h16"/><path d="M9 11.5h12"/>',
+  slope:'<path d="M2 21L28 6"/><path d="M8 15c3-2 6-1 9-3"/><path d="M12 10c2-1 4-1 6-2"/>',
+  peak:'<path d="M2 21l10-14 4 5 3-3 9 12"/><path d="M7 11c3-3 8-3 11 0"/>',
+  sheets:'<path d="M3 8h24"/><path d="M5 13h21"/><path d="M3 18h24"/><path d="M8 4v18M20 5v17" stroke-dasharray="1.5 2"/>',
+  steam:'<path d="M2 20h26"/><path d="M9 17c-2-3 2-4 0-7"/><path d="M15 17c-2-3 2-4 0-8"/><path d="M21 17c-2-3 2-4 0-6"/>',
+  cloud:'<path d="M6 19c-2.5 0-4-1.7-4-3.8 0-2 1.6-3.6 3.6-3.7C6.2 8.7 8.7 7 11.6 7c2.7 0 5 1.5 5.9 3.8.6-.2 1.3-.3 2-.3 3 0 5.5 2.3 5.5 5.2S22.5 19 19.5 19z"/>',
+  banner:'<path d="M2 21l9-14 5 7"/><path d="M11 8c5-1 10 0 16 2"/><path d="M12 11c4 0 9 1 14 3"/>',
+  deck:'<path d="M2 12c3-2 5 0 8-1s5-2 8 0 6 0 10-1"/><path d="M2 16h26"/>',
+  scud:'<path d="M4 9c2-1 4 0 6-1"/><path d="M13 12c3-1 5 0 8-1"/><path d="M6 16c2-1 5 0 7-1"/><path d="M18 19c2-1 4 0 6-1"/>',
+  curtain:'<path d="M3 6h24"/><path d="M7 7l-2 12M12 7l-2 14M17 7l-2 11M22 7l-2 13" stroke-dasharray="2 1.6"/>',
+  haze:'<path d="M2 20h26"/><path d="M4 16h22" stroke-dasharray="1 2"/><path d="M6 12h18" stroke-dasharray="1 3"/><path d="M9 8h12" stroke-dasharray="1 4"/>',
+  shafts:'<path d="M6 3l-3 19M12 3l2 19M18 3l5 19"/><circle cx="12" cy="3" r="1.5"/>',
+  room:'<path d="M4 20V8l11-5 11 5v12z"/><path d="M8 18c3-1 7 0 14-1" stroke-dasharray="1.5 2"/>',
+  lid:'<path d="M2 9h26"/><path d="M4 13h22" stroke-dasharray="1 2.5"/><path d="M5 21v-4h4v4M12 21v-6h3v6M19 21v-3h4v3"/>',
+  smoke:'<path d="M4 20c4-3 2-6 6-8s6-5 12-6"/><path d="M6 21c4-2 5-4 9-5s7-3 11-3"/>',
+  dust:'<path d="M2 20h26"/><circle cx="6" cy="16" r=".8"/><circle cx="11" cy="14" r=".8"/><circle cx="16" cy="17" r=".8"/><circle cx="21" cy="15" r=".8"/><circle cx="25" cy="17" r=".8"/><path d="M4 18c5-2 15-2 22 0"/>',
+  spray:'<path d="M3 21c3-1 5-1 8 0s5 1 8 0 5-1 8 0"/><path d="M8 18c0-4 3-7 7-8M14 17c1-3 4-5 8-5"/>',
+  pool:'<ellipse cx="15" cy="19" rx="10" ry="2.5"/><path d="M11 16c-3-3 2-5-1-8M16 16c-2-3 3-6 0-10M21 16c-2-2 2-4 0-6"/>',
+  vent:'<path d="M12 21h6"/><path d="M15 20v-3"/><path d="M15 17c-5-2-6-7-2-10s9-2 9 3"/>',
+  fire:'<path d="M8 21h14"/><path d="M15 20c-3-1-4-4-1-7s0-6 3-8c0 3 4 4 4 8s-3 6-6 7"/>',
+  glow:'<path d="M3 9c4-2 8 1 12-1s7-1 11 0"/><path d="M6 14c4-1.5 7 1 11-.5s5-1 8 0"/><circle cx="15" cy="12" r="6" stroke-dasharray="1 2"/>',
+  swirl:'<path d="M15 12c0-2 3-2 3 0s-2 4-5 3-4-5 0-7 9 0 9 5-5 8-10 6"/>',
+  veil:'<path d="M3 8h22"/><path d="M5 12h20"/><path d="M3 16h22"/><path d="M6 20h16"/>',
+  hang:'<path d="M3 9c4-2 8 1 12-1s7-1 11 0"/><path d="M6 14c4-1.5 7 1 11-.5s5-1 8 0"/><path d="M4 19c3-1 6 .5 9-.3"/>',
+  wisps:'<path d="M8 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M15 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M22 22c-2-4 2-6 0-10"/>',
+  tendril:'<path d="M3 17c4-6 8 2 12-3s7 1 11-4"/><path d="M4 21c5-3 8 1 13-1s5-2 9-1"/>',
+  puff:'<circle cx="15" cy="13" r="6"/><path d="M8 17c-3 0-5-2-5-4s2-4 4-4"/><path d="M22 17c3 0 5-2 5-4s-2-4-4-4"/>',
+};
+const LIB={
+  // ---- fog ----
+  radiation:{cat:'fog',label:'Radiation fog',icon:IC.layer,desc:'Low fog from the ground cooling on clear, calm nights. Hugs the ground, pools in low spots, burns off in morning sun.',use:'Dawn and night shots, fields, lawns, streets; quiet, still moods.',needs:'Ground',
+    size:[140,7,140],ground:{t:'bowl',relief:14},form:{type:'layer',pool:0.7},prims:'none',
+    sim:{age:0.55,turb:0.35,lift:-0.4,calm:0.3,spread:0.45,wind:0.06,gust:0.2,diss:0.02},det:{billow:0.2,amt:0.55,edge:0.8,brk:0.3},den:{d:0.3}},
+  valley:{cat:'fog',label:'Valley fog',icon:IC.valley,desc:'Cold, heavy fog trapped in a valley or basin. Fills it to a level with a soft, flat top; hilltops poke through. Can linger for days.',use:'Wide establishing shots over hills; layered depth between ridges.',needs:'A valley or basin',
+    size:[320,40,260],ground:{t:'valley',relief:70},form:{type:'fill',level:0.42},prims:'none',
+    sim:{age:0.5,turb:0.3,lift:-0.3,calm:0.5,strat:0.8,spread:0.3,wind:0.05,gust:0.2,diss:0.02},det:{billow:0.35,amt:0.55,edge:0.75,brk:0.15},den:{d:0.36}},
+  advection:{cat:'fog',label:'Advection fog',icon:IC.bank,desc:'Warm, damp air carried over cold water or ground. A thick bank that rolls in on the wind in slow waves and pours over and around things.',use:'Coasts, bays, bridges, cities; fog moving in.',needs:'Ground or water, wind',
+    size:[160,40,70],ground:{t:'flat'},prims:'bank',profile:0,
+    sim:{age:0.6,turb:0.5,lift:-0.1,calm:0.45,strat:0.55,spread:0.4,wind:0.45,gust:0.4,diss:0.03},det:{billow:0.6,amt:0.7,edge:0.55,brk:0.2},den:{d:0.5}},
+  upslope:{cat:'fog',label:'Upslope fog',icon:IC.slope,desc:'Moist air pushed up a slope by the wind cools and condenses. Forms on the windward slope above a height and drapes over the hill.',use:'Hills and mountains facing the wind; fog clinging to slopes.',needs:'A slope and wind toward it',
+    size:[220,40,160],ground:{t:'slope',relief:130},form:{type:'upslope',cond:0.3},prims:'none',
+    sim:{age:0.55,turb:0.45,lift:0.2,calm:0.3,spread:0.1,wind:0.35,windDir:90,gust:0.35,diss:0.03},det:{billow:0.25,amt:0.65,edge:0.7,brk:0.3},den:{d:0.32}},
+  freezing:{cat:'fog',label:'Freezing fog',icon:IC.layer,desc:'Thin, still mist of droplets colder than freezing. The feathery rime it leaves on trees and rails is a surface shader; this is the mist itself.',use:'Winter mornings, frosted trees, cold lakes.',needs:'Ground',
+    size:[150,12,110],ground:{t:'lake'},form:{type:'layer',pool:0.3},prims:'none',
+    sim:{age:0.5,turb:0.25,lift:-0.2,calm:0.4,spread:0.3,wind:0.05,gust:0.15,diss:0.02},det:{billow:0.2,amt:0.35,edge:0.9,brk:0.15},den:{d:0.18,tint:'#eaf0f6',drop:8}},
+  icefog:{cat:'fog',label:'Ice fog',icon:IC.sheets,desc:'Frozen fog: ice crystals hanging in flat, stacked sheets threaded through trees. Only in extreme cold; crisp and layered.',use:'Arctic and deep-winter scenes; layered depth through forests.',needs:'Ground',
+    size:[220,26,170],ground:{t:'flat'},form:{type:'sheets',n:4},prims:'none',
+    sim:{age:0.45,turb:0.2,lift:0,calm:0.5,strat:0.95,spread:0.1,wind:0.08,gust:0.1,diss:0.02},det:{billow:0.1,amt:0.55,edge:0.8,brk:0.25},den:{d:0.22,tint:'#eef4ff',drop:5}},
+  steam:{cat:'fog',label:'Evaporation fog',icon:IC.steam,desc:'Steam fog or sea smoke: cold air over warmer water. Low, streaky steam rising off the surface in wisps and drifting with the breeze.',use:'Lakes, rivers, pools at dawn; autumn water; hot springs.',needs:'Water',
+    size:[90,9,70],ground:{t:'lake'},prims:'none',emit:{shape:'disc',w:36,d:28,edge:0.5,patch:0.55,pulse:0.2,rate:0.45,push:0.05,heat:0.2,spread:0.35,life:0.35,tail:0.6,srcF:0.15},
+    sim:{age:0.7,turb:0.55,calm:0.1,spread:0,wind:0.2,gust:0.4,diss:0.03},det:{billow:0.15,amt:0.75,edge:0.7,brk:0.3},den:{d:0.3}},
+  // ---- clouds ----
+  cap:{cat:'cloud',label:'Cap cloud',icon:IC.peak,desc:'Cloud sitting on a peak and hiding the summit, formed by air lifted over the top. Stays put while the wind blows through it.',use:'Mountains with their tops obscured; scale and mood on peaks.',needs:'A peak',
+    size:[260,90,220],ground:{t:'peak',relief:280},prims:'cap',profile:0,
+    sim:{age:0.55,turb:0.4,lift:0.05,calm:0.5,strat:0.5,spread:0,wind:0.25,gust:0.3,diss:0.03},det:{billow:0.55,amt:0.65,edge:0.6,brk:0.15},den:{d:0.6}},
+  banner:{cat:'cloud',label:'Banner cloud',icon:IC.banner,desc:'A streamer of cloud trailing off the downwind side of a sharp peak in strong wind, like a flag.',use:'Dramatic mountain peaks; showing a strong wind up high.',needs:'A peak and wind',
+    size:[320,90,120],ground:{t:'peak',relief:260},prims:'banner',profile:0,
+    sim:{age:0.55,turb:0.5,lift:0,calm:0.3,strat:0.4,spread:0,wind:0.55,windDir:90,gust:0.35,diss:0.04},det:{billow:0.3,amt:0.7,edge:0.6,brk:0.25},den:{d:0.5}},
+  deck:{cat:'cloud',label:'Cloud deck',icon:IC.deck,desc:'A wide, flat layer of stratus. From above, a sea of cloud with a lumpy top; from below, a grey lid.',use:'Shots above the clouds; low overcast; tops of buildings in cloud.',needs:'Nothing',
+    size:[420,60,420],ground:{t:'none'},form:{type:'deck',base:0.25,top:0.72},prims:'none',
+    sim:{age:0.5,turb:0.35,lift:0,calm:0.5,strat:0.8,spread:0,wind:0.12,gust:0.25,diss:0.02},det:{billow:0.65,amt:0.6,edge:0.6,brk:0.2},den:{d:0.55}},
+  scud:{cat:'cloud',label:'Scud',icon:IC.scud,desc:'Ragged, loose wisps drifting fast under a cloud base. Torn, scattered, moving with the wind.',use:'Stormy skies, coastlines, mountains; motion and texture under clouds.',needs:'Nothing',
+    size:[200,40,120],ground:{t:'none'},prims:'scud',profile:0,rough:0.8,
+    sim:{age:0.6,turb:0.6,lift:0,calm:0.15,strat:0.4,spread:0,wind:0.5,gust:0.5,diss:0.05},det:{billow:0.35,amt:0.8,edge:0.6,brk:0.5},den:{d:0.35}},
+  curtain:{cat:'cloud',label:'Rain curtain',icon:IC.curtain,desc:'Grey veils of rain or virga hanging under distant clouds, streaked and slanted by the wind, often fading before the ground.',use:'Distant weather, storms on the horizon, big skies.',needs:'Nothing',
+    size:[300,180,60],ground:{t:'none'},prims:'curtain',profile:0,rough:0.4,
+    sim:{age:0.45,turb:0.3,lift:-0.35,calm:0.2,strat:0,spread:0,wind:0.3,gust:0.3,diss:0.02},det:{billow:0.1,amt:0.55,edge:0.85,brk:0.3},den:{d:0.3,fadeB:0.45,tint:'#d9dde2'}},
+  cloud:{cat:'cloud',label:'Cloud mass',icon:IC.cloud,desc:'A floating, billowing cloud with a flatter base. Sculpt it into any shape.',use:'Hero clouds, cloud set dressing, anything puffy up high.',needs:'Nothing',
+    size:[60,34,50],ground:{t:'none'},profile:3,
     sim:{age:0.55,turb:0.5,lift:0.15,calm:0.6,spread:0,wind:0.1,diss:0.03},det:{billow:0.85,amt:0.8,edge:0.45,brk:0.15},den:{d:0.78}},
-  wisps:{label:'Rising wisps',size:[24,40,24],floor:true,profile:2,rough:0.5,icon:'<path d="M8 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M15 22c-2-4 2-6 0-10s1-6 0-8"/><path d="M22 22c-2-4 2-6 0-10"/>',
+  // ---- atmosphere ----
+  haze:{cat:'atmos',label:'Depth haze',icon:IC.haze,desc:'Thin, even air that lightens and softens things with distance: aerial perspective as a volume, thinning with height.',use:'Wide shots, cityscapes, landscapes; separating planes by distance.',needs:'Ground',
+    size:[600,120,600],ground:{t:'flat'},form:{type:'even',falloff:0.55},prims:'none',lod:0,
+    sim:{age:0.15,turb:0.25,lift:0,calm:0.2,spread:0,wind:0.05,gust:0.2,diss:0},det:{billow:0.3,amt:0.2,edge:0.95,brk:0.15},den:{d:0.04,drop:6}},
+  shafts:{cat:'atmos',label:'Light-shaft haze',icon:IC.shafts,desc:'A thin, even volume that is there to catch beams: sun through trees and windows, street lights, headlights.',use:'Any shot that wants visible light rays; forests, interiors, night streets.',needs:'Ground',
+    size:[90,30,22],ground:{t:'street',relief:22,w:12},form:{type:'even',falloff:1.2},prims:'none',lod:0,
+    sim:{age:0.2,turb:0.3,lift:0,calm:0.2,spread:0,wind:0.05,gust:0.2,diss:0},det:{billow:0.3,amt:0.25,edge:0.95,brk:0.2},den:{d:0.12,drop:22}},
+  interior:{cat:'atmos',label:'Interior haze',icon:IC.room,desc:'Dusty, still air filling a room, a little thicker near the floor. Warm and soft.',use:'Cathedrals, barns, warehouses, old houses; sunbeams indoors.',needs:'Ground',
+    size:[30,15,40],ground:{t:'flat'},form:{type:'even',falloff:0.8},prims:'none',lod:1,
+    sim:{age:0.3,turb:0.3,lift:-0.05,calm:0.3,spread:0.1,wind:0.02,gust:0.1,diss:0},det:{billow:0.25,amt:0.3,edge:0.9,brk:0.2},den:{d:0.18,tint:'#efe9dd',drop:18}},
+  inversion:{cat:'atmos',label:'Inversion layer',icon:IC.lid,desc:'A flat lid of haze or smog trapped over a town or valley: hazy underneath, with a sharper top.',use:'Cities, industrial valleys, hot still days; a visible layer at a height.',needs:'Ground',
+    size:[500,60,500],ground:{t:'street',relief:30,w:10},form:{type:'lid'},prims:'none',lod:0,
+    sim:{age:0.35,turb:0.25,lift:0,calm:0.4,strat:0.9,spread:0,wind:0.06,gust:0.2,diss:0},det:{billow:0.3,amt:0.3,edge:0.85,brk:0.15},den:{d:0.12,tint:'#e8e1d2',drop:5}},
+  // ---- lingering ----
+  residual:{cat:'linger',label:'Residual smoke',icon:IC.smoke,desc:'Smoke hanging in still, torn layers after something happened. Drifts slowly; greyer and darker than fog.',use:'Aftermath, battles, fires out of frame; a street or room full of old smoke.',needs:'Ground',
+    size:[70,18,18],ground:{t:'street',relief:20,w:11},prims:'residual',profile:0,rough:0.8,
+    sim:{age:0.6,turb:0.35,lift:0,calm:0.3,strat:0.7,spread:0.1,wind:0.1,gust:0.3,diss:0.03},det:{billow:0.3,amt:0.75,edge:0.6,brk:0.4},den:{d:0.35,tint:'#cfccc7',alb:0.7,drop:4}},
+  dust:{cat:'linger',label:'Settled dust',icon:IC.dust,desc:'Warm, dusty air hanging low after wind or traffic. Scatters light warmly and is slightly dark.',use:'Deserts, dirt roads, farms, construction; warm backlit air.',needs:'Ground',
+    size:[90,10,90],ground:{t:'flat'},form:{type:'layer',pool:0.2},prims:'none',
+    sim:{age:0.5,turb:0.35,lift:-0.1,calm:0.3,spread:0.2,wind:0.12,gust:0.35,diss:0.02},det:{billow:0.3,amt:0.45,edge:0.8,brk:0.25},den:{d:0.22,tint:'#d8c3a0',alb:0.75,drop:30}},
+  spray:{cat:'linger',label:'Spray mist',icon:IC.spray,desc:'Fine drifting mist thrown up by waterfalls, surf and fountains, carried off by the breeze.',use:'Waterfalls, crashing waves, fountains, rapids.',needs:'Water',
+    size:[40,22,30],ground:{t:'lake'},prims:'none',emit:{shape:'line',w:14,d:2,edge:0.5,patch:0.5,pulse:0.5,rate:0.5,push:0.5,heat:0.15,spread:0.5,life:0.4,tail:0.55,srcF:0.05},
+    sim:{age:0.7,turb:0.6,calm:0.1,spread:0,wind:0.3,gust:0.5,diss:0.03},det:{billow:0.2,amt:0.75,edge:0.65,brk:0.3},den:{d:0.3}},
+  // ---- emitters ----
+  sulfur:{cat:'emit',label:'Sulfur smoke',icon:IC.pool,desc:'Pale, yellowish fumes rising off a hot pool or vent field and bending over in the wind.',use:'Volcanic pools, hot springs, geothermal fields, alien places.',needs:'A source (drawn on the ground)',
+    size:[40,40,40],ground:{t:'pool',w:12},prims:'none',emit:{shape:'disc',w:11,d:11,edge:0.45,patch:0.45,pulse:0.35,rate:0.6,push:0.15,heat:0.55,spread:0.5,life:0.6,tail:0.5,srcF:0.05},
+    sim:{age:0.75,turb:0.55,calm:0.15,spread:0,wind:0.4,gust:0.45,diss:0.02},det:{billow:0.35,amt:0.75,edge:0.6,brk:0.2},den:{d:0.45,tint:'#f2edd0',alb:0.9}},
+  vent:{cat:'emit',label:'Steam vent',icon:IC.vent,desc:'A jet of steam from a point or crack: fast at the source, billowing as it slows. Invisible right at the nozzle.',use:'Vents, pipes, manholes, geysers, machinery.',needs:'A source',
+    size:[20,30,20],ground:{t:'flat'},prims:'none',emit:{shape:'disc',w:1.2,d:1.2,edge:0.4,patch:0.15,pulse:0.4,rate:0.8,push:0.8,heat:0.45,spread:0.6,life:0.5,tail:0.5,srcF:0.12},
+    sim:{age:0.75,turb:0.6,calm:0.1,spread:0,wind:0.25,gust:0.4,diss:0.03},det:{billow:0.6,amt:0.75,edge:0.55,brk:0.1},den:{d:0.55}},
+  smokesrc:{cat:'emit',label:'Smoke source',icon:IC.fire,desc:'Smoke rising from an area: a fire out of frame, smoulder, distant chimneys. Greyer and darker than steam.',use:'Background smoke columns, burning things, campfires seen from afar.',needs:'A source',
+    size:[30,40,30],ground:{t:'flat'},prims:'none',emit:{shape:'disc',w:3,d:3,edge:0.4,patch:0.3,pulse:0.3,rate:0.7,push:0.2,heat:0.7,spread:0.5,life:0.7,tail:0.4,srcF:0},
+    sim:{age:0.75,turb:0.6,calm:0.1,spread:0,wind:0.3,gust:0.45,diss:0.02},det:{billow:0.5,amt:0.85,edge:0.5,brk:0.1},den:{d:0.6,tint:'#c4c0ba',alb:0.55,drop:3}},
+  // ---- stylized ----
+  glowmist:{cat:'style',label:'Glowing mist',icon:IC.glow,desc:'Mist that gives off its own soft light. Pick the colour; it still scatters the sun.',use:'Magical places, bioluminescence, spirits, sci-fi atmospheres.',needs:'Nothing',
+    size:[60,24,30],ground:{t:'none'},prims:'glow',profile:0,rough:0.7,
+    sim:{age:0.55,turb:0.45,lift:0.05,calm:0.2,spread:0,wind:0.1,gust:0.3,diss:0.03},det:{billow:0.2,amt:0.6,edge:0.8,brk:0.3},den:{d:0.25,glow:0.8,glowC:'#7fd0ff'}},
+  swirl:{cat:'style',label:'Magic swirl',icon:IC.swirl,desc:'Slow, curling mist that drifts upward in spirals, free of real physics. Tinted and faintly glowing.',use:'Spells, portals, dreams, anything otherworldly.',needs:'Nothing',
+    size:[24,30,24],ground:{t:'none'},prims:'swirl',profile:0,
+    sim:{age:0.6,turb:0.85,lift:0.3,calm:0.1,strat:0,spread:0,wind:0.02,gust:0.1,diss:0.03},det:{billow:0.5,amt:0.85,edge:0.5,brk:0.1},den:{d:0.4,glow:0.35,glowC:'#c9a7ff',tint:'#efe6ff'}},
+  // ---- shapes: sculpt from these ----
+  bank:{cat:'shape',label:'Fog bank',icon:IC.bank,desc:'A long, low wall of fog sitting on the ground.',use:'Fog in the middle distance, behind characters or set pieces.',needs:'Ground',
+    size:[80,22,32],ground:{t:'flat'},profile:0,
+    sim:{age:0.55,turb:0.55,lift:-0.15,calm:0.45,spread:0.45,wind:0.12,diss:0.04},det:{billow:0.55,amt:0.7,edge:0.6,brk:0.2},den:{d:0.42}},
+  hang:{cat:'shape',label:'Hanging mist',icon:IC.hang,desc:'A medium-to-large wispy layer floating in the air.',use:'Separation and depth between foreground and background; the everyday lighter’s mist.',needs:'Nothing',
+    size:[70,26,30],ground:{t:'none'},profile:0,rough:0.7,
+    sim:{age:0.55,turb:0.45,lift:0,calm:0.2,spread:0,wind:0.15,diss:0.03},det:{billow:0.2,amt:0.45,edge:0.85,brk:0.35},den:{d:0.2}},
+  sheet:{cat:'shape',label:'Ground fog patch',icon:IC.layer,desc:'A low, sculptable patch of fog, densest at the ground.',use:'Patches of fog you shape by hand.',needs:'Ground',
+    size:[110,7,110],ground:{t:'flat'},profile:1,
+    sim:{age:0.6,turb:0.45,lift:-0.45,calm:0.35,spread:0.7,wind:0.1,diss:0.03},det:{billow:0.25,amt:0.65,edge:0.75,brk:0.35},den:{d:0.24}},
+  veil:{cat:'shape',label:'Mist veil',icon:IC.veil,desc:'A soft upright curtain of mist.',use:'A thin veil in front of or behind something.',needs:'Ground',
+    size:[90,30,24],ground:{t:'flat'},profile:1,
+    sim:{age:0.5,turb:0.35,lift:-0.05,calm:0.2,spread:0.3,wind:0.2,diss:0.02},det:{billow:0.15,amt:0.45,edge:0.92,brk:0.15},den:{d:0.2}},
+  wisps:{cat:'shape',label:'Rising wisps',icon:IC.wisps,desc:'Thin wisps rising off the ground and thinning as they climb.',use:'Damp ground warming, mist off forest floors.',needs:'Ground',
+    size:[24,40,24],ground:{t:'flat'},profile:2,rough:0.5,
     sim:{age:0.65,turb:0.7,lift:0.7,calm:0.15,spread:0.1,wind:0.15,diss:0.08},det:{billow:0.15,amt:0.8,edge:0.7,brk:0.2},den:{d:0.4}},
-  tendril:{label:'Tendrils',size:[60,10,40],floor:true,profile:0,rough:0.3,icon:'<path d="M3 17c4-6 8 2 12-3s7 1 11-4"/><path d="M4 21c5-3 8 1 13-1s5-2 9-1"/>',
+  tendril:{cat:'shape',label:'Tendrils',icon:IC.tendril,desc:'Long fingers of fog snaking along the ground.',use:'Fog creeping in, leading lines along the ground.',needs:'Ground',
+    size:[60,10,40],ground:{t:'flat'},profile:0,rough:0.3,
     sim:{age:0.45,turb:0.6,lift:0,calm:0.25,spread:0.1,wind:0.2,diss:0.05},det:{billow:0.25,amt:0.8,edge:0.65,brk:0.1},den:{d:0.5}},
-  puff:{label:'Smoke puff',size:[30,20,22],floor:false,profile:0,icon:'<circle cx="15" cy="13" r="6"/><path d="M8 17c-3 0-5-2-5-4s2-4 4-4"/><path d="M22 17c3 0 5-2 5-4s-2-4-4-4"/>',
+  puff:{cat:'shape',label:'Smoke puff',icon:IC.puff,desc:'A single rounded puff of smoke or mist.',use:'Accents, small clouds of smoke or steam.',needs:'Nothing',
+    size:[30,20,22],ground:{t:'none'},profile:0,
     sim:{age:0.6,turb:0.7,lift:0.1,calm:0.35,spread:0,wind:0.08,diss:0.04},det:{billow:0.5,amt:0.85,edge:0.55,brk:0.1},den:{d:0.7}},
 };
+const TEMPLATES=LIB;
+/* ---------------- stand-in ground (mirrors terrH in the shaders) ---------------- */
+const GROUNDS=[['none','None','Floating: nothing underneath'],['flat','Flat','A flat floor'],['slope','Slope','A hillside rising one way'],['peak','Peak','A mountain or hilltop'],['valley','Valley','A valley between two ridges'],['bowl','Bowl','A basin ringed by hills'],['street','Street','A street between buildings'],['pool','Pool','Flat ground with a small pool'],['lake','Lake','Flat ground with a lake']];
+const GIDX=Object.fromEntries(GROUNDS.map((g,i)=>[g[0],i]));
+const fract_=x=>x-Math.floor(x), sstep=(a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const tnJ=(x,y)=>Math.sin(x*1.7+Math.sin(y*1.3))*0.5+Math.sin(y*2.1+Math.sin(x*0.9)*1.4)*0.35+Math.sin((x+y)*3.7)*0.15;
+function terrHJ(rec,x,z){ const g=rec.gnd; const t=g?GIDX[g.t]:0; if(!(t>=2&&t<=6)) return 0; const Hg=g.relief, L=g.L, sx=x/L, sz=z/L, w0=g.seed;
+  const n=tnJ(sx*4+w0,sz*4+w0)*0.06+tnJ(sx*9+w0*1.7,sz*9+w0*1.7)*0.025;
+  if(t===2) return Hg*(sstep(-0.6,0.6,sx)+n);
+  if(t===3) return Hg*(Math.exp(-(sx*sx+sz*sz)/0.06)+n*0.7);
+  if(t===4) return Hg*((1-Math.exp(-sz*sz/0.045))*(0.8+0.2*Math.sin(sx*5+w0))+n);
+  if(t===5) return Hg*((1-Math.exp(-(sx*sx+sz*sz)/0.06))+n);
+  const w=g.w; if(Math.abs(z)<w) return 0; const lot=w*1.8; if(Math.abs(z)>w+lot*1.6) return 0; if(fract_(x/lot)<0.1) return 0;
+  return Hg*(0.45+0.55*fract_(Math.sin((Math.floor(x/lot)*2+(z>0?1:0))*127.1+311.7)*43758.5453)); }
+function terrRange(rec,x0,x1,z0,z1,n=12){ let mn=1e9, mx=-1e9; for(let i=0;i<=n;i++) for(let j=0;j<=n;j++){ const h=terrHJ(rec,lerp(x0,x1,i/n),lerp(z0,z1,j/n)); mn=Math.min(mn,h); mx=Math.max(mx,h); } return {min:mn,max:mx}; }
+const hasGround=rec=>rec.gnd&&rec.gnd.t!=='none';
+const flatBase=rec=>hasGround(rec)&&['flat','street','pool','lake'].includes(rec.gnd.t);
+function waterOf(rec){ const g=rec.gnd; if(!g) return [0,0,0,0]; if(g.t==='pool') return [0,0,g.w,1]; if(g.t==='lake') return [0,0,g.L*0.45,1]; return [0,0,0,0]; }
+/* the fog that forms by a rule, in absolute metres */
+function formAbs(rec){ const f=rec.form; if(!f) return null; const [W,H,D]=rec.size; const r=terrRange(rec,-W/2,W/2,-D/2,D/2);
+  const b={half:[W/2,D/2],edge:Math.min(W,D)*0.18,tmin:r.min,tmax:r.max};
+  if(f.type==='layer') return {...b,id:1,F0:[H,f.pool??0.5,Math.max(W,D)*0.06,0],y:[r.min,r.max+H*1.6]};
+  if(f.type==='fill'){ const lv=r.min+(r.max-r.min)*(f.level??0.45), e=Math.max((r.max-r.min)*0.05,H*0.05); return {...b,id:2,F0:[lv,e,0,0],y:[r.min,lv+e*2.5]}; }
+  if(f.type==='upslope'){ const c=r.min+(r.max-r.min)*(f.cond??0.3); return {...b,id:3,F0:[H,c,0,0],y:[Math.max(r.min,c-H*2),r.max+H]}; }
+  if(f.type==='sheets') return {...b,id:4,F0:[f.n??4,H*0.07,r.min+H*0.08,r.min+H*0.92],y:[r.min,r.min+H*1.05]};
+  if(f.type==='deck'){ const bb=H*(f.base??0.25), t=H*(f.top??0.75), e=H*0.08; return {...b,id:5,F0:[bb,t,e,0],y:[bb-e*3,t+e*4]}; }
+  if(f.type==='lid'){ const t=r.min+H*0.85, e=H*0.08; return {...b,id:6,F0:[t,e,0,0],y:[r.min,t+e*2]}; }
+  if(f.type==='even') return {...b,id:7,F0:[H*(f.falloff??0.6),0,0,0],y:[r.min,r.min+H]};
+  return null; }
+/* an emitter's plan: how fast smoke rises and blows, how long it lives */
+/* plumes run on their own clock: rise speed in m/s from heat and size, and turbulence that scales with the rise (not the other way round) */
+function emitPlan(rec){ const S=rec.sim, E=rec.emit, H=rec.size[1];
+  const Vr=(0.8+3.2*E.heat)*Math.sqrt(Math.max(H,0.05)/30), Tref=H/Vr*0.9, Uw=Math.max(S.turb,0.02)*Vr*0.7;
+  const riseH=H*(0.25+0.85*E.heat), push=E.push*Vr*2.5, pushH=Math.max(H*0.08,Math.min(E.w,E.d)*0.5);
+  const life=Tref*(0.6+2.4*E.life), Tsim=life*(0.35+0.9*S.age), Uwind=S.wind*Vr*1.6, wd=S.windDir*D2R;
+  return {Uw,Tref,Vr,riseH,push,pushH,life,Tsim,Uwind,wdir:[Math.sin(wd),-Math.cos(wd)],y0:terrHJ(rec,E.x,E.z)+E.y}; }
+const EMIT_DEF={on:false,shape:'disc',w:4,d:4,ang:0,x:0,z:0,y:0,edge:0.35,patch:0.3,patchS:0,pulse:0.3,rate:0.6,push:0.2,heat:0.5,spread:0.4,life:0.5,tail:0.5,srcF:0.05};
 function makeRecipe(tpl,cls='mid',seed=Math.floor(Math.random()*9999)){
-  const T=TEMPLATES[tpl], C=CLASSES[cls]; const size=T.size.map(v=>+(v*C.k).toPrecision(3)); const md=Math.max(...size), mn=Math.min(...size);
-  const eddy=+(Math.max(mn*0.55,md*0.14)).toPrecision(3);
-  return {v:2,name:T.label,template:tpl,cls,seed,size,floor:T.floor,fit:'auto',dom:null,xpad:[0,0,0,0,0,0],lod:'auto',
-    sim:{age:T.sim.age,turb:T.sim.turb,eddy,lift:T.sim.lift,strat:C.strat,calm:T.sim.calm,spread:T.sim.spread,wind:T.sim.wind,windDir:70,diss:T.sim.diss},
-    det:{billow:T.det.billow,amt:T.det.amt,size:+(eddy*0.42).toPrecision(3),edge:T.det.edge,brk:T.det.brk,brkSize:+(md*0.35).toPrecision(3)},
-    den:{d:T.den.d,fadeT:0,fadeB:0,drop:12,ms:0.5},
+  const T=LIB[tpl]||LIB.bank, C=CLASSES[cls], k=C.k; const size=T.size.map(v=>+(v*k).toPrecision(3)); const md=Math.max(...size), mn=Math.min(...size);
+  const eddy=+(Math.max(mn*0.55,md*0.14)).toPrecision(3); const R=mulberry(seed*13+7);
+  const g=T.ground||{t:'none'}; const q=v=>+v.toPrecision(4);
+  const gnd={t:g.t,relief:q((g.relief||0)*k),L:q(g.L?g.L*k:Math.max(size[0],size[2])*1.4),w:q(g.w?g.w*k:g.t==='street'?7*k:Math.max(size[0],size[2])*0.3),seed:+(R()*10).toFixed(3)};
+  const em={...EMIT_DEF,...(T.emit||{}),on:!!T.emit}; em.w=q(em.w*(T.emit?k:1)); em.d=q(em.d*(T.emit?k:1)); em.patchS=q(Math.max(em.w,em.d)*0.7);
+  const eddyE=T.emit?+Math.max(Math.min(em.w,em.d)*1.6,size[1]*0.15).toPrecision(3):0;
+  return {v:3,name:T.label,template:tpl,cls,seed,size,floor:gnd.t!=='none',fit:'auto',dom:null,xpad:[0,0,0,0,0,0],lod:T.lod??'auto',style:null,
+    gnd,form:T.form?{...T.form}:null,emit:em,
+    sim:{age:T.sim.age,turb:T.sim.turb,eddy:eddyE||eddy,lift:T.sim.lift??0,strat:T.sim.strat??C.strat,calm:T.sim.calm,spread:T.sim.spread??0,wind:T.sim.wind,windDir:T.sim.windDir??70,gust:T.sim.gust??0.35,gustL:+(eddy*3).toPrecision(3),diss:T.sim.diss},
+    det:{billow:T.det.billow,amt:T.det.amt,size:+((eddyE||eddy)*0.42).toPrecision(3),edge:T.det.edge,brk:T.det.brk,brkSize:+(md*0.35).toPrecision(3)},
+    den:{d:T.den.d,fadeT:T.den.fadeT||0,fadeB:T.den.fadeB||0,drop:T.den.drop||12,ms:T.den.ms??0.5,tint:T.den.tint||'#ffffff',alb:T.den.alb??0.985,glow:T.den.glow||0,glowC:T.den.glowC||'#8fd3ff'},
     strokes:[]};
 }
 /* primitives for each starting shape, in metres, laid out from the seed */
@@ -495,14 +773,25 @@ function templatePrims(rec){
   const ell=(x,y,z,rx,ry,rz,w=1)=>P.push([x,y,z,0, rx,ry,rz,w, 0,0,0,0]);
   const cap=(a,b,ra,rb,w=1)=>P.push([a[0],a[1],a[2],1, ra,0,0,w, b[0],b[1],b[2],rb]);
   const box=(x,y,z,hx,hy,hz,rr,w=1)=>P.push([x,y,z,2, hx,hy,hz,w, rr,0,0,0]);
-  const t=rec.template;
-  if(t==='bank'){ box(0,H*0.12,0,W*0.33,H*0.12,D*0.22,Math.min(H,D)*0.1,0.85);
+  const t=(LIB[rec.template]&&LIB[rec.template].prims)||rec.template;
+  if(t==='none') return P;
+  const Ht=terrHJ(rec,0,0), wd=rec.sim.windDir*D2R, wx=Math.sin(wd), wz=-Math.cos(wd);
+  if(t==='cap'){ ell(0,Ht-H*0.06,0,W*0.38,H*0.46,D*0.38,1);                               // sits on the summit
+    for(let i=0;i<9;i++){ const a=R()*6.283, r=0.16+R()*0.14; ell(Math.cos(a)*r*W,Ht+H*(-0.12+R()*0.35),Math.sin(a)*r*D,W*(0.12+R()*0.08),H*(0.18+R()*0.12),D*(0.12+R()*0.08),0.9); } }
+  else if(t==='banner'){ let p=[0,Ht-H*0.12,0], rad=H*0.16;                                   // streams off the lee side of the peak
+    for(let i=0;i<6;i++){ const q=[p[0]+wx*W*0.13+(R()-0.5)*W*0.02,p[1]-H*0.04+(R()-0.5)*H*0.08,p[2]+wz*W*0.13+(R()-0.5)*D*0.05]; cap(p,q,rad,rad*1.18,0.9); p=q; rad*=1.18; } }
+  else if(t==='scud'){ for(let i=0;i<16;i++) ell((R()-0.5)*W*0.8,H*(0.35+R()*0.45),(R()-0.5)*D*0.8,W*(0.04+R()*0.05),H*(0.07+R()*0.08),D*(0.05+R()*0.06),0.85); }
+  else if(t==='curtain'){ box(0,H*0.93,0,W*0.4,H*0.05,D*0.3,H*0.04,0.8); const sl=rec.sim.wind*H*0.35, n=8;
+    for(let i=0;i<n;i++){ const x=(i/(n-1)-0.5)*W*0.7+(R()-0.5)*W*0.05, z=(R()-0.5)*D*0.4; cap([x,H*0.93,z],[x-wx*sl,H*(0.08+R()*0.35),z-wz*sl],W*(0.05+R()*0.03),W*(0.03+R()*0.02),0.85); } }
+  else if(t==='residual'){ for(let i=0;i<8;i++) ell((R()-0.5)*W*0.7,H*(0.15+R()*0.65),(R()-0.5)*D*0.7,W*(0.12+R()*0.12),H*(0.05+R()*0.06),D*(0.12+R()*0.12),0.8); }
+  else if(t==='swirl'){ ell(0,H*0.45,0,W*0.2,H*0.22,D*0.2,1); for(let i=0;i<7;i++){ const a=i/7*6.283+R()*0.4; ell(Math.cos(a)*W*0.22,H*(0.3+i*0.07),Math.sin(a)*D*0.22,W*0.1,H*0.12,D*0.1,0.85); } }
+  else if(t==='bank'){ box(0,H*0.12,0,W*0.33,H*0.12,D*0.22,Math.min(H,D)*0.1,0.85);
     for(let i=0;i<11;i++){ const x=(i/10-0.5)*W*0.66+(R()-0.5)*W*0.05; ell(x,H*(0.22+R()*0.16),(R()-0.5)*D*0.2,W*(0.08+R()*0.05),H*(0.24+R()*0.12),D*(0.18+R()*0.08),0.9); } }
   else if(t==='sheet'){ box(0,H*0.18,0,W*0.33,H*0.16,D*0.33,H*0.15,0.9);
     for(let i=0;i<9;i++){ const a=R()*6.283, r=Math.sqrt(R())*0.3; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*(0.08+R()*0.08),H*(0.25+R()*0.15),D*(0.08+R()*0.08),0.7); }
     for(let i=0;i<4;i++){ const a=R()*6.283, r=0.15+R()*0.25; ell(Math.cos(a)*r*W,H*0.2,Math.sin(a)*r*D,W*0.06,H*0.6,D*0.06,-0.75); } }
   else if(t==='veil'){ box(0,H*0.38,0,W*0.36,H*0.32,D*0.24,Math.min(H,D)*0.22,0.75); }
-  else if(t==='hang'){ for(let i=0;i<9;i++){ const x=(i/8-0.5)*W*0.62+(R()-0.5)*W*0.06; ell(x,H*(0.5+(R()-0.5)*0.3),(R()-0.5)*D*0.3,W*(0.09+R()*0.08),H*(0.13+R()*0.09),D*(0.16+R()*0.1),0.75); }
+  else if(t==='hang'||t==='glow'){ for(let i=0;i<9;i++){ const x=(i/8-0.5)*W*0.62+(R()-0.5)*W*0.06; ell(x,H*(0.5+(R()-0.5)*0.3),(R()-0.5)*D*0.3,W*(0.09+R()*0.08),H*(0.13+R()*0.09),D*(0.16+R()*0.1),0.75); }
     for(let i=0;i<3;i++) ell((R()-0.5)*W*0.5,H*(0.5+(R()-0.5)*0.2),(R()-0.5)*D*0.2,W*0.06,H*0.12,D*0.12,-0.6); }   // floating layer of mist for depth and separation
   else if(t==='cloud'){ ell(0,H*0.45,0,W*0.28,H*0.26,D*0.28,1);
     for(let i=0;i<13;i++){ const a=R()*6.283, r=0.15+R()*0.2; const s=0.12+R()*0.1; ell(Math.cos(a)*r*W,H*(0.38+R()*0.3),Math.sin(a)*r*D,W*s,H*s*1.6,D*s,0.95); } }
@@ -523,6 +812,10 @@ function migrateRecipe(r){
   if(!r.v||r.v<2){ const [W,H,D]=r.size, md=Math.max(...r.size); const q=v=>+v.toPrecision(5);
     r.strokes=(r.strokes||[]).map(s=>({op:s.op,s:s.s,r:q(s.r*md),dabs:s.dabs.map(d=>[q((d[0]-0.5)*W),q(d[1]*H),q((d[2]-0.5)*D),q(d[3]*W),q(d[4]*H),q(d[5]*D)])}));
     r.v=2; r.dom=null; }
+  if(r.v<3){ const fl=r.floor!==false; const k=CLASSES[r.cls||'mid'].k;
+    r.gnd=r.gnd||{t:fl?'flat':'none',relief:0,L:Math.max(r.size[0],r.size[2])*1.4,w:7*k,seed:1}; r.form=r.form||null; r.emit={...EMIT_DEF,...(r.emit||{})};
+    r.sim={gust:0.35,gustL:+((r.sim.eddy||10)*3).toPrecision(3),...r.sim}; r.den={tint:'#ffffff',alb:0.985,glow:0,glowC:'#8fd3ff',...r.den}; r.v=3; }
+  r.floor=hasGround(r);
   if(!r.fit) r.fit='auto'; if(r.lod===undefined) r.lod='auto'; if(!Array.isArray(r.xpad)||r.xpad.length!==6) r.xpad=[0,0,0,0,0,0]; if(r.dom===undefined) r.dom=null;
   return r; }
 function contentBounds(rec,extra){
@@ -533,12 +826,20 @@ function contentBounds(rec,extra){
     else inc(q,[q[4],q[5],q[6]]); }
   const mn=Math.min(...rec.size), rough=TEMPLATES[rec.template].rough??1; const g=mn*0.35*rough*0.4+mn*0.05; for(let i=0;i<3;i++){ lo[i]-=g; hi[i]+=g; }
   for(const s of [...rec.strokes,...(extra?[extra]:[])]) if(GROW_OPS[s.op]) for(const d of s.dabs) inc(d,[s.r,s.r,s.r]);
-  if(rec.floor) lo[1]=Math.max(lo[1],0);
+  const fa=formAbs(rec); if(fa) inc([0,(fa.y[0]+fa.y[1])/2,0],[fa.half[0]+fa.edge*0.3,(fa.y[1]-fa.y[0])/2,fa.half[1]+fa.edge*0.3]);
+  if(rec.emit&&rec.emit.on){ const E=rec.emit, P=emitPlan(rec), r=Math.max(E.w,E.d)*1.15, H=rec.size[1];
+    const up=Math.min(P.riseH*1.5+P.push*P.Tref*0.2,P.Vr*P.Tsim*1.05)+H*0.1, L=P.Uwind*Math.min(P.Tsim,P.life)*(1+0.35*rec.sim.gust), s=H*0.3*(1+E.spread)+rec.sim.eddy*0.4;
+    inc([E.x,P.y0,E.z],[r,0.5,r]); const ex=E.x+P.wdir[0]*L, ez=E.z+P.wdir[1]*L;
+    inc([(E.x+ex)/2,P.y0+up/2,(E.z+ez)/2],[Math.abs(ex-E.x)/2+s,up/2,Math.abs(ez-E.z)/2+s]); }
+  if(lo[0]>hi[0]){ const [W,H,D]=rec.size; inc([0,H/2,0],[W/2,H/2,D/2]); }
+  if(flatBase(rec)) lo[1]=Math.max(lo[1],0);
   return {lo,hi}; }
 /* how far the simulation will carry fog past its starting shape, per face: -x +x -y +y -z +z */
 function motionPad(rec){ const S=rec.sim, [W,H,D]=rec.size; const a=S.age;
   const turb=a*S.eddy*(0.45+0.6*S.turb)*(1-S.calm*0.3); const p=[turb,turb,rec.floor?0:turb,turb,turb,turb];
-  const wd=S.windDir*D2R, ws=S.wind*0.3*Math.hypot(W,D)*0.5*(a>0?1:0); const wx=Math.sin(wd)*ws, wz=-Math.cos(wd)*ws;
+  if(rec.emit&&rec.emit.on) return p.map((v,i)=>v*0.6+(rec.xpad?rec.xpad[i]:0));       // an emitter's plume is already in its content bounds
+  const gk=1+0.35*(S.gust??0);
+  const wd=S.windDir*D2R, ws=S.wind*0.3*Math.hypot(W,D)*0.5*(a>0?1:0)*gk; const wx=Math.sin(wd)*ws, wz=-Math.cos(wd)*ws;
   if(wx>0) p[1]+=wx; else p[0]-=wx; if(wz>0) p[5]+=wz; else p[4]-=wz;
   const lift=S.lift*0.3*H*(a>0?1:0); if(lift>0) p[3]+=lift*1.2; else if(!rec.floor) p[2]-=lift*1.2; else { const k=-lift*0.6; p[0]+=k; p[1]+=k; p[4]+=k; p[5]+=k; }
   if(rec.floor){ const sp=S.spread*(1.5*H+0.5*S.eddy)*a*1.4; p[0]+=sp; p[1]+=sp; p[4]+=sp; p[5]+=sp; }
@@ -548,7 +849,8 @@ function fitDomain(rec,extra){ const b=contentBounds(rec,extra), p=motionPad(rec
   for(let i=0;i<3;i++){ lo[i]=b.lo[i]-p[i*2]; hi[i]=b.hi[i]+p[i*2+1]; }
   const ext=[0,1,2].map(i=>hi[i]-lo[i]); const mx=Math.max(...ext);
   for(let i=0;i<3;i++){ const e=Math.max(ext[i],mx*0.06); const m=e*ROOM_MARGIN/(1-2*ROOM_MARGIN); lo[i]-=m+(e-ext[i])/2; hi[i]+=m+(e-ext[i])/2; }
-  if(rec.floor) lo[1]=0;
+  if(flatBase(rec)) lo[1]=0;
+  else if(hasGround(rec)){ const r=terrRange(rec,lo[0],hi[0],lo[2],hi[2],10); lo[1]=Math.max(lo[1],r.min-(hi[1]-lo[1])*0.02); }
   const q=v=>+v.toPrecision(5); return [lo.map(q),hi.map(q)]; }
 const domLo=rec=>rec.dom[0], domSize=rec=>[0,1,2].map(i=>rec.dom[1][i]-rec.dom[0][i]);
 const domCenter=rec=>[0,1,2].map(i=>(rec.dom[0][i]+rec.dom[1][i])/2);
@@ -558,7 +860,7 @@ function refit(rec,extra,force){ if(!rec.dom||force){ rec.dom=fitDomain(rec,extr
   let grow=false, loose=false; for(let i=0;i<3;i++){ const tol=ce[i]*0.02; if(id[0][i]<cur[0][i]-tol||id[1][i]>cur[1][i]+tol) grow=true; if(ce[i]>ie[i]*1.6+1e-6) loose=true; }
   if(!grow&&!loose) return false;
   if(grow){ const nd=[cur[0].slice(),cur[1].slice()]; for(let i=0;i<3;i++){ const extra_=ie[i]*0.15; if(id[0][i]<cur[0][i]) nd[0][i]=id[0][i]-extra_; if(id[1][i]>cur[1][i]) nd[1][i]=id[1][i]+extra_; }
-    if(rec.floor) nd[0][1]=0; rec.dom=nd; for(let i=0;i<3;i++) if(nd[1][i]-nd[0][i]>ie[i]*1.6){ rec.dom=id; break; } }
+    if(flatBase(rec)) nd[0][1]=0; rec.dom=nd; for(let i=0;i<3;i++) if(nd[1][i]-nd[0][i]>ie[i]*1.6){ rec.dom=id; break; } }
   else rec.dom=id;
   return true; }
 
@@ -623,12 +925,19 @@ const roomK=rec=>clamp(Math.max(...domSize(rec))/Math.max(...rec.size),1,1.45);
 const gridN=(rec,N)=>Math.round(N*roomK(rec));
 const recDims=(rec,N)=>dimsFor(domSize(rec),gridN(rec,N));
 function boxU(pr,rec){ u3v(pr,'uSize',domSize(rec)); u3v(pr,'uLo',domLo(rec)); u1f(pr,'uHgt',rec.size[1]); }
+/* the stand-in ground, the same function the JS side uses (terrHJ) */
+function terrU(pr,rec){ const g=rec.gnd||{t:'none'}; u1i(pr,'uGround',GIDX[g.t]||0); u4v(pr,'uGP',[g.relief||0,g.L||100,g.w||7,g.seed||0]); u4v(pr,'uWater',waterOf(rec)); }
+/* the ground forms the floor of the box (rather than the box floating above the ground) */
+function floorIn(rec){ if(!hasGround(rec)) return false; if(flatBase(rec)) return true; const lo=rec.dom[0], hi=rec.dom[1]; return lo[1]<=terrRange(rec,lo[0],hi[0],lo[2],hi[2],8).min+(hi[1]-lo[1])*0.03; }
+function hexLin(h){ const n=parseInt((h||'#ffffff').slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255].map(v=>{ v/=255; return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4); }); }
+const n1J=x=>{ const i=Math.floor(x); let f=x-i; const h=k=>{ const v=Math.sin(k*127.1)*43758.5453; return v-Math.floor(v); }; f=f*f*(3-2*f); return lerp(h(i),h(i+1),f)*2-1; };
+const emitOn=rec=>!!(rec.emit&&rec.emit.on);
 function mkCtx(N){ return {N,dims:null,ldims:null,mass:[],den:[],rc:[],light:null,sim:{step:0,steps:0,dt:0,t:0},acc:{w:0,h:0,tex:[],fb:[],cur:0}}; }
 function ensureVols(ctx,rec){ const d=recDims(rec,ctx.N); if(ctx.dims&&d.every((v,i)=>v===ctx.dims[i])) return false;
   for(const t of [...ctx.mass,...ctx.den,...ctx.rc,ctx.light]) if(t) gl.deleteTexture(t);
   ctx.dims=d; ctx.ldims=d.map(v=>Math.max(8,Math.ceil(v/2)));
   ctx.mass=[0,1].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT)); ctx.den=[0,1,2].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT));
-  ctx.rc=[0,1].map(()=>tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT)); ctx.light=tex3D(...ctx.ldims,gl.RG16F,gl.RG,gl.HALF_FLOAT);
+  ctx.rc=[0,1,2].map(()=>tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT)); ctx.light=tex3D(...ctx.ldims,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT);
   return true; }
 function ensureAcc(ctx,w,h){ const A=ctx.acc; if(A.w===w&&A.h===h) return; for(let i=0;i<2;i++){ if(A.tex[i]){ gl.deleteTexture(A.tex[i]); gl.deleteFramebuffer(A.fb[i]); }
     A.tex[i]=tex2D(w,h,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR); A.fb[i]=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[i]); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,A.tex[i],0); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); }
@@ -643,7 +952,9 @@ function genMass(ctx,rec,extra){
   gl.uniform4fv(U(pr,'uP0[0]'),p0); gl.uniform4fv(U(pr,'uP1[0]'),p1); gl.uniform4fv(U(pr,'uP2[0]'),p2); u1i(pr,'uNP',P.length);
   const md=Math.max(...rec.size), mn=Math.min(...rec.size);
   const rough=TEMPLATES[rec.template].rough??1; bind3(pr,0,'uNT',T.noise); u1f(pr,'uNoiseAmp',mn*0.35*rough); u1f(pr,'uNoiseScale',md*0.45); u1f(pr,'uSoft',Math.max(mn*0.08,voxSize(ctx,rec)*1.5));
-  const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile); u1f(pr,'uFl',rec.floor?1:0); boxU(pr,rec);
+  const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile??0); u1f(pr,'uFl',floorIn(rec)?1:0); boxU(pr,rec); terrU(pr,rec);
+  const fa=formAbs(rec); u1i(pr,'uForm',fa?fa.id:0); u4v(pr,'uF0',fa?fa.F0:[1,0,0,0]); u4v(pr,'uF1',fa?[fa.half[0],fa.half[1],fa.edge,0]:[1,1,1,0]);
+  const wd=rec.sim.windDir*D2R; u2f(pr,'uWdir',Math.sin(wd),-Math.cos(wd));
   volPass(pr,[ctx.mass[0]],ctx.dims);
   for(const s of [...rec.strokes,...(extra?[extra]:[])]) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);
 }
@@ -659,37 +970,51 @@ function dab(ctx,rec,op,d,r,s){ // d: [x,y,z, dx,dy,dz] in world metres; r: radi
 /* ---- 2. simulation ---- */
 let CURL_RMS=1;
 /* motion is budgeted against the asset's own size, so fog drifts and curls but stays inside its box */
-function simParams(ctx,rec){ const S=rec.sim; const U_=Math.max(S.turb,0.02)*S.eddy*0.6/CURL_RMS; const Uw=Math.max(S.turb,0.02)*S.eddy*0.6;
-  const T_=S.age*1.3*S.eddy/Uw;                                   // about one and a third eddy turnovers at full age
-  const wd=S.windDir*D2R, wsp=T_>0?S.wind*0.3*Math.hypot(rec.size[0],rec.size[2])*0.5/T_:0; const wind=[Math.sin(wd)*wsp,0,-Math.cos(wd)*wsp];
-  const liftV=T_>0?S.lift*0.3*rec.size[1]/T_:0;                   // full lift carries fog about a third of its own height
+function simParams(ctx,rec){ const S=rec.sim; const EP=emitOn(rec)?emitPlan(rec):null;
+  const Uw=EP?EP.Uw:Math.max(S.turb,0.02)*S.eddy*0.6, U_=Uw/CURL_RMS;
+  const T_=EP?EP.Tsim:S.age*1.3*S.eddy/Uw;                        // about one and a third eddy turnovers at full age; an emitter runs for its plume's life
+  const wd=S.windDir*D2R, wsp=EP?EP.Uwind:T_>0?S.wind*0.3*Math.hypot(rec.size[0],rec.size[2])*0.5/T_:0; const wind=[Math.sin(wd)*wsp,0,-Math.cos(wd)*wsp];
+  const liftV=EP?0:T_>0?S.lift*0.3*rec.size[1]/T_:0;              // full lift carries fog about a third of its own height
   // the ground current slumps about spread x (1.5 height + half an eddy) at full age, then stops: a fixed reach, not a run to the walls
   const Tfull=1.3*S.eddy/Uw; const spreadK=Math.min(1,(1.5*rec.size[1]+0.5*S.eddy)/(2.4*U_*Tfull));
-  const vmax=Uw*2.2+len(wind)+Math.abs(liftV); const vx=voxSize(ctx,rec);
-  let steps=S.age<=0.001?0:Math.ceil(T_/(vx/vmax)); steps=clamp(steps,S.age>0?6:0,140); const dt=steps?T_/steps:0;
-  return {U:U_,wind,steps,dt,lift:liftV,spreadK}; }
-function simReset(ctx,rec){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); boxU(pr,rec); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
-  const sp=simParams(ctx,rec); ctx.sim={step:0,steps:sp.steps,dt:sp.dt,t:0,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,checked:false}; }
-function velUniforms(pr,ctx,rec){ const S=rec.sim; u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread); u1f(pr,'uSpreadK',ctx.sim.spreadK??1);
-  u1f(pr,'uTime',ctx.sim.t/Math.max(S.eddy/Math.max(S.turb*S.eddy*0.6,1e-3),1e-3)); u1f(pr,'uDt',ctx.sim.dt); u1f(pr,'uFloor',rec.floor?1:0); u3v(pr,'uWind',ctx.sim.wind);
-  const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); }
-function simStep(ctx,rec,dtOverride){
-  if(dtOverride) ctx.sim.dt=dtOverride;
-  let pr=use('simA'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u1f(pr,'uReseed',0.7/Math.max(rec.sim.eddy/Math.max(rec.sim.turb*rec.sim.eddy*0.6,1e-3),1e-3));
+  const vmax=Uw*2.2*(EP?1+rec.emit.spread:1)+len(wind)*(1+0.7*(S.gust||0))+Math.abs(liftV)+(EP?EP.Vr+EP.push:0); const vx=voxSize(ctx,rec);
+  let steps=S.age<=0.001&&!EP?0:Math.ceil(T_/(vx/vmax)); steps=clamp(steps,S.age>0||EP?6:0,EP?180:140); const dt=steps?T_/steps:vx/vmax;   // the step the CFL allows, used at any time on the timeline
+  let emit=null; if(EP){ const th=Math.max(vx*2.5,vmax*dt*0.8); emit={...EP,th,rateK:(0.08+rec.emit.rate*1.1)*EP.Vr/th}; }
+  return {U:U_,wind,steps,dt,lift:liftV,spreadK,emit,T:T_}; }
+/* the simulation runs on one clock from the sculpted shape: it steps to a target time (the timeline's playhead), never past it */
+function simReset(ctx,rec,target){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); boxU(pr,rec); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
+  const sp=simParams(ctx,rec); const tg=Math.max(0,target??sp.T); const tm=rec.time||{};
+  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit,checked:false,holdT:tm.hold?(tm.inT??sp.T):1e30}; }
+/* move the target later without starting over */
+function simExtend(ctx,t){ const S=ctx.sim; S.target=t; S.steps=S.step+Math.max(0,Math.ceil((t-S.t)/S.dt-1e-6)); }
+function velUniforms(pr,ctx,rec){ const S=rec.sim; const held=!ctx.sim.emit&&ctx.sim.t>=ctx.sim.holdT;   // Hold: past In the fog churns in place instead of drifting off
+  u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',held?0:ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread); u1f(pr,'uSpreadK',ctx.sim.spreadK??1);
+  u1f(pr,'uTime',ctx.sim.t*(ctx.sim.U*CURL_RMS)/Math.max(S.eddy,1e-3)); /* in eddy turnovers */ u1f(pr,'uDt',ctx.sim.h); u1f(pr,'uFloor',hasGround(rec)?1:0); u1f(pr,'uFloorIn',floorIn(rec)?1:0); u3v(pr,'uWind',held?[0,0,0]:ctx.sim.wind);
+  u1f(pr,'uLiftN',S.lift||0); u1f(pr,'uSimT',ctx.sim.t); u1f(pr,'uGust',S.gust||0); u1f(pr,'uGustL',Math.max(S.gustL||S.eddy*3,1e-3));
+  const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); terrU(pr,rec);
+  const E=rec.emit, EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0);
+  if(EP){ u1i(pr,'uSrcShape',['disc','rect','line','ring'].indexOf(E.shape)); u3v(pr,'uSrcC',[E.x,E.y,E.z]); u4v(pr,'uSrcS',[E.w,E.d,E.ang*D2R,E.edge]);
+    u1f(pr,'uRise',EP.Vr); u1f(pr,'uRiseH',EP.riseH); u1f(pr,'uPush',EP.push); u1f(pr,'uPushH',EP.pushH); u1f(pr,'uSpreadE',E.spread); u1f(pr,'uSrcTh',EP.th); } }
+function emitFadeU(pr,ctx,rec){ const EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0); u1f(pr,'uLife',EP?EP.life:1e9); u1f(pr,'uTailF',EP?clamp(rec.emit.tail,0.01,1):0.01); u1f(pr,'uSrcF',EP?rec.emit.srcF:0); }
+function simStep(ctx,rec,h){
+  ctx.sim.h=h||Math.max(Math.min(ctx.sim.dt,ctx.sim.target-ctx.sim.t),ctx.sim.dt*1e-3);   // the last step lands exactly on the target
+  let pr=use('simA'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u1f(pr,'uReseed',0.7*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));
   volPass(pr,[ctx.den[1],ctx.rc[1]],ctx.dims);
-  pr=use('simB'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uH',ctx.den[1]); u1f(pr,'uDiss',rec.sim.diss*0.6*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));
-  volPass(pr,[ctx.den[2]],ctx.dims);
-  ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.dt; ctx.sim.step++; }
+  pr=use('simB'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uH',ctx.den[1]); bind3(pr,2,'uR',ctx.rc[1]); bind3(pr,3,'uNT',T.noise); u1f(pr,'uDiss',rec.sim.diss*0.6*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));
+  const EP=ctx.sim.emit; if(EP){ const E=rec.emit; const pulse=Math.max(0.05,1+E.pulse*1.1*n1J(ctx.sim.t/(EP.Tref*0.35)+rec.seed*0.37));   // the source breathes: stronger and weaker, smoothly
+    u1f(pr,'uRate',EP.rateK*pulse); u1f(pr,'uPatch',E.patch); u1f(pr,'uPatchS',Math.max(E.patchS||Math.max(E.w,E.d)*0.7,1e-3)); u1f(pr,'uLife',EP.life); }
+  volPass(pr,[ctx.den[2],ctx.rc[2]],ctx.dims);
+  ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[2],ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.h; ctx.sim.step++; }
 /* ---- 3. transfer + light cache ---- */
 function transfer(rec){ return {th:0.12,w:0.04+0.66*rec.det.edge,amt:rec.det.amt*0.42}; }
-function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(domSize(rec))); boxU(pr,rec);
+function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); terrU(pr,rec); emitFadeU(pr,ctx,rec); u1f(pr,'uSigmaL',sigmaOf(rec)); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(domSize(rec))); boxU(pr,rec);
   volPass(pr,[ctx.light],ctx.ldims); }
 /* ---- 4. view ---- */
 function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
   u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
   u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uTurb',rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
-  u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',rec.floor?1:0); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
+  u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',hasGround(rec)?1:0); terrU(pr,rec); emitFadeU(pr,ctx,rec); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
 function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps){
   ensureAcc(ctx,w,h); const A=ctx.acc, src=A.cur, dst=1-src; gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[dst]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,w,h);
@@ -698,6 +1023,8 @@ function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps){
   u1f(pr,'uFrame',frameNo); u1f(pr,'uBlend',blend); u1i(pr,'uSteps',steps); u1i(pr,'uFinal',final?1:0); u1i(pr,'uBg',LOOK.bg);
   const L=sunDir(); u3v(pr,'uL',L); const sunI=LOOK.sunI*3.2*clamp(L[1]*4+0.25,0,1); u3v(pr,'uSunC',kelvin(LOOK.sunK).map(v=>v*sunI)); u3v(pr,'uSkyC',kelvin(LOOK.skyK).map(v=>v*LOOK.sky*0.32));
   u1f(pr,'uMS',rec.den.ms); u4v(pr,'uPh',mieParams(rec.den.drop)); u1f(pr,'uFloorAlb',LOOK.bg===0?0.07:0.16); u1f(pr,'uGrid',Math.pow(10,Math.floor(Math.log10(Math.max(...rec.size)*0.12))));
+  const alb=hexLin(rec.den.tint).map(v=>v*(rec.den.alb??0.985)); u3v(pr,'uAlbC',alb); u3v(pr,'uGlowC',hexLin(rec.den.glowC).map(v=>v*(rec.den.glow||0)*1.2));
+  u1f(pr,'uFar',cam.dist*10+Math.max(...domSize(rec))*3+(rec.gnd?rec.gnd.L*4:0));
   fullscreen(); A.cur=dst; gl.bindFramebuffer(gl.FRAMEBUFFER,null); }
 function displayPass(ctx,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,w,h); const pr=use('disp'); bindTex(0,gl.TEXTURE_2D,ctx.acc.tex[ctx.acc.cur]); u1i(pr,'uA',0); u1f(pr,'uExpo',Math.pow(2,LOOK.expo)); u2f(pr,'uRes',w,h); fullscreen(); }
 /* where a brush lands: first solid fog along the ray */
@@ -742,7 +1069,7 @@ async function buildNoise(){
    ===================================================================== */
 const MAIN=mkCtx(128);
 const dirty={mass:true,sim:false,light:true};
-let frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
+let exporting=false, frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
 function resetAccum(){ frames=0; }
 function poke(){ interacting=true; interactUntil=performance.now()+180; resetAccum(); }
 let autoGrowN=0, roomFlash=0;
@@ -753,7 +1080,7 @@ function markSimU(){ REC.xpad=[0,0,0,0,0,0]; markSim(); }
 const FACE_NAMES=['left','right','bottom','top','back','front'];
 /* after each simulation: if fog piled against a wall, give it room on that side and run again */
 function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[];
-  w.forEach((v,f)=>{ if(f===2&&REC.floor) return; if(v>0.08){ const ax=f>>1; REC.xpad[f]=+Math.min(REC.xpad[f]+Math.max(sz[ax]*0.12,REC.size[ax]*0.12),REC.size[ax]*3).toPrecision(4); grown.push(FACE_NAMES[f]); } });
+  w.forEach((v,f)=>{ if(f===2&&floorIn(REC)) return; if(v>0.08){ const ax=f>>1; REC.xpad[f]=+Math.min(REC.xpad[f]+Math.max(sz[ax]*0.12,REC.size[ax]*0.12),REC.size[ax]*3).toPrecision(4); grown.push(FACE_NAMES[f]); } });
   if(grown.length&&refit(REC)){ autoGrowN++; dirty.mass=true; roomFlash=performance.now(); toast('Gave the fog more room: '+grown.join(', ')); autosave(); } }
 function markLight(){ dirty.light=true; resetAccum(); }
 function markView(){ resetAccum(); }
@@ -767,12 +1094,14 @@ function frame(now){
     const wantN=simN(REC); if(MAIN.N!==wantN){ MAIN.N=wantN; dirty.mass=true; }
     if((dirty.mass||dirty.sim)&&!brushing&&refit(REC)){ dirty.mass=true; roomFlash=now; }
     if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
-    if(dirty.sim){ simReset(MAIN,REC); dirty.sim=false; dirty.light=true; evolveStep=0; }
+    if(exporting) return;
+    if(dirty.sim){ simReset(MAIN,REC,viewTime(REC)); dirty.sim=false; dirty.light=true; evolveStep=0; }
     const S=MAIN.sim; let simmed=false;
+    { const vt=viewTime(REC); if(vt<S.t-1e-6){ simReset(MAIN,REC,vt); dirty.light=true; } else if(vt>S.target+1e-6) simExtend(MAIN,vt); }   // scrubbing back starts over; forward just keeps going
     if(!brushing&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
-    else if(UI.playing&&!brushing){ simStep(MAIN,REC,S.dt||(S.steps?S.dt:0.02*REC.sim.eddy/Math.max(S.U,1e-3))); simmed=true; evolveStep++; }
+    if(UI.playing&&!brushing&&S.step>=S.steps) playAdvance(now);
     if(S.steps>0&&S.step>=S.steps&&!S.checked&&!UI.playing&&!brushing){ S.checked=true; wallGrow(); }
-    if(simmed){ if(S.step>=S.steps||S.step%4===0||UI.playing&&evolveStep%3===0) dirty.light=true; resetAccum(); }
+    if(simmed){ if(S.step>=S.steps||S.step%4===0) dirty.light=true; resetAccum(); }
     if(dirty.light){ lightUpdate(MAIN,REC); dirty.light=false; resetAccum(); }
     const fin=UI.quality==='final'&&!interacting&&!brushing&&!simmed&&!UI.playing;
     const moving=interacting||brushing||simmed||UI.playing;
@@ -804,7 +1133,7 @@ function drawOverlay(){
   const C=[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]]; for(let i=0;i<4;i++){ const a=C[i], b=C[(i+1)%4]; line3(a,b); line3([a[0],y1,a[2]],[b[0],y1,b[2]]); line3(a,[a[0],y1,a[2]]); } octx.setLineDash([]);
   const lab=project([x0,y1,z1]); if(lab){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(166,203,221,.6)'; octx.fillText(`${fmLen(W)} × ${fmLen(H)} × ${fmLen(D)}${REC.fit==='auto'?' · auto':' · locked'}`,lab[0]+4,lab[1]-6); }
   // scale reference: a 1.8 m figure at the front corner, and a ruler along the front edge
-  if(LOOK.figure){ const base=[x0-Math.max(W*0.04,0.6),REC.floor?0:y0,z1], top=[base[0],base[1]+1.8,base[2]]; const a=project(base), b=project(top);
+  if(LOOK.figure){ const bx=x0-Math.max(W*0.04,0.6); const base=[bx,hasGround(REC)?terrHJ(REC,bx,z1):y0,z1], top=[base[0],base[1]+1.8,base[2]]; const a=project(base), b=project(top);
     if(a&&b&&a[1]-b[1]>6){ const h=a[1]-b[1], x=a[0]; octx.fillStyle='rgba(220,226,232,.55)'; octx.beginPath(); octx.arc(x,b[1]+h*0.07,h*0.07,0,Math.PI*2); octx.fill();
       octx.beginPath(); octx.moveTo(x-h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.08,b[1]+h*0.55); octx.lineTo(x+h*0.06,a[1]); octx.lineTo(x+h*0.015,a[1]); octx.lineTo(x,b[1]+h*0.6); octx.lineTo(x-h*0.015,a[1]); octx.lineTo(x-h*0.06,a[1]); octx.lineTo(x-h*0.08,b[1]+h*0.55); octx.closePath(); octx.fill();
       octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillText('1.8 m',x+h*0.14,b[1]+8); }
@@ -815,6 +1144,14 @@ function drawOverlay(){
   if(BRUSHES[UI.tool]&&hover){ const B=camBasis(CAM); const c=project(hover.p); if(c){ const rpx=UI.brushR/c[2]*(cssH/2)/B.tanY; const op=brushOp(hover.ctrl);
       octx.strokeStyle=op===1||op===5?'rgba(224,111,94,.95)':op===2?'rgba(166,203,221,.95)':'rgba(239,178,77,.95)'; octx.lineWidth=1.5; octx.setLineDash(op===1?[4,3]:[]);
       octx.beginPath(); octx.arc(c[0],c[1],rpx,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.globalAlpha=0.5; octx.beginPath(); octx.arc(c[0],c[1],rpx*0.5,0,Math.PI*2); octx.stroke(); octx.globalAlpha=1; } }
+  // emitter source, drawn on the ground
+  if(emitOn(REC)){ const E=REC.emit, a=E.ang*D2R, ca=Math.cos(a), sa=Math.sin(a); const loops=[];
+    const circ=(rx,rz)=>{ const L=[]; for(let i=0;i<=64;i++){ const t=i/64*Math.PI*2; L.push([rx*Math.cos(t),rz*Math.sin(t)]); } return L; };
+    if(E.shape==='disc') loops.push(circ(E.w,E.d)); else if(E.shape==='ring'){ loops.push(circ(E.w+E.d,E.w+E.d)); loops.push(circ(Math.max(E.w-E.d,0.01),Math.max(E.w-E.d,0.01))); }
+    else { const hw=E.w+(E.shape==='line'?E.d:0), hd=E.d; loops.push([[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd],[-hw,-hd]]); }
+    octx.strokeStyle=UI.tool==='source'||drag&&drag.mode==='source'?'rgba(239,178,77,.95)':'rgba(239,178,77,.5)'; octx.lineWidth=1.5; octx.setLineDash([5,4]);
+    for(const L of loops){ octx.beginPath(); let first=true; for(const [lx,lz] of L){ const x=E.x+lx*ca-lz*sa, z=E.z+lx*sa+lz*ca; const q=project([x,terrHJ(REC,x,z)+E.y+0.02*REC.size[1],z]); if(!q){ first=true; continue; } if(first){ octx.moveTo(q[0],q[1]); first=false; } else octx.lineTo(q[0],q[1]); } octx.stroke(); }
+    octx.setLineDash([]); }
   // wind arrow on the ground, sun glyph in the sky
   if(UI.tool==='wind'||drag&&drag.mode==='wind'||REC.sim.wind>0.02){ const wd=REC.sim.windDir*D2R; const L=Math.max(...REC.size)*0.32*(0.3+REC.sim.wind); const c=[0,(REC.floor?0:y0)+Math.min(REC.size[1]*0.04,1),0]; const e=[Math.sin(wd)*L,0,-Math.cos(wd)*L];
     const a=project(add(c,mul(e,-0.5))), b=project(add(c,mul(e,0.5))); if(a&&b){ octx.globalAlpha=UI.tool==='wind'?0.95:0.35; octx.strokeStyle='#a6cbdd'; octx.lineWidth=2; octx.beginPath(); octx.moveTo(a[0],a[1]); octx.lineTo(b[0],b[1]); octx.stroke();
@@ -835,15 +1172,25 @@ function tumble(dx,dy){ CAM.yaw-=dx*0.006; CAM.pitch=clamp(CAM.pitch+dy*0.006,-1
 function track(dx,dy){ const B=camBasis(CAM); const s=2*CAM.dist*CAM.tanY/cssH; CAM.tgt=add(CAM.tgt,add(mul(B.r,-dx*s),mul(B.u,dy*s))); poke(); }
 function dolly(k){ const m=Math.max(...(REC.dom?domSize(REC):REC.size)); CAM.dist=clamp(CAM.dist*k,m*0.04,m*12); poke(); }
 function frameAll(){ if(!REC.dom) refit(REC,null,true); const [W,H,D]=domSize(REC), c=domCenter(REC); CAM.tgt=[c[0],REC.dom[0][1]+H*0.42,c[2]]; CAM.dist=Math.hypot(W,H,D)*0.5/Math.tan(Math.atan(CAM.tanY)*0.92)*1.05; poke(); }
+/* where a ray meets the stand-in ground (null when there is none) */
+function rayGround(ro,rd){ if(!hasGround(REC)) return null; if(flatBase(REC)&&REC.gnd.t!=='street'){ if(rd[1]>=-1e-5) return null; const t=-ro[1]/rd[1]; return add(ro,mul(rd,t)); }
+  const g=REC.gnd, mxH=g.relief*1.25+1, far=CAM.dist*10+g.L*4; let tp=0, hp=ro[1]-terrHJ(REC,ro[0],ro[2]); if(hp<0) return ro.slice();
+  const stMax=g.t==='street'?g.w*0.3:g.L*0.04;
+  for(let i=0;i<300;i++){ const t=tp+clamp(hp*0.5,tp*0.002+0.02,stMax); if(t>far) return null; const p=add(ro,mul(rd,t)); if(rd[1]>=0&&p[1]>mxH) return null; const h=p[1]-terrHJ(REC,p[0],p[2]);
+    if(h<0){ let a=tp,b=t; for(let k=0;k<10;k++){ const m=(a+b)/2, q=add(ro,mul(rd,m)); if(q[1]-terrHJ(REC,q[0],q[2])<0) b=m; else a=m; } return add(ro,mul(rd,b)); }
+    tp=t; hp=h; } return null; }
+/* a point on the ground (or, floating, on the source's height) under the cursor */
+function sourcePoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const g=rayGround(ro,rd); if(g) return g; const y=REC.emit.y; if(Math.abs(rd[1])<1e-5) return null; const t=(y-ro[1])/rd[1]; return t>0?add(ro,mul(rd,t)):null; }
 function brushDepthPoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const z=drag.depth; return add(ro,mul(rd,z/Math.max(dot(rd,B.f),1e-4))); }
 function startStroke(mx,my,ev){
   const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pk=pickRay(MAIN,REC,ro,rd); let p;
-  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
+  const gh=pk.t>0?null:rayGround(ro,rd);
+  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else if(gh&&len(sub(gh,ro))<CAM.dist*3) p=add(gh,[0,UI.brushR*0.5,0]); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
   const op=brushOp(ev.ctrlKey||ev.metaKey); const r=+UI.brushR.toPrecision(4);
   drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:UI.brushStr*(op===3?1:op===4?0.9:0.45),dabs:[]},lx:mx,ly:my};
   brushing=true; if(op!==3&&op!==4) putDab(p,[0,0,0]); }
 const brushPlaneC=()=>REC.dom?[domCenter(REC)[0],REC.dom[0][1]+domSize(REC)[1]*0.35,domCenter(REC)[2]]:[0,REC.size[1]*0.4,0];
-function putDab(p,dm){ const s=drag.stroke; if(REC.floor&&p[1]<0) p=[p[0],0,p[2]];
+function putDab(p,dm){ const s=drag.stroke; if(hasGround(REC)){ const g=terrHJ(REC,p[0],p[2]); if(p[1]<g) p=[p[0],g,p[2]]; }
   const d=[...p,...dm].map(v=>+v.toPrecision(5)); s.dabs.push(d);
   // a stroke heading out of the box: grow the box ahead of it and rebuild what is already there, so nothing flattens on a wall
   if(REC.fit==='auto'&&GROW_OPS[s.op]&&outsideRoom(d,s.r)&&refit(REC,s)){ genMass(MAIN,REC,s); roomFlash=performance.now(); }
@@ -854,6 +1201,14 @@ function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.
   if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.06){ putDab(p,dm); drag.last=p; } }
   else if(L>UI.brushR*0.22){ const n=Math.min(8,Math.floor(L/(UI.brushR*0.22))); for(let i=1;i<=n;i++) putDab(add(drag.last,mul(dm,i/n)),[0,0,0]); drag.last=p; }
   hover={p,ctrl:drag.op===1}; }
+/* draw the source on the ground: disc and ring from the centre out, rectangle corner to corner, line end to end */
+function drawSource(a,b){ const E=REC.emit; const dx=b[0]-a[0], dz=b[2]-a[2], L=Math.hypot(dx,dz); const mn=Math.max(Math.max(...REC.size)*0.004,0.05); const q=v=>+Math.max(v,mn).toPrecision(4);
+  E.y=hasGround(REC)?0:+a[1].toPrecision(4);
+  if(E.shape==='disc'){ E.x=+a[0].toPrecision(5); E.z=+a[2].toPrecision(5); E.w=E.d=q(L); E.ang=0; drag.label=`disc · ${fmLen(2*L)} across`; }
+  else if(E.shape==='ring'){ E.x=+a[0].toPrecision(5); E.z=+a[2].toPrecision(5); E.w=q(L); E.d=q(Math.min(E.d,L*0.45)); E.ang=0; drag.label=`ring · ${fmLen(2*L)} across`; }
+  else if(E.shape==='rect'){ E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(Math.abs(dx)/2); E.d=q(Math.abs(dz)/2); E.ang=0; drag.label=`${fmLen(Math.abs(dx))} × ${fmLen(Math.abs(dz))}`; }
+  else { E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(L/2); E.ang=+(Math.atan2(dz,dx)/D2R).toFixed(1); drag.label=`line · ${fmLen(L)}`; }
+  E.patchS=+(Math.max(E.w,E.d)*0.7).toPrecision(3); poke(); }
 function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); REC.xpad=[0,0,0,0,0,0]; pushUndo(); } markSim(); }
 ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
@@ -862,6 +1217,7 @@ ov.addEventListener('pointerdown',ev=>{
   if(ev.altKey||UI.tool==='orbit'||ev.button!==0){ ev.preventDefault(); const m=ev.button===1?'track':ev.button===2?'dolly':((ev.buttons&4)?'dolly':'tumble'); drag={mode:m,x:mx,y:my}; return; }
   if(BRUSHES[UI.tool]!=null){ startStroke(mx,my,ev); return; }
   if(UI.tool==='wind'){ drag={mode:'wind',x0:mx,y0:my,lx:mx,ly:my}; return; }
+  if(UI.tool==='source'){ if(!emitOn(REC)){ toast('This asset has no emitter. Turn one on in the Emitter section.'); return; } const a=sourcePoint(mx,my); if(!a){ toast('Point at the ground to draw the source'); return; } drag={mode:'source',a,lx:mx,ly:my}; return; }
   if(UI.tool==='light'){ drag={mode:'light',x:mx,y:my,lx:mx,ly:my}; return; }
 });
 ov.addEventListener('pointermove',ev=>{
@@ -872,19 +1228,20 @@ ov.addEventListener('pointermove',ev=>{
   if(drag.mode==='track'){ track(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='dolly'){ dolly(Math.exp(-((mx-drag.x)+(my-drag.y))*0.005)); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='brush'){ drag.lx=mx; drag.ly=my; moveStroke(mx,my); return; }
+  if(drag.mode==='source'){ drag.lx=mx; drag.ly=my; const b=sourcePoint(mx,my); if(!b) return; drawSource(drag.a,b); return; }
   if(drag.mode==='wind'){ drag.lx=mx; drag.ly=my; const B=camBasis(CAM); const dx=mx-drag.x0, dy=my-drag.y0; const r=norm([B.r[0],0,B.r[2]]), f=norm([B.f[0],0,B.f[2]]);
     const w=add(mul(r,dx),mul(f,-dy)); REC.sim.windDir=((Math.atan2(w[0],-w[2])/D2R)+360)%360; REC.sim.wind=clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1); drag.label=`wind ${(REC.sim.wind*100).toFixed(0)}% toward ${REC.sim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
 function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
-  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSimU(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
+  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSimU(); } else if(drag.mode==='source'){ pushUndo(); markSimU(); refreshPanels(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
 ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
 ov.addEventListener('pointerleave',()=>{ if(!drag) hover=null; });
 ov.addEventListener('wheel',ev=>{ ev.preventDefault(); dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
 const typing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); };
 addEventListener('keydown',ev=>{
   if(ev.key==='Alt') ev.preventDefault(); if(typing()) return; const k=ev.key;
-  if(k==='Escape'){ if(!$('#modal').hidden) closeModal(); return; }
+  if(k==='Escape'){ if(!$('#modal').hidden) closeModal(); if(!$('#libModal').hidden) closeLibrary(); return; }
   if((ev.ctrlKey||ev.metaKey)&&k.toLowerCase()==='z'){ ev.preventDefault(); ev.shiftKey?redo():undo(); return; }
   if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
   const t=TOOLS.find(x=>x.key===k.toLowerCase()); if(t){ setTool(t.id); return; }
@@ -893,6 +1250,72 @@ addEventListener('keydown',ev=>{
   if(k==='f'||k==='F'){ frameAll(); return; } if(k==='g'||k==='G'){ setQuality(UI.quality==='final'?'draft':'final'); return; }
   if(k==='r'||k==='R'){ rerun(); return; }
 });
+/* =====================================================================
+   TIMELINE — scrub the simulation, pick the stretch you like (In → Out),
+   lay it over a frame range, retime and extend it.
+   The sim is one deterministic clock, so a slower retime re-simulates the
+   range in finer steps (crisp, no blended frames), and extending simply
+   keeps simulating from where the range already is.
+   ===================================================================== */
+/* the designed moment: where the Age slider lands (or where an emitter's plume is developed) */
+function simClockT(rec){ if(emitOn(rec)) return emitPlan(rec).Tsim; const S=rec.sim, Uw=Math.max(S.turb,0.02)*S.eddy*0.6; return S.age*1.3*S.eddy/Uw; }
+const TIME_DEF={frames:120,fps:24,start:1,inT:null,outT:null,hold:false};
+function timing(rec){ const t={...TIME_DEF,...(rec.time||{})}; const base=simClockT(rec); const N=Math.max(2,Math.round(t.frames)), fps=t.fps||24;
+  const inT=t.inT??base; const outT=Math.max(t.outT??inT+(N-1)/fps,inT+1e-3);
+  return {inT,outT,frames:N,fps,start:t.start||1,hold:!!t.hold,follow:t.inT==null,speed:(outT-inT)/((N-1)/fps)}; }
+const frameT=(tm,f)=>tm.inT+(f-tm.start)/Math.max(tm.frames-1,1)*(tm.outT-tm.inT);
+const frameOf=(tm,t)=>tm.start+(t-tm.inT)/Math.max(tm.outT-tm.inT,1e-6)*(tm.frames-1);
+function viewTime(rec){ return UI.viewT??timing(rec).inT; }
+function setViewT(t){ UI.viewT=Math.max(0,t); resetAccum(); drawTimeline(); }
+function setTime(patch,undo=true){ REC.time={...TIME_DEF,...(REC.time||{}),...patch}; if(undo) pushUndo(); autosave(); dirty.sim=true; drawTimeline(); }
+/* playing: one output frame per tick at the shot's frame rate, as fast as the sim keeps up */
+let lastAdv=0;
+function playAdvance(now){ const tm=timing(REC); if(now-lastAdv<1000/tm.fps) return; lastAdv=now;
+  const f=Math.round(frameOf(tm,viewTime(REC)))+1; if(f>tm.start+tm.frames-1){ togglePlay(); return; } setViewT(frameT(tm,f)); }
+const fmT=t=>t<60?t.toFixed(t<10?2:1)+' s':Math.floor(t/60)+' m '+(t%60).toFixed(0)+' s';
+function speedWords(k){ if(Math.abs(k-1)<0.03) return 'real time'; return k<1?(1/k).toFixed(k<0.1?0:1)+'× slower than real time':k.toFixed(1)+'× faster than real time'; }
+
+/* ---------- the bar ---------- */
+const TL={el:null,track:null,drag:null};
+function tlMax(tm){ return Math.max(tm.outT*1.12,tm.inT+(tm.outT-tm.inT)*1.4,simClockT(REC)*1.3,viewTime(REC)*1.05,0.5); }
+function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
+  <button class="vbtn" id="playBtn" aria-pressed="false" title="Play In to Out (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg></button>
+  <div class="tlinfo"><b id="tlFrame">frame 1</b><span id="tlTime"></span></div>
+  <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"></div><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
+  <label class="tlnum" title="Frames in the shot. Add frames to extend: same speed, the simulation keeps going">Frames<input type="number" id="tlN" min="2" max="100000" step="1"></label>
+  <label class="tlnum" title="Frames per second">fps<input type="number" id="tlFps" min="1" max="120" step="1"></label>
+  <label class="tlnum" title="Simulation seconds per second of the shot: 1 is real time, below 1 is slow motion">Speed<input type="number" id="tlSpd" min="0.001" max="100" step="any"></label>
+  <button class="chip" id="tlHold" title="Hold: after In the fog churns in place instead of drifting off. Useful when extending a long shot">Hold</button>
+  <button class="chip" id="tlReset" title="In and Out follow the Age setting again, at real-time speed">Reset</button>
+  <button class="vbtn" id="rerunBtn" title="Run the simulation again from the sculpted shape">Re-run</button>
+  <span class="tlspd" id="tlWords"></span>`;
+  TL.track=$('#tlTrack');
+  $('#playBtn').onclick=togglePlay; $('#rerunBtn').onclick=rerun;
+  $('#tlN').onchange=ev=>{ const tm=timing(REC); const N=Math.max(2,Math.round(+ev.target.value||tm.frames)); setTime({frames:N,inT:tm.inT,outT:tm.inT+tm.speed*(N-1)/tm.fps}); toast(N>tm.frames?`Extended to ${N} frames at the same speed`:`${N} frames at the same speed`); };
+  $('#tlFps').onchange=ev=>{ const tm=timing(REC); const f=clamp(+ev.target.value||tm.fps,1,120); setTime({fps:f,inT:tm.inT,outT:tm.inT+tm.speed*(tm.frames-1)/f}); };
+  $('#tlSpd').onchange=ev=>{ const tm=timing(REC); const k=clamp(+ev.target.value||tm.speed,0.001,100); setTime({inT:tm.inT,outT:tm.inT+k*(tm.frames-1)/tm.fps}); };
+  $('#tlHold').onclick=()=>{ const tm=timing(REC); setTime({hold:!tm.hold,inT:tm.inT}); toast(!tm.hold?'Hold: past In the fog churns in place':'Hold off: the fog drifts with the wind'); };
+  $('#tlReset').onclick=()=>{ setTime({inT:null,outT:null}); UI.viewT=null; toast('In and Out follow Age again, in real time'); };
+  const tAt=x=>{ const r=TL.track.getBoundingClientRect(); return clamp((x-r.left)/r.width,0,1)*tlMax(timing(REC)); };
+  TL.track.addEventListener('pointerdown',ev=>{ ev.preventDefault(); TL.track.setPointerCapture(ev.pointerId); const tm=timing(REC); const r=TL.track.getBoundingClientRect(); const px=t=>r.left+t/tlMax(tm)*r.width;
+    const near=(t)=>Math.abs(ev.clientX-px(t))<9; TL.drag=near(tm.inT)?'in':near(tm.outT)?'out':'ph'; if(UI.playing) togglePlay(); if(TL.drag==='ph') setViewT(tAt(ev.clientX)); });
+  TL.track.addEventListener('pointermove',ev=>{ if(!TL.drag) return; const t=tAt(ev.clientX), tm=timing(REC);
+    if(TL.drag==='ph') setViewT(t);
+    else if(TL.drag==='in'){ REC.time={...TIME_DEF,...(REC.time||{}),inT:+Math.min(t,tm.outT-0.01).toFixed(3),outT:tm.outT}; setViewT(REC.time.inT); }
+    else { REC.time={...TIME_DEF,...(REC.time||{}),inT:tm.inT,outT:+Math.max(t,tm.inT+0.01).toFixed(3)}; setViewT(REC.time.outT); } });
+  const up=()=>{ if(TL.drag&&TL.drag!=='ph'){ pushUndo(); autosave(); MAIN.sim.holdT=timing(REC).hold?timing(REC).inT:1e30; } TL.drag=null; };
+  TL.track.addEventListener('pointerup',up); TL.track.addEventListener('pointercancel',up);
+  TL.track.addEventListener('keydown',ev=>{ const tm=timing(REC); const f=Math.round(frameOf(tm,viewTime(REC))); if(ev.key==='ArrowRight'){ setViewT(frameT(tm,f+1)); ev.preventDefault(); } else if(ev.key==='ArrowLeft'){ setViewT(frameT(tm,f-1)); ev.preventDefault(); } });
+  drawTimeline(); }
+function drawTimeline(){ if(!TL.track) return; const tm=timing(REC), mx=tlMax(tm), x=t=>clamp(t/mx,0,1)*100+'%'; const vt=viewTime(REC);
+  $('#tlIn').style.left=x(tm.inT); $('#tlOut').style.left=x(tm.outT); $('#tlPh').style.left=x(vt);
+  $('#tlRng').style.left=x(tm.inT); $('#tlRng').style.width=(clamp((tm.outT-tm.inT)/mx,0,1)*100)+'%'; $('#tlPre').style.width=x(tm.inT);
+  const f=frameOf(tm,vt); const inRange=vt>=tm.inT-1e-6&&vt<=tm.outT+1e-6;
+  $('#tlFrame').textContent=inRange?`frame ${Math.round(f)} / ${tm.start+tm.frames-1}`:vt<tm.inT?'pre-roll':'after Out';
+  $('#tlTime').textContent=`sim ${fmT(vt)} · shot ${fmT((tm.frames-1)/tm.fps)}`;
+  for(const [id,v] of [['tlN',tm.frames],['tlFps',tm.fps],['tlSpd',+tm.speed.toPrecision(3)]]){ const e=$('#'+id); if(document.activeElement!==e) e.value=v; }
+  $('#tlHold').setAttribute('aria-pressed',tm.hold); $('#tlReset').disabled=tm.follow&&REC.time?.outT==null;
+  $('#tlWords').textContent=speedWords(tm.speed)+(tm.follow?' · In follows Age':''); }
 /* =====================================================================
    UI
    ===================================================================== */
@@ -905,11 +1328,12 @@ const ICONS={
   smear:'<path d="M3 9h14"/><path d="M3 13h17"/><path d="M3 17h12"/><path d="M17 6l4 3-4 3"/>',
   tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
   wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
+  source:'<ellipse cx="12" cy="18" rx="8" ry="3" stroke-dasharray="2.5 2"/><path d="M10 15c-2-3 2-5 0-8M14 15c-1-3 3-5 1-9"/>',
   light:'<circle cx="12" cy="12" r="3.6"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/>',
 };
 const TOOLS=[
   {id:'orbit',key:'v',name:'Look around',hint:'Drag to orbit, middle-drag to pan, right-drag or wheel to zoom. Alt works with any tool, like Maya.'},
-  {id:'add',key:'1',name:'Add fog',hint:'Paint fog into the air. It lands on the fog under the cursor, or in the middle of the box. Ctrl erases.'},
+  {id:'add',key:'1',name:'Add fog',hint:'Paint fog into the air. It lands on the fog under the cursor, on the ground, or in the middle of the box. Ctrl erases.'},
   {id:'erase',key:'2',name:'Erase',hint:'Carve fog away. Ctrl adds.'},
   {id:'smooth',key:'3',name:'Smooth',hint:'Soften and even out what you painted.'},
   {id:'pull',key:'4',name:'Pull',hint:'Grab fog and drag it out into tendrils, or push a bulge back in.'},
@@ -917,6 +1341,7 @@ const TOOLS=[
   {id:'tear',key:'6',name:'Tear',hint:'Rip ragged holes and torn edges.'},
   {id:'wind',key:'7',name:'Wind',hint:'Drag across the view to blow wind that way. Longer drags blow harder; it re-simulates when you let go.'},
   {id:'light',key:'8',name:'Light',hint:'Drag to move the sun around the fog. Try it behind the fog: backlit fog glows.'},
+  {id:'source',key:'9',name:'Source',hint:'Draw where the emitter makes smoke: disc and ring from the centre out, rectangle corner to corner, line end to end.'},
 ];
 function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===7){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
@@ -925,9 +1350,9 @@ function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTM
 function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.005,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
 function setQuality(q){ UI.quality=q; $('#qDraft').setAttribute('aria-pressed',q==='draft'); $('#qFinal').setAttribute('aria-pressed',q==='final'); resetAccum(); if(q==='final') toast('Final: full resolution, every detail octave, detailed self-shadowing'); }
 $('#qDraft').onclick=()=>setQuality('draft'); $('#qFinal').onclick=()=>setQuality('final');
-function togglePlay(){ UI.playing=!UI.playing; $('#playBtn').setAttribute('aria-pressed',UI.playing); $('#playIco').innerHTML=UI.playing?'<path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z"/>':'<path d="M2.5 1.5v9l7.5-4.5z"/>'; resetAccum(); }
+function togglePlay(){ const tm=timing(REC); if(!UI.playing&&viewTime(REC)>=tm.outT-1e-6) UI.viewT=tm.inT; UI.playing=!UI.playing; lastAdv=0; $('#playBtn').setAttribute('aria-pressed',UI.playing); $('#playIco').innerHTML=UI.playing?'<path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z"/>':'<path d="M2.5 1.5v9l7.5-4.5z"/>'; resetAccum(); drawTimeline(); }
 function rerun(){ markSim(); toast('Simulating again from the sculpted shape'); }
-$('#playBtn').onclick=togglePlay; $('#rerunBtn').onclick=rerun;
+
 $('#assetName').oninput=ev=>{ REC.name=ev.target.value; autosave(); };
 $('#assetName').onchange=()=>pushUndo();
 
@@ -941,6 +1366,9 @@ function slider(parent,o){
   inp.addEventListener('input',()=>{ let v=fromS(inp.value/1000); if(o.step) v=Math.round(v/o.step)*o.step; o.set(v); inp.style.setProperty('--p',(inp.value/10)+'%'); out.textContent=o.fmt?o.fmt(v):v.toFixed(2); });
   inp.addEventListener('change',()=>{ o.commit&&o.commit(); });
   refresh(); parent.appendChild(row); return refresh; }
+function colorRow(parent,label,get,set){ const row=document.createElement('div'); row.className='row wide'; row.innerHTML=`<label>${label}</label><div class="colr"><input type="color"><span class="note"></span></div>`;
+  const inp=row.querySelector('input'), sp=row.querySelector('span'); const refresh=()=>{ inp.value=get(); sp.textContent=get(); };
+  inp.addEventListener('input',()=>{ set(inp.value); sp.textContent=inp.value; }); inp.addEventListener('change',()=>pushUndo()); refresh(); parent.appendChild(row); return refresh; }
 function chips(parent,label,opts,get,set){ const row=document.createElement('div'); row.className=label?'row wide':''; if(label) row.innerHTML=`<label>${label}</label>`; const c=document.createElement('div'); c.className='chips'; row.appendChild(c);
   const draw=()=>{ c.innerHTML=''; for(const [v,t,title] of opts){ const b=document.createElement('button'); b.className='chip'; if(title) b.title=title; b.setAttribute('aria-pressed',get()===v); b.textContent=t; b.onclick=()=>{ set(v); draw(); }; c.appendChild(b); } };
   draw(); parent.appendChild(row); return draw; }
@@ -959,13 +1387,15 @@ const DSTYLES=[
   {id:'curly',label:'Curly',tip:'Tight swirls, like slow smoke',det:{billow:0.5,amt:0.85,edge:0.5,brk:0.1},sim:{turb:0.75}}];
 function applyStyle(id){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; Object.assign(REC.det,st.det); if(st.sim){ Object.assign(REC.sim,st.sim); markSimU(); } else markLight(); REC.style=id; pushUndo(); autosave(); refreshPanels(); toast(st.label+': '+st.tip.toLowerCase()); }
 let lodRefresh=()=>{}, styleChips=()=>{};
-const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); if(REC.style){ REC.style=null; styleChips(); } what(); poke(); autosave(); lodRefresh(); },fmt,log,tip,commit:pushUndo});
+const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); if(REC.style){ REC.style=null; styleChips(); } what(); poke(); autosave(); lodRefresh(); drawTimeline(); },fmt,log,tip,commit:pushUndo});
 function buildPanels(){
   refreshers=[];
   // start from
-  const sb=$('#startBody'); sb.innerHTML=''; const tiles=document.createElement('div'); tiles.className='tiles'; sb.appendChild(tiles);
-  for(const [k,t] of Object.entries(TEMPLATES)){ const b=document.createElement('button'); b.className='tile'; b.setAttribute('aria-pressed',REC.template===k); b.innerHTML=`<svg viewBox="0 0 30 24">${t.icon}</svg>${t.label}`; b.title='Start a new '+t.label.toLowerCase(); b.onclick=()=>startFrom(k); tiles.appendChild(b); }
-  const vb=document.createElement('div'); vb.className='btns'; vb.innerHTML='<button class="btn prim" id="varBtn">Variations</button><button class="btn" id="seedBtn">New seed</button>'; sb.appendChild(vb);
+  const sb=$('#startBody'); sb.innerHTML=''; const T0=LIB[REC.template]||LIB.bank;
+  const cur=document.createElement('div'); cur.className='cur'; cur.innerHTML=`<svg viewBox="0 0 30 24">${T0.icon}</svg><div><b></b><span></span><em></em></div>`;
+  cur.querySelector('b').textContent=T0.label+' · '+(CATS.find(c=>c[0]===T0.cat)||['','Shapes'])[1]; cur.querySelector('span').textContent=T0.desc; cur.querySelector('em').textContent='Use for: '+T0.use; sb.appendChild(cur);
+  const vb=document.createElement('div'); vb.className='btns'; vb.innerHTML='<button class="btn prim" id="libBtn">Library…</button><button class="btn" id="varBtn">Variations</button><button class="btn" id="seedBtn">New seed</button>'; sb.appendChild(vb);
+  vb.querySelector('#libBtn').onclick=openLibrary;
   vb.querySelector('#varBtn').onclick=makeVariations; vb.querySelector('#seedBtn').onclick=()=>{ REC.seed=Math.floor(Math.random()*9999); markMass(); pushUndo(); toast('New seed: same settings, a different shape'); };
   // size & scale
   const zb=$('#sizeBody'); zb.innerHTML='';
@@ -973,13 +1403,22 @@ function buildPanels(){
   const dims=document.createElement('div'); dims.className='dims'; dims.innerHTML=['Width','Height','Depth'].map((n,i)=>`<label>${n}<input type="number" id="dim${i}" min="0.1" step="any"></label>`).join(''); zb.appendChild(dims);
   const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
   dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } const k=[1,1,1]; k[i]=clamp(v,0.1,5000)/REC.size[i]; resizeAsset(k); }; }); refreshers.push(dimRefresh);
-  refreshers.push(chips(zb,'Sits on',[[true,'Ground','Fog rests on a floor and spreads along it'],[false,'Nothing','Floating: clouds, puffs']],()=>REC.floor,v=>{ REC.floor=v; REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); }));
-  refreshers.push(chips(zb,'Room',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
+  subH(zb,'Ground');
+  refreshers.push(chips(zb,'',GROUNDS.map(g=>[g[0],g[1],g[2]]),()=>REC.gnd.t,v=>setGround(v)));
+  if(['slope','peak','valley','bowl','street'].includes(REC.gnd.t)) refreshers.push(slider(zb,S_(REC.gnd.t==='street'?'Building height':'Relief',0.5,3000,()=>REC.gnd.relief,v=>REC.gnd.relief=+v.toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true,'How tall the stand-in ground is')));
+  if(['slope','peak','valley','bowl'].includes(REC.gnd.t)) refreshers.push(slider(zb,S_('Ground size',2,20000,()=>REC.gnd.L,v=>REC.gnd.L=+v.toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true,'How wide the hills are')));
+  if(REC.gnd.t==='street') refreshers.push(slider(zb,S_('Street width',1,200,()=>REC.gnd.w*2,v=>REC.gnd.w=+(v/2).toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true)));
+  if(REC.gnd.t==='pool') refreshers.push(slider(zb,S_('Pool size',0.5,2000,()=>REC.gnd.w*2,v=>REC.gnd.w=+(v/2).toPrecision(3),fmLen,()=>markView(),true)));
+  note(zb,'A stand-in to design against: fog rests on it, flows around and down it, and it casts shadows. In a shot, your real set takes its place.');
+  subH(zb,'Room');
+  refreshers.push(chips(zb,'',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
   note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch. The dashed box is only the simulation\'s room: on Auto it makes space wherever you pull or the fog drifts.');
+  buildFormation(); buildEmitter();
   // simulate
   const mb=$('#simBody'); mb.innerHTML=''; const s=REC.sim;
   const md=()=>Math.max(...REC.size);
-  refreshers.push(slider(mb,S_('Age',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.02?'as sculpted':v<0.35?'young':v<0.7?'settled':'old & torn',markSimU,false,'How long the fog has been drifting: young is dense and soft, old is torn into wisps')));
+  if(emitOn(REC)) refreshers.push(slider(mb,S_('Emitting for',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.3?'just started':v<0.7?'building':'full plume',markSimU,false,'How long the source has been going: a young plume has not reached its full length')));
+  else refreshers.push(slider(mb,S_('Age',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.02?'as sculpted':v<0.35?'young':v<0.7?'settled':'old & torn',markSimU,false,'How long the fog has been drifting: young is dense and soft, old is torn into wisps')));
   refreshers.push(slider(mb,S_('Turbulence',0,1,()=>REC.sim.turb,v=>REC.sim.turb=v,pct,markSimU,false,'How hard it swirls')));
   refreshers.push(slider(mb,S_('Eddy size',0.1,1500,()=>REC.sim.eddy,v=>REC.sim.eddy=v,fmLen,markSimU,true,'Size of the biggest swirls')));
   refreshers.push(slider(mb,S_('Sink ↔ rise',-1,1,()=>REC.sim.lift,v=>REC.sim.lift=v,v=>v<-0.05?'sinks':v>0.05?'rises':'neutral',markSimU,false,'Cold fog sinks and spreads; steam and warm mist rise')));
@@ -988,6 +1427,8 @@ function buildPanels(){
   if(REC.floor) refreshers.push(slider(mb,S_('Spread on ground',0,1,()=>REC.sim.spread,v=>REC.sim.spread=v,pct,markSimU,false,'Fog piled on the ground slumps outward')));
   refreshers.push(slider(mb,S_('Wind',0,1,()=>REC.sim.wind,v=>REC.sim.wind=v,pct,markSimU,false,'Or use the Wind tool (7) and drag in the view')));
   refreshers.push(slider(mb,S_('Wind toward',0,360,()=>REC.sim.windDir,v=>REC.sim.windDir=v,v=>v.toFixed(0)+'°',markSimU)));
+  refreshers.push(slider(mb,S_('Gusts',0,1,()=>REC.sim.gust??0,v=>REC.sim.gust=v,v=>v<0.05?'steady':v<0.35?'light':v<0.7?'gusty':'squally',markSimU,false,'Real wind is never steady: gusts and lulls roll through with it and it veers a little. It also slows near the ground.')));
+  refreshers.push(slider(mb,S_('Gust size',0.2,6000,()=>REC.sim.gustL||REC.sim.eddy*3,v=>REC.sim.gustL=+v.toPrecision(3),fmLen,markSimU,true,'How far apart gusts are as they sweep through')));
   refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSimU,false,'Fog evaporates as it ages')));
   // detail
   const db=$('#detBody'); db.innerHTML='';
@@ -1016,6 +1457,11 @@ function buildPanels(){
   refreshers.push(slider(nb,S_('Fade bottom',0,1,()=>REC.den.fadeB,v=>REC.den.fadeB=v,pct,markLight)));
   refreshers.push(slider(nb,S_('Droplet size',3,40,()=>REC.den.drop,v=>REC.den.drop=v,v=>v.toFixed(0)+' µm',markView,true,'Bigger droplets scatter more light forward: backlit fog glows harder')));
   refreshers.push(slider(nb,S_('Inner glow',0,0.85,()=>REC.den.ms,v=>REC.den.ms=v,pct,markView,false,'Light bouncing around inside thick fog')));
+  subH(nb,'Colour');
+  refreshers.push(colorRow(nb,'Tint',()=>REC.den.tint||'#ffffff',v=>{ REC.den.tint=v; markView(); autosave(); }));
+  refreshers.push(slider(nb,S_('Brightness',0.2,1,()=>REC.den.alb??0.985,v=>REC.den.alb=v,pct,markView,false,'How much light it scatters rather than absorbs: water fog is near 100%, smoke and dust are darker')));
+  refreshers.push(slider(nb,S_('Self glow',0,2,()=>REC.den.glow||0,v=>REC.den.glow=v,v=>v<0.01?'off':v.toFixed(2),markView,false,'Gives off its own light, for stylized and magical volumes')));
+  refreshers.push(colorRow(nb,'Glow colour',()=>REC.den.glowC||'#8fd3ff',v=>{ REC.den.glowC=v; markView(); autosave(); }));
   // light & view
   const lb=$('#lightBody'); lb.innerHTML='';
   refreshers.push(chips(lb,'',[['backlit','Backlit'],['side','Side'],['front','Front'],['overcast','Overcast'],['dusk','Dusk'],['night','Night']],()=>LOOK.preset,v=>applyLight(v)));
@@ -1028,8 +1474,62 @@ function buildPanels(){
   refreshers.push(slider(lb,L_('Exposure',-5,5,()=>LOOK.expo,v=>LOOK.expo=v,v=>(v>=0?'+':'')+v.toFixed(1)+' EV',markView)));
   refreshers.push(chips(lb,'Background',[[0,'Black'],[1,'Grey'],[2,'Sky']],()=>LOOK.bg,v=>{ LOOK.bg=v; markView(); saveLook(); }));
   refreshers.push(chips(lb,'Scale guide',[[true,'On'],[false,'Off']],()=>LOOK.figure,v=>{ LOOK.figure=v; saveLook(); }));
-  buildBrushRow(); buildShelf();
+  buildBrushRow(); buildShelf(); drawTimeline();
 }
+/* formation: the rule this fog forms by, relative to the ground */
+function buildFormation(){ const sec=$('#formSec'), b=$('#formBody'); b.innerHTML=''; const f=REC.form; sec.hidden=!f; if(!f) return;
+  const FM=v=>{ REC.dom=null; markMass(); };
+  const names={layer:'Lies on the ground and collects in low spots',fill:'Fills the low ground up to a level',upslope:'Forms where the wind pushes air up the slope',sheets:'Hangs in flat, stacked sheets',deck:'A wide floating layer',lid:'A lid of haze trapped at a height',even:'Fills the space, thinning with height'};
+  note(b,'<b>'+names[f.type]+'.</b> Paint and sculpt on top of it with the brushes.');
+  const fa=formAbs(REC);
+  if(['layer','upslope','sheets','lid','even'].includes(f.type)) refreshers.push(slider(b,S_(f.type==='layer'||f.type==='upslope'?'Thickness':'Height',0.2,3000,()=>REC.size[1],v=>REC.size[1]=+v.toPrecision(3),fmLen,FM,true)));
+  if(f.type==='layer') refreshers.push(slider(b,S_('Pool in hollows',0,1,()=>f.pool??0.5,v=>f.pool=v,pct,FM,false,'Thicker in dips and low spots, thinner on rises')));
+  if(f.type==='fill') refreshers.push(slider(b,S_('Fill level',0,1,()=>f.level??0.45,v=>f.level=v,v=>fmLen(formAbs(REC).F0[0]),FM,false,'How high the fog fills the low ground')));
+  if(f.type==='upslope') refreshers.push(slider(b,S_('Forms above',0,1,()=>f.cond??0.3,v=>f.cond=v,v=>fmLen(formAbs(REC).F0[1]),FM,false,'The height where rising air condenses into fog')));
+  if(f.type==='sheets') refreshers.push(slider(b,S_('Sheets',1,6,()=>f.n??4,v=>f.n=Math.round(v),v=>Math.round(v)+'',FM,false)));
+  if(f.type==='deck'){ refreshers.push(slider(b,S_('Base',0,0.9,()=>f.base??0.25,v=>f.base=Math.min(v,(f.top??0.75)-0.05),pct,FM))); refreshers.push(slider(b,S_('Top',0.1,1,()=>f.top??0.75,v=>f.top=Math.max(v,(f.base??0.25)+0.05),pct,FM))); }
+  if(f.type==='even') refreshers.push(slider(b,S_('Thins with height',0.1,2,()=>f.falloff??0.6,v=>f.falloff=v,v=>v>1.4?'barely':v>0.6?'gently':'quickly',FM)));
+  if(f.type==='upslope'||f.type==='layer') note(b,f.type==='upslope'?'It forms on slopes facing <b>Wind toward</b>.':'Width and depth (Size) set the area it covers.'); }
+/* emitter: a source that keeps making smoke or steam */
+function buildEmitter(){ const b=$('#emitBody'); b.innerHTML=''; const E=REC.emit;
+  refreshers.push(chips(b,'',[[false,'Off','No source'],[true,'On','A source keeps making smoke or steam']],()=>!!E.on,v=>{ E.on=v; if(v&&(!E.w||E.w>Math.max(...REC.size))){ E.w=E.d=+(Math.max(...REC.size)*0.12).toPrecision(3); E.x=E.z=0; } REC.xpad=[0,0,0,0,0,0]; REC.dom=null; markMass(); pushUndo(); buildPanels(); if(v) setTool('source'); }));
+  if(!E.on){ note(b,'Turn on to make a plume: sulfur pools, vents, smoke columns, steam off water.'); return; }
+  const ES=(label,min,max,key,fmt,log,tip)=>S_(label,min,max,()=>E[key],v=>E[key]=v,fmt,markSimU,log,tip);
+  subH(b,'Source');
+  refreshers.push(chips(b,'',[['disc','Disc'],['rect','Rectangle'],['line','Line'],['ring','Ring']],()=>E.shape,v=>{ E.shape=v; markSimU(); pushUndo(); }));
+  note(b,'Draw it on the ground with the <b>Source</b> tool (9), or set it here.');
+  refreshers.push(slider(b,ES(E.shape==='line'?'Length':E.shape==='ring'?'Radius':'Width',0.05,3000,'w',v=>fmLen(E.shape==='ring'?v:2*v),true)));
+  refreshers.push(slider(b,ES(E.shape==='ring'||E.shape==='line'?'Thickness':'Depth',0.05,3000,'d',v=>fmLen(2*v),true)));
+  refreshers.push(slider(b,ES('Turn',-180,180,'ang',v=>v.toFixed(0)+'°')));
+  refreshers.push(slider(b,ES('Soft edge',0,1,'edge',pct,false,'Fades the source out toward its edge')));
+  refreshers.push(slider(b,ES('Patchy',0,1,'patch',pct,false,'Breaks the source into drifting patches that come and go')));
+  refreshers.push(slider(b,ES('Pulse',0,1,'pulse',pct,false,'The source breathes: stronger and weaker over time, smoothly')));
+  subH(b,'Emission');
+  refreshers.push(slider(b,ES('Rate',0,1,'rate',pct,false,'How much smoke comes out')));
+  refreshers.push(slider(b,ES('Push',0,1,'push',pct,false,'Speed it leaves the source: a jet or a gentle seep')));
+  refreshers.push(slider(b,ES('Heat',0,1,'heat',v=>v<0.25?'cool':v<0.6?'warm':'hot',false,'Hot smoke rises high before it levels off; cool fumes hang low')));
+  refreshers.push(slider(b,ES('Spread',0,1,'spread',pct,false,'How fast the plume widens as it climbs')));
+  subH(b,'Plume');
+  refreshers.push(slider(b,ES('Lifetime',0,1,'life',v=>v<0.3?'short':v<0.7?'medium':'long',false,'How long smoke lives: sets the plume\'s length')));
+  refreshers.push(slider(b,ES('Fade tail',0.01,1,'tail',pct,false,'How much of its life the smoke spends fading out at the end')));
+  refreshers.push(slider(b,ES('Fade source',0,0.6,'srcF',pct,false,'Smoke appears gradually above the source: steam is invisible right at a vent'))); }
+function setGround(t){ const g=REC.gnd; g.t=t; REC.floor=t!=='none';
+  if(['slope','peak','valley','bowl','street'].includes(t)&&!(g.relief>0)) g.relief=+(Math.max(...REC.size)*(t==='street'?0.3:0.6)).toPrecision(3);
+  if(t==='pool'&&!(g.w>0)) g.w=+(Math.max(...REC.size)*0.3).toPrecision(3);
+  REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); buildPanels(); frameAll(); }
+/* the library: every kind of volume with what it is and when to use it */
+let libCat='all';
+function openLibrary(){ const tabs=$('#libTabs'); tabs.innerHTML=''; for(const [k,l] of [['all','All'],...CATS]){ const b=document.createElement('button'); b.className='chip'; b.textContent=l; b.setAttribute('aria-pressed',libCat===k); b.onclick=()=>{ libCat=k; openLibrary(); }; tabs.appendChild(b); }
+  const body=$('#libBody'); body.innerHTML='';
+  for(const [ck,cl] of CATS){ if(libCat!=='all'&&libCat!==ck) continue; const items=Object.entries(LIB).filter(([,t])=>t.cat===ck); if(!items.length) continue;
+    const h=document.createElement('div'); h.className='libcat'; h.textContent=cl; body.appendChild(h); const g=document.createElement('div'); g.className='libgrid'; body.appendChild(g);
+    for(const [k,t] of items){ const c=document.createElement('button'); c.className='card'; c.setAttribute('aria-current',REC.template===k);
+      c.innerHTML=`<svg viewBox="0 0 30 24">${t.icon}</svg><div><b></b><span></span><em><i>Use for</i> · </em><em><i>Needs</i> · </em></div>`;
+      c.querySelector('b').textContent=t.label; c.querySelector('span').textContent=t.desc; const ems=c.querySelectorAll('em'); ems[0].append(t.use); ems[1].append(t.needs);
+      c.onclick=()=>{ closeLibrary(); startFrom(k); }; g.appendChild(c); } }
+  $('#libModal').hidden=false; $('#libClose').focus(); }
+function closeLibrary(){ $('#libModal').hidden=true; }
+$('#libClose').onclick=closeLibrary; $('#libModal').addEventListener('click',ev=>{ if(ev.target.id==='libModal') closeLibrary(); });
 let brushRow=null;
 function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null; $('#brushSec').hidden=!on; if(!on) return;
   brushRow=lb;
@@ -1043,16 +1543,17 @@ function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are look
   LOOK.preset=v; markLight(); refreshPanels(); saveLook(); }
 /* scale the asset per axis: the sculpt goes with it, and the room refits */
 function scaleStrokes(rec,k){ const kr=Math.cbrt(k[0]*k[1]*k[2]); const q=v=>+v.toPrecision(5); rec.strokes=rec.strokes.map(s=>({...s,r:q(s.r*kr),dabs:s.dabs.map(d=>d.map((v,i)=>q(v*k[i%3])))})); }
-function resizeAsset(k){ REC.size=REC.size.map((v,i)=>+(v*k[i]).toPrecision(4)); scaleStrokes(REC,k); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }
-function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls; REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); scaleStrokes(REC,[k,k,k]); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
+function resizeAsset(k){ REC.size=REC.size.map((v,i)=>+(v*k[i]).toPrecision(4)); scaleStrokes(REC,k); if(REC.emit){ REC.emit.x*=k[0]; REC.emit.z*=k[2]; } REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }
+function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls;
+  { const g=REC.gnd, E=REC.emit, q=v=>+(v*k).toPrecision(4); g.relief=q(g.relief); g.L=q(g.L); g.w=q(g.w); for(const key of ['w','d','x','z','y','patchS']) E[key]=q(E[key]); REC.sim.gustL=q(REC.sim.gustL||REC.sim.eddy*3); } REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); scaleStrokes(REC,[k,k,k]); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
   UI.brushR*=k; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); buildHint(); }
-function startFrom(k){ const keepName=REC.name===TEMPLATES[REC.template].label; const r=makeRecipe(k,REC.cls); if(!keepName) r.name=REC.name; REC=r; $('#assetName').value=REC.name;
+function startFrom(k){ UI.viewT=null; if(UI.playing) togglePlay(); const keepName=REC.name===TEMPLATES[REC.template].label; const r=makeRecipe(k,REC.cls); if(!keepName) r.name=REC.name; REC=r; $('#assetName').value=REC.name;
   UI.brushR=Math.max(...REC.size)*0.12; markMass(); pushUndo(); autosave(); buildPanels(); frameAll(); hideVariations(); toastUndo('Started a new '+TEMPLATES[k].label.toLowerCase()); }
 
 /* ---------------- undo ---------------- */
 const undoS=[], redoS=[];
 function pushUndo(){ const s=JSON.stringify(REC); if(undoS[undoS.length-1]===s) return; undoS.push(s); if(undoS.length>60) undoS.shift(); redoS.length=0; autosave(); }
-function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&old.strokes.length===REC.strokes.length&&MAIN.N===simN(REC);
+function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&JSON.stringify([old.gnd,old.form])===JSON.stringify([REC.gnd,REC.form])&&old.strokes.length===REC.strokes.length&&MAIN.N===simN(REC);
   if(shapeSame) markSim(); else markMass(); buildPanels(); autosave(); }
 function undo(){ if(undoS.length<2){ toast('Nothing to undo'); return; } redoS.push(undoS.pop()); restore(undoS[undoS.length-1]); toast('Undone'); }
 function redo(){ if(!redoS.length){ toast('Nothing to redo'); return; } const s=redoS.pop(); undoS.push(s); restore(s); toast('Redone'); }
@@ -1065,7 +1566,7 @@ function jitterRecipe(base,i){ const r=JSON.parse(JSON.stringify(base)); const R
   r.seed=Math.floor(R()*9999); r.sim.turb=j(r.sim.turb,0.22,0.05,1); r.sim.eddy=+(r.sim.eddy*Math.exp((R()*2-1)*0.45)).toPrecision(3); r.sim.age=j(r.sim.age,0.22,0.1,1); r.sim.lift=j(r.sim.lift,0.25,-1,1);
   r.det.billow=j(r.det.billow,0.3,0,1); r.det.brk=j(r.det.brk,0.2,0,0.9); r.det.amt=j(r.det.amt,0.15,0.2,1); r.sim.windDir=(r.sim.windDir+(R()*2-1)*60+360)%360; r.xpad=[0,0,0,0,0,0]; if(r.fit==='auto') r.dom=null; return r; }
 async function renderThumb(rec,canvas,w,h){
-  genMass(THUMB,rec); simReset(THUMB,rec); while(THUMB.sim.step<THUMB.sim.steps){ simStep(THUMB,rec); if(THUMB.sim.step%20===0) await yieldUI(); }
+  genMass(THUMB,rec); simReset(THUMB,rec,timing(rec).inT); while(THUMB.sim.step<THUMB.sim.steps){ simStep(THUMB,rec); if(THUMB.sim.step%20===0) await yieldUI(); }
   lightUpdate(THUMB,rec); const cam={...CAM,tgt:CAM.tgt.slice()};
   // keep the same framing relative to the asset's size
   const k=Math.hypot(...rec.size)/Math.hypot(...REC.size); cam.dist*=k; cam.tgt=mul(cam.tgt,k);
@@ -1092,7 +1593,7 @@ function buildShelf(){ const b=$('#shelfBody'); b.innerHTML=''; const items=shel
   if(!items.length){ note(b,'Saved assets show up here, kept in this browser. A recipe file holds the whole asset, strokes and all, for sharing.'); return; }
   const g=document.createElement('div'); g.className='shelf'; b.appendChild(g);
   items.forEach((it,i)=>{ const e=document.createElement('button'); e.className='it'; e.title='Open '+it.rec.name; e.innerHTML=`<img alt=""><span></span><i aria-label="Remove" title="Remove from shelf">×</i>`; e.querySelector('img').src=it.thumb||''; e.querySelector('span').textContent=it.rec.name;
-    e.onclick=ev=>{ if(ev.target.tagName==='I'){ const s=shelf(); s.splice(i,1); store.set('brume.designer.shelf',s); buildShelf(); return; } REC=migrateRecipe(JSON.parse(JSON.stringify(it.rec))); $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); };
+    e.onclick=ev=>{ if(ev.target.tagName==='I'){ const s=shelf(); s.splice(i,1); store.set('brume.designer.shelf',s); buildShelf(); return; } UI.viewT=null; REC=migrateRecipe(JSON.parse(JSON.stringify(it.rec))); $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); };
     g.appendChild(e); }); }
 function saveToShelf(){ capture=c=>{ const t=document.createElement('canvas'); t.width=320; t.height=180; const x=t.getContext('2d'); const a=c.width/c.height, b=16/9; let sw=c.width, sh=c.height, sx=0, sy=0; if(a>b){ sw=c.height*b; sx=(c.width-sw)/2; } else { sh=c.width/b; sy=(c.height-sh)/2; } x.drawImage(c,sx,sy,sw,sh,0,0,320,180);
     const items=shelf().filter(it=>it.rec.name!==REC.name); items.unshift({rec:JSON.parse(JSON.stringify(REC)),thumb:t.toDataURL('image/jpeg',0.8)}); if(!store.set('brume.designer.shelf',items.slice(0,24))) toast('This browser would not keep it. Save a recipe file instead.'); else toast('Saved '+REC.name+' to the shelf'); buildShelf(); }; }
@@ -1102,7 +1603,7 @@ async function offerFile(name,data,mime){
 const slug=s=>(s||'fog').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||'fog';
 function saveRecipeFile(){ offerFile(slug(REC.name)+'.brume.json',JSON.stringify({brume:'designer-recipe',look:LOOK,...REC},null,1),'application/json'); }
 function loadRecipeText(txt){ try{ const j=JSON.parse(txt); if(!j.size||!j.sim||!j.template) throw new Error('not a Brume recipe'); const r=makeRecipe(j.template,j.cls||'mid',j.seed||1);
-    REC=migrateRecipe({...r,...j,v:j.v||1,sim:{...r.sim,...j.sim},det:{...r.det,...j.det},den:{...r.den,...j.den},strokes:j.strokes||[]}); delete REC.brume; delete REC.look; $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); }
+    UI.viewT=null; REC=migrateRecipe({...r,...j,v:j.v||1,sim:{...r.sim,...j.sim},det:{...r.det,...j.det},den:{...r.den,...j.den},strokes:j.strokes||[]}); delete REC.brume; delete REC.look; $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); }
   catch(e){ toast('That file is not a Brume recipe ('+e.message+')'); } }
 $('#fileIn').addEventListener('change',ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(f) f.text().then(loadRecipeText); });
 ['dragenter','dragover'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=false; }));
@@ -1113,14 +1614,18 @@ $('#view').addEventListener('drop',ev=>{ const f=[...ev.dataTransfer.files].find
 let exportN=160;
 function f32to16(v){ const f=new Float32Array(1), i=new Uint32Array(f.buffer); f[0]=v; const x=i[0]; const s=(x>>>16)&0x8000; let e=((x>>>23)&0xff)-112, m=x&0x7fffff;
   if(e<=0){ if(e<-10) return s; m=(m|0x800000)>>>(1-e); return s|(m+0x1000>>>13); } if(e>=31) return s|0x7c00; return s|(e<<10)|(m+0x1000>>>13); }
-function houdiniPy(name,meta){ return `# Brume Designer -> Houdini volume
+function houdiniPy(name,meta){ const seq=!!meta.frames; return `# Brume Designer -> Houdini volume${seq?' sequence':''}
 # Python SOP. Unzip ${slug(name)}_brume.zip, then point FOLDER at it. Append a Convert VDB SOP for a VDB.
 import hou, json, os
 import numpy as np
 FOLDER = hou.expandString("$HIP/brume/${slug(name)}")
 meta = json.load(open(os.path.join(FOLDER, "meta.json")))
 nx, ny, nz = meta["resolution"]
-data = np.fromfile(os.path.join(FOLDER, "density.f16"), dtype="<f2").astype(np.float32)
+${seq?`frames = meta["frames"]                          # the frames that were baked (every Nth if you chose to skip)
+f = int(round(hou.frame()))
+f = min(frames, key=lambda k: abs(k - f))         # hold the nearest baked frame outside the range or between skipped ones
+path = os.path.join(FOLDER, "density.%04d.f16" % f)`:`path = os.path.join(FOLDER, "density.f16")`}
+data = np.fromfile(path, dtype="<f2").astype(np.float32)
 geo = hou.pwd().geometry()
 bmin, bmax = meta["bbox_min"], meta["bbox_max"]
 vol = geo.createVolume(nx, ny, nz, hou.BoundingBox(bmin[0], bmin[1], bmin[2], bmax[0], bmax[1], bmax[2]))
@@ -1129,36 +1634,55 @@ geo.addAttrib(hou.attribType.Prim, "name", "")
 vol.setAttribValue("name", "density")
 # density is extinction per metre: render with density scale 1, scattering ~0.98, droplet phase g ~${mieParams(meta.droplet_um)[0].toFixed(2)}
 `; }
+let exportMode='frame', exportEvery=1;
 function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); const DS=domSize(REC); exportN=LODS[lodOf(REC)].exp; const rk=roomK(REC);
   m.innerHTML=`<p>Exports the fog as you see it, detail included, as a voxel grid in metres covering the box: <b>${fmLen(DS[0])} × ${fmLen(DS[1])} × ${fmLen(DS[2])}</b>. The zip holds the density (half float), its bounds and settings, the recipe to reopen it here, and a Python SOP that loads it in Houdini.</p>
+    <div class="row wide"><label>Export</label><div class="chips" id="exMode"></div></div>
+    <div class="row wide" id="exEveryRow"><label>Every</label><div class="chips" id="exEvery"></div></div>
     <div class="row wide"><label>Detail level</label><div class="chips" id="exRes"></div></div>
     <p id="exInfo" style="font-family:var(--f-mono);font-size:12px"></p>
     <div class="btns"><button class="btn prim" id="exGo">Bake and save .zip</button></div>
     <p id="exStatus"></p>
     <div style="display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--f-mono);color:var(--faint)">Houdini · Python SOP</span><button class="btn" id="exCopy" style="margin-left:auto">Copy</button></div><pre class="code" id="exPy"></pre>`;
-  const draw=()=>{ const N=Math.round(exportN*rk); const d=dimsFor(DS,N); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/N)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const [n,lab] of LODS.map(L=>[L.exp,L.label])){ const b=document.createElement('button'); b.className='chip'; b.textContent=lab; b.title=n+' voxels along the fog'; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
-  draw(); const py=houdiniPy(REC.name,{droplet_um:REC.den.drop}); $('#exPy').textContent=py;
-  $('#exCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
+  const chipRow=(id,opts,get,set)=>{ const c=$('#'+id); c.innerHTML=''; for(const [v,t,title] of opts){ const b=document.createElement('button'); b.className='chip'; b.textContent=t; if(title) b.title=title; b.setAttribute('aria-pressed',get()===v); b.onclick=()=>{ set(v); draw(); }; c.appendChild(b); } };
+  const draw=()=>{ const tm=timing(REC); const N=Math.round(exportN*rk); const d=dimsFor(DS,N); const mb=(d[0]*d[1]*d[2]*2)/1048576; const nF=exportMode==='seq'?Math.ceil(tm.frames/exportEvery):1;
+    chipRow('exMode',[['frame','This frame','The moment under the playhead'],['seq',`Sequence · ${tm.frames} frames`,'Every frame from In to Out, retimed']],()=>exportMode,v=>exportMode=v);
+    $('#exEveryRow').hidden=exportMode!=='seq'; chipRow('exEvery',[[1,'frame'],[2,'2nd'],[4,'4th']],()=>exportEvery,v=>exportEvery=v);
+    chipRow('exRes',LODS.map(L=>[L.exp,L.label,L.exp+' voxels along the fog']),()=>exportN,v=>exportN=v);
+    const tot=mb*nF; $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/N)} each · ${mb.toFixed(1)} MB a frame`+(nF>1?` · ${nF} frames · ${tot<1024?tot.toFixed(0)+' MB':(tot/1024).toFixed(1)+' GB'}`:'')+(tot>1500?' · large: try Soft, or every 2nd frame':'');
+    const py=houdiniPy(REC.name,{droplet_um:REC.den.drop,frames:exportMode==='seq'?[1]:null}); $('#exPy').textContent=py; };
+  draw();
+  $('#exCopy').onclick=async()=>{ const py=$('#exPy').textContent; try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
   $('#exGo').onclick=doExport; $('#modal').hidden=false; $('#mClose').focus(); }
-async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disabled=true;
-  try{ if(MAIN.sim.step<MAIN.sim.steps){ st.textContent='Finishing the simulation…'; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(MAIN.sim.step%10===0) await yieldUI(); } lightUpdate(MAIN,REC); }
-    const b=await bake(MAIN,REC,Math.round(exportN*roomK(REC)),p=>{ st.textContent='Baking '+Math.round(p*100)+'%'; }); st.textContent='Packing…'; await yieldUI();
-    const h=new Uint16Array(b.data.length); let mx=0; for(let i=0;i<b.data.length;i++){ h[i]=f32to16(b.data[i]); if(b.data[i]>mx) mx=b.data[i]; }
-    const meta={format:'brume-designer-volume',version:1,name:REC.name,resolution:b.dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:REC.dom[0],bbox_max:REC.dom[1],
-      voxel_size_m:domSize(REC).map((v,i)=>v/b.dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor};
-    const name=slug(REC.name); const enc=new TextEncoder();
-    if(!window.fflate) throw new Error('The zip library did not load; check the connection and try again.');
-    const zip=fflate.zipSync({[name+'/density.f16']:[new Uint8Array(h.buffer),{level:0}],[name+'/meta.json']:enc.encode(JSON.stringify(meta,null,1)),[name+'/recipe.brume.json']:enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC})),[name+'/load_in_houdini.py']:enc.encode(houdiniPy(REC.name,meta))});
-    st.textContent=''; const ok=await offerFile(name+'_brume.zip',new Blob([zip],{type:'application/zip'}),'application/zip'); st.textContent=ok?`Saved ${name}_brume.zip · ${b.dims.join(' × ')} voxels`:'Not saved.'; }
+/* step the main simulation to a time (starting over if it is earlier than where the sim is) */
+async function simTo(t,prog){ if(t<MAIN.sim.t-1e-6) simReset(MAIN,REC,t); else simExtend(MAIN,t); let k=0; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(++k%10===0){ prog&&prog(); await yieldUI(); } } }
+async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disabled=true; if(UI.playing) togglePlay();
+  const name=slug(REC.name); const enc=new TextEncoder(); const N=Math.round(exportN*roomK(REC)); const tm=timing(REC);
+  try{ if(!window.fflate) throw new Error('The zip library did not load; check the connection and try again.');
+    exporting=true; const parts=[]; let zerr=null; const zip=new fflate.Zip((err,dat)=>{ if(err) zerr=err; else parts.push(dat); });
+    const addFile=(nm,u8,store)=>{ const z=store?new fflate.ZipPassThrough(nm):new fflate.ZipDeflate(nm,{level:6}); zip.add(z); z.push(u8,true); };
+    const frs=[]; if(exportMode==='seq'){ for(let f=tm.start;f<=tm.start+tm.frames-1;f+=exportEvery) frs.push(f); if(frs[frs.length-1]!==tm.start+tm.frames-1) frs.push(tm.start+tm.frames-1); }
+    let dims=null, mx=0;
+    const bakeAt=async(t,label,file)=>{ await simTo(t,()=>{ st.textContent=label+' · simulating'; }); const b=await bake(MAIN,REC,N,p=>{ st.textContent=label+' · baking '+Math.round(p*100)+'%'; });
+      const h=new Uint16Array(b.data.length); for(let i=0;i<b.data.length;i++){ h[i]=f32to16(b.data[i]); if(b.data[i]>mx) mx=b.data[i]; } dims=b.dims; addFile(name+'/'+file,new Uint8Array(h.buffer),true); await yieldUI(); };
+    if(frs.length){ for(let i=0;i<frs.length;i++) await bakeAt(frameT(tm,frs[i]),`Frame ${frs[i]} (${i+1}/${frs.length})`,`density.${String(frs[i]).padStart(4,'0')}.f16`); }
+    else await bakeAt(viewTime(REC),'This frame','density.f16');
+    if(zerr) throw zerr;
+    const meta={format:'brume-designer-volume',version:2,name:REC.name,resolution:dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:REC.dom[0],bbox_max:REC.dom[1],
+      voxel_size_m:domSize(REC).map((v,i)=>v/dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor,
+      ...(frs.length?{frames:frs,fps:tm.fps,frame_start:tm.start,frame_end:tm.start+tm.frames-1,sim_in_s:tm.inT,sim_out_s:tm.outT,speed:tm.speed}:{sim_time_s:viewTime(REC)})};
+    addFile(name+'/meta.json',enc.encode(JSON.stringify(meta,null,1))); addFile(name+'/recipe.brume.json',enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC}))); addFile(name+'/load_in_houdini.py',enc.encode(houdiniPy(REC.name,meta)));
+    zip.end(); if(zerr) throw zerr; exporting=false; dirty.sim=true;
+    st.textContent=''; const ok=await offerFile(name+'_brume.zip',new Blob(parts,{type:'application/zip'}),'application/zip'); st.textContent=ok?`Saved ${name}_brume.zip · ${frs.length?frs.length+' frames · ':''}${dims.join(' × ')} voxels`:'Not saved.'; }
   catch(e){ console.error(e); st.textContent='Export failed: '+e.message; }
-  go.disabled=false; }
+  exporting=false; dirty.sim=true; go.disabled=false; }
 function closeModal(){ $('#modal').hidden=true; }
 $('#exportBtn').onclick=openExport; $('#mClose').onclick=closeModal; $('#modal').addEventListener('click',ev=>{ if(ev.target.id==='modal') closeModal(); });
 
 /* ---------------- status ---------------- */
 let lastDomS=''; function updateHud(vw,vh,fin,target){ const ds=JSON.stringify(REC.dom); if(ds!==lastDomS){ lastDomS=ds; lodRefresh(); } const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
   const bar=$('#simBar'); bar.style.width=(simDone?Math.min(1,frames/target):p)*100+'%'; bar.classList.toggle('fin',fin);
-  const st=brushing?'sculpting':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'evolving':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
+  const st=brushing?'sculpting':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'playing':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
   $('#hud').textContent=`${MAIN.dims?MAIN.dims.join('×'):''} voxels · ${fin?'final':'draft'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
 function toast(msg){ const t=$('#toast'); t.innerHTML=''; t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2400); }
 function toastUndo(msg){ const t=$('#toast'); t.innerHTML=''; const s=document.createElement('span'); s.textContent=msg; const b=document.createElement('button'); b.textContent='Undo'; b.onclick=()=>{ undo(); t.hidden=true; }; t.append(s,b); t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,4000); }
@@ -1172,7 +1696,7 @@ async function boot(){
   const lk=store.get('brume.designer.look'); if(lk) Object.assign(LOOK,lk); else applyLight('backlit');
   try{ if(window.__BRUME_TEST){ Object.assign(LOOK,window.__BRUME_TEST.look||{}); if(window.__BRUME_TEST.rec) REC=migrateRecipe(window.__BRUME_TEST.rec); } }catch(_){}
   $('#assetName').value=REC.name; UI.brushR=Math.max(...REC.size)*0.12;
-  buildRail(); buildHint(); buildPanels();
+  buildRail(); buildHint(); buildPanels(); buildTimeline();
   if(!initGL()) return;
   const t0=performance.now();
   while(true){ const done=Object.values(PR).filter(progDone).length, n=Object.keys(PR).length; showLoader(`Compiling shaders ${done}/${n} · ${((performance.now()-t0)/1000).toFixed(1)} s`,0.02+0.16*done/n); if(done===n) break; await new Promise(r=>setTimeout(r,60)); }
