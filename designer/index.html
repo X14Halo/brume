@@ -331,7 +331,7 @@ void main(){
 
 /* one brush dab on the mass grid (only the slices and rect the dab touches are drawn) */
 const FS_DAB=HEAD+VOX_GLSL+`
-uniform sampler3D uM; uniform sampler3D uNT; uniform int uOp; uniform vec3 uC, uDir; uniform float uR, uS; out vec4 o;
+uniform sampler3D uM; uniform sampler3D uNT; uniform int uOp; uniform vec3 uC, uDir; uniform float uR, uS, uLkT; out vec4 o;
 /* sharp resampling for moving fog around: Catmull-Rom, clamped to the neighbours so it never rings. Linear sampling would blur a little on every dab */
 vec4 crw(float t){ float t2=t*t, t3=t2*t; return vec4(-0.5*t3+t2-0.5*t,1.5*t3-2.5*t2+1.,-1.5*t3+2.*t2+0.5*t,0.5*t3-0.5*t2); }
 float sampleC(vec3 u){ vec3 g=u*uDims-0.5, i=floor(g), f=g-i; vec4 wx=crw(f.x), wy=crw(f.y), wz=crw(f.z); float s=0., mn=1e9, mx=-1e9;
@@ -339,24 +339,29 @@ float sampleC(vec3 u){ vec3 g=u*uDims-0.5, i=floor(g), f=g-i; vec4 wx=crw(f.x), 
     if(x>0&&x<3&&y>0&&y<3&&z>0&&z<3){ mn=min(mn,v); mx=max(mx,v); } }
   return clamp(s,mn,mx); }
 void main(){
-  vec3 u=vU(), p=u2p(u); float m=textureLod(uM,u,0.).r;
-  float d=length(p-uC)/uR; if(d>=1.){ o=vec4(m,0,0,1); return; }
+  vec3 u=vU(), p=u2p(u); vec2 mg=textureLod(uM,u,0.).rg; float m=mg.r, w=clamp(mg.g/max(m,1e-4),0.,1.);
+  float d=length(p-uC)/uR; if(d>=1.){ o=vec4(mg,0,1); return; }
   float f=(1.-d*d); f*=f; float s=uS*f;
   if(uOp==0) m=m+s*(1.-m)*0.9;                                  // add
   else if(uOp==1) m=m*(1.-s*0.9);                               // erase
   else if(uOp==2){ vec3 e=vec3(uR*0.18)/uSize; float a=0.;      // smooth
     a+=textureLod(uM,u+vec3(e.x,0,0),0.).r+textureLod(uM,u-vec3(e.x,0,0),0.).r+textureLod(uM,u+vec3(0,e.y,0),0.).r+textureLod(uM,u-vec3(0,e.y,0),0.).r+textureLod(uM,u+vec3(0,0,e.z),0.).r+textureLod(uM,u-vec3(0,0,e.z),0.).r;
     m=mix(m,a/6.,clamp(s*1.4,0.,1.)); }
-  else if(uOp==3){ m=sampleC(p2u(p-uDir*f)); }                  // pull: drag the mass along
+  else if(uOp==3){ vec3 su=p2u(p-uDir*f); m=sampleC(su); vec2 sg=textureLod(uM,su,0.).rg; w=clamp(sg.g/max(sg.r,1e-4),0.,1.); }                  // pull: drag the mass along
   else if(uOp==4){ float n=textureLod(uNT,p/(uR*0.3)+vec3(0.21,0.67,0.43),0.).g; float k=0.2+1.3*smoothstep(0.25,0.8,n);
-    m=sampleC(p2u(p-uDir*f*k*1.6)); }                              // comb: the teeth drag some strands further than others, leaving streaks, not blur
+    vec3 su=p2u(p-uDir*f*k*1.6); m=sampleC(su); vec2 sg=textureLod(uM,su,0.).rg; w=clamp(sg.g/max(sg.r,1e-4),0.,1.); }                              // comb: the teeth drag some strands further than others, leaving streaks, not blur
   else if(uOp==6){ float a=0.; vec3 e=vec3(uR*0.32)/uSize;                          // fill: close the gaps inside fog that is already there
     for(int k=0;k<14;k++){ vec3 o=k<6?vec3(k==0?1.:k==1?-1.:0.,k==2?1.:k==3?-1.:0.,k==4?1.:k==5?-1.:0.):vec3(k%2==0?1.:-1.,(k/2)%2==0?1.:-1.,(k/4)%2==0?1.:-1.)*0.7; a+=textureLod(uM,u+o*e,0.).r; }
     a/=14.; float fl=smoothstep(0.05,0.4,a)*0.85; m=max(m,mix(m,fl,clamp(s*1.8,0.,1.))); }
+  else if(uOp==7){ w=mix(w,uLkT,clamp(s*2.2,0.,1.)); }       // paint the second look (or back to the base look)
   else { float n=textureLod(uNT,p/(uR*0.45)+vec3(0.37,0.11,0.73),0.).r; m=m*(1.-s*smoothstep(0.4,0.62,n)); } // tear
-  o=vec4(clamp(m,0.,1.),0,0,1);
+  m=clamp(m,0.,1.); o=vec4(m,w*m,0,1);
 }`;
 const FS_COPY=HEAD+VOX_GLSL+`uniform sampler3D uSrc; out vec4 o; void main(){ o=textureLod(uSrc,vU(),0.); }`;
+/* a new box for fog that is already there: resample it instead of simulating again */
+const FS_REBOX=HEAD+VOX_GLSL+`uniform sampler3D uSrc; uniform vec3 uOLo, uOSz; uniform int uRc; out vec4 o;
+void main(){ vec3 p=u2p(vU()), q=(p-uOLo)/uOSz; bool in_=all(greaterThanEqual(q,vec3(0.)))&&all(lessThanEqual(q,vec3(1.)));
+  o=in_?textureLod(uSrc,q,0.):(uRc==1?vec4(p,0.):vec4(0.)); }`;
 /* fill gaps everywhere: a closing pass over the whole mass after sculpting, so the fog reads as one volume rather than patches */
 const FS_UNIFY=HEAD+VOX_GLSL+`uniform sampler3D uM; uniform float uRu, uK; out vec4 o;
 void main(){ vec3 u=vU(); float m=textureLod(uM,u,0.).r; vec3 e=vec3(uRu)/uSize; float a=0.;
@@ -411,12 +416,12 @@ void main(){ vec3 u=vU(); oD=vec4(textureLod(uM,u,0.).r,0,0,1); oR=vec4(u2p(u),0
 const FS_SIMA=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler3D uD, uR; uniform float uReseed; layout(location=0) out vec4 oD; layout(location=1) out vec4 oR;
 void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD); vec3 pb=p-v*uDt; vec3 ub=p2u(pb);
   if(uFloor>0.5){ float g=terrH(pb.xz); if(pb.y<g){ pb.y=g; ub=p2u(pb); } }
-  float d=all(greaterThanEqual(ub,vec3(0.)))&&all(lessThanEqual(ub,vec3(1.)))?textureLod(uD,ub,0.).r:0.;
+  vec2 dg=all(greaterThanEqual(ub,vec3(0.)))&&all(lessThanEqual(ub,vec3(1.)))?textureLod(uD,ub,0.).rg:vec2(0.); float d=dg.r;
   vec4 r4=textureLod(uR,clamp(ub,0.,1.),0.); vec3 r=mix(r4.xyz,p,clamp(uReseed*uDt,0.,1.));
-  oD=vec4(d,0,0,1); oR=vec4(r,r4.a+d*uDt); }`;   // .a is age carried by the fog itself (density x seconds)
+  oD=vec4(d,dg.g,0,1); oR=vec4(r,r4.a+d*uDt); }`;   // .a is age carried by the fog itself (density x seconds)
 const FS_SIMB=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler3D uD, uH, uR, uNT; uniform float uDiss, uRate, uPatch, uPatchS, uLife; layout(location=0) out vec4 o; layout(location=1) out vec4 oR;
 void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
-  float h=textureLod(uH,u,0.).r; vec3 uf=p2u(p+v*uDt); float hb=textureLod(uH,clamp(uf,0.,1.),0.).r; float d0=textureLod(uD,u,0.).r;
+  vec2 hg=textureLod(uH,u,0.).rg; float h=hg.r, wl=clamp(hg.g/max(h,1e-4),0.,1.); vec3 uf=p2u(p+v*uDt); float hb=textureLod(uH,clamp(uf,0.,1.),0.).r; float d0=textureLod(uD,u,0.).r;
   float d=h+0.5*(d0-hb);                                       // MacCormack: undo most of the numerical blur
   vec3 ub=p2u(p-v*uDt)*uDims-0.5; vec3 i0=floor(ub); float mn=1e9, mx=-1e9;
   for(int k=0;k<8;k++){ vec3 c=i0+vec3(k&1,(k>>1)&1,(k>>2)&1); float s=texelFetch(uD,ivec3(clamp(c,vec3(0.),uDims-1.)),0).r; mn=min(mn,s); mx=max(mx,s); }
@@ -425,13 +430,14 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   vec4 rc=textureLod(uR,u,0.); float gh=uGround>0?terrH(p.xz):0.;
   if(uGround>0&&p.y<gh) d=0.;
   float age=rc.a/max(h,1e-4); rc.a=age*max(d,0.);                // keep age per unit of fog through the corrections above
+  float gw=wl*max(d,0.);                                          // the painted look travels with its fog
   if(uEmit==1){ float hs=p.y-(gh+uSrcC.y); float e=srcEdge();
     float mk=smoothstep(e*0.5,-e*0.5,srcSD(p.xz))*smoothstep(uSrcTh,uSrcTh*0.3,hs)*step(-uSrcTh*0.5,hs);
     if(uPatch>0.){ float n=textureLod(uNT,vec3(p.x/uPatchS,uSimT*0.07,p.z/uPatchS)+uCurlOff,0.).r; mk*=smoothstep(uPatch*0.75-0.12,uPatch*0.75+0.12,n); }  // patchy, drifting source
     float inj=clamp(mk*uRate*uDt,0.,1.); float dn=d+(1.-d)*inj; float f=(dn-d)/max(dn,1e-4);
     rc.xyz=mix(rc.xyz,p,f); rc.a*=1.-inj; d=dn;              // fresh smoke replaces a share of what is there: new rest position, age zero
     if(rc.a/max(d,1e-4)>uLife*1.08){ d=0.; rc.a=0.; } }
-  o=vec4(max(d,0.),0,0,1); oR=rc; }`;
+  o=vec4(max(d,0.),min(gw,max(d,0.)),0,1); oR=rc; }`;
 
 /* where the visible fog is: one pixel per (x,z) column holding the densest value and the lowest and highest y above a threshold */
 const FS_EXT=HEAD+VOX_GLSL+`uniform sampler3D uD, uR; uniform int uEmit; uniform float uLife, uTailF, uSrcF, uThr; out vec4 o;
@@ -452,47 +458,50 @@ void main(){ int f=int(gl_FragCoord.x); int ax=f/2; float e=4.5/uDims[ax]; float
 const DENS_GLSL=TERR_GLSL+`
 uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize, uVoxU; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
 float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
-uniform float uSigma, uTh, uW, uAmt, uBillow, uCurl, uDet, uBreak, uBreakS, uFadeT, uFadeB; uniform int uOct, uFloorOn; uniform vec3 uSeedV;
+uniform float uSigma, uTh, uW, uAmt, uBillow, uCurl, uDet, uBreak, uBreakS, uFadeT, uFadeB; uniform int uOct, uFloorOn, uLk2; uniform vec3 uSeedV;
+uniform vec4 uL2a, uL2b;   // painted second look: billow, amount, edge width, breakup · curl, detail size, sigma ratio, -
 float gFoot=0.01;
 float transferG(float d){ return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
 float densGrid(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
-  return uSigma*transferG(textureLod(uD,u,0.).r); }
+  vec2 dg=textureLod(uD,u,0.).rg; return uSigma*(uLk2==1?mix(1.,uL2b.z,clamp(dg.g/max(dg.r,1e-4),0.,1.)):1.)*transferG(dg.r); }
 float dens(vec3 p,int lvl){
   vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
-  float d=textureLod(uD,u,0.).r;
-  float sm=clamp(1.-uCurl/0.3,0.,1.); if(sm>0.&&lvl>0){ vec3 o=uVoxU*2.2; float a=textureLod(uD,u+vec3(o.x,0,0),0.).r+textureLod(uD,u-vec3(o.x,0,0),0.).r+textureLod(uD,u+vec3(0,o.y,0),0.).r+textureLod(uD,u-vec3(0,o.y,0),0.).r+textureLod(uD,u+vec3(0,0,o.z),0.).r+textureLod(uD,u-vec3(0,0,o.z),0.).r; d=mix(d,(d*2.+a)/8.,sm*0.85); }   // puffy looks: round off sim filaments so the billows carry the shape
+  vec2 dg=textureLod(uD,u,0.).rg; float d=dg.r;
+  float wL=uLk2==1?clamp(dg.g/max(d,1e-4),0.,1.):0.;        // how much of the painted second look this fog carries
+  float cBillow=mix(uBillow,uL2a.x,wL), cAmt=mix(uAmt,uL2a.y,wL), cW=mix(uW,uL2a.z,wL), cBreak=mix(uBreak,uL2a.w,wL), cCurl=mix(uCurl,uL2b.x,wL), cDet=mix(uDet,uL2b.y,wL), cSig=uSigma*mix(1.,uL2b.z,wL);
+  float sm=clamp(1.-cCurl/0.3,0.,1.); if(sm>0.&&lvl>0){ vec3 o=uVoxU*2.2; float a=textureLod(uD,u+vec3(o.x,0,0),0.).r+textureLod(uD,u-vec3(o.x,0,0),0.).r+textureLod(uD,u+vec3(0,o.y,0),0.).r+textureLod(uD,u-vec3(0,o.y,0),0.).r+textureLod(uD,u+vec3(0,0,o.z),0.).r+textureLod(uD,u-vec3(0,0,o.z),0.).r; d=mix(d,(d*2.+a)/8.,sm*0.85); }   // puffy looks: round off sim filaments so the billows carry the shape
   if(d<0.008) return 0.;
   vec3 em=min(u,1.-u), fw=uVoxU*3.; d*=smoothstep(0.,fw.x,em.x)*smoothstep(0.,fw.z,em.z)*smoothstep(0.,fw.y,1.-u.y)*(uFloorOn==1?1.:smoothstep(0.,fw.y,u.y));  // no hard cut at the box walls (a few voxels)
   d*=smoothstep(0.,uFadeB+1e-4,u.y)*(1.-smoothstep(1.-uFadeT-1e-4,1.,u.y));
   vec4 rcs=textureLod(uR,u,0.); vec3 rc=rcs.xyz+uSeedV;
   if(uEmit==1){ d*=ageFade(rcs.a/max(textureLod(uD,u,0.).r,1e-3)); if(d<0.008) return 0.; }            // fade the tail of the plume, and right at the source
   if(uGround>1&&uGround<7&&p.y<terrH(p.xz)) return 0.;
-  if(uBreak>0.){ float nb=textureLod(uNT,rc/uBreakS,0.).r*0.7+textureLod(uNT,rc/(uBreakS*0.45),0.).a*0.3; d*=smoothstep(uBreak*0.75-0.18,uBreak*0.75+0.1,nb); }
-  float f0=d-uTh; if(f0+uAmt*0.5<=0.) return 0.;
+  if(cBreak>0.){ float nb=textureLod(uNT,rc/uBreakS,0.).r*0.7+textureLod(uNT,rc/(uBreakS*0.45),0.).a*0.3; d*=smoothstep(cBreak*0.75-0.18,cBreak*0.75+0.1,nb); }
+  float f0=d-uTh; if(f0+cAmt*0.5<=0.) return 0.;
   float f=f0, inner=1.;
-  if(lvl>0&&uAmt>0.){
+  if(lvl>0&&cAmt>0.){
     float billow=0., wisp=0.; vec3 pv=vec3(0.5); vec3 q=rc;
     for(int k=0;k<6;k++){ if(k>=uOct) break;
-      float L=uDet*pow(0.42,float(k));
+      float L=cDet*pow(0.42,float(k));
       float wk=smoothstep(0.6,1.6,L*0.3/gFoot); if(wk<=0.) break;
       float lod=max(log2(gFoot*128./L)-0.5,0.);
-      vec4 dn=textureLod(uND,(q+(pv-0.5)*L*(0.2+2.1*uCurl))/L+vec3(0.13*float(k),0.,0.29*float(k)),lod);   // each octave warped by the last: curl
+      vec4 dn=textureLod(uND,(q+(pv-0.5)*L*(0.2+2.1*cCurl))/L+vec3(0.13*float(k),0.,0.29*float(k)),lod);   // each octave warped by the last: curl
       pv=dn.rgb; float kw=k==0?0.5:k==1?0.3:k==2?0.18:k==3?0.11:0.07;
       billow+=((dn.r*0.625+dn.g*0.25+dn.b*0.125)-0.56)*kw*wk;
-      wisp+=mix(dn.a-0.5,(1.-abs(dn.a*2.-1.))-0.55,0.3+0.5*uCurl)*kw*wk; }
-    float var=mix(wisp,billow,uBillow);
-    inner=clamp(1.+var*2.8*uAmt,0.05,2.4);
-    float disp=var*uAmt*2.3; f+= disp<0.? disp : disp*(0.5+0.7*uBillow*uBillow)*smoothstep(-0.1*uAmt,0.03,f0);   // billows push out into rounded lobes
-  } else f-=uAmt*0.06;
-  return uSigma*smoothstep(0.,uW,f)*(0.45+0.55*clamp(d,0.,1.2))*inner;
+      wisp+=mix(dn.a-0.5,(1.-abs(dn.a*2.-1.))-0.55,0.3+0.5*cCurl)*kw*wk; }
+    float var=mix(wisp,billow,cBillow);
+    inner=clamp(1.+var*2.8*cAmt,0.05,2.4);
+    float disp=var*cAmt*2.3; f+= disp<0.? disp : disp*(0.5+0.7*cBillow*cBillow)*smoothstep(-0.1*cAmt,0.03,f0);   // billows push out into rounded lobes
+  } else f-=cAmt*0.06;
+  return cSig*smoothstep(0.,cW,f)*(0.45+0.55*clamp(d,0.,1.2))*inner;
 }
 `;
 
 /* light cache: optical depth toward the key light, and how much sky each voxel sees */
-const FS_LIGHT=HEAD+VOX_GLSL+TERR_GLSL+`uniform sampler3D uD, uR; uniform vec3 uL; uniform float uTh, uW, uAmt, uMaxL, uSigmaL; uniform int uEmit; uniform float uLife, uTailF, uSrcF; out vec4 o;
+const FS_LIGHT=HEAD+VOX_GLSL+TERR_GLSL+`uniform sampler3D uD, uR; uniform vec3 uL; uniform float uTh, uW, uAmt, uMaxL, uSigmaL, uSig2R; uniform int uLk2; uniform int uEmit; uniform float uLife, uTailF, uSrcF; out vec4 o;
 float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
 bool inGround(vec3 p){ return uGround>1&&uGround<7&&p.y<terrH(p.xz); }
-float tg(vec3 p){ vec3 u=p2u(p); if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; float d=textureLod(uD,u,0.).r; if(uEmit==1) d*=ageFade(textureLod(uR,u,0.).a/max(d,1e-3)); return smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2)); }
+float tg(vec3 p){ vec3 u=p2u(p); if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; vec2 dg=textureLod(uD,u,0.).rg; float d=dg.r; float sk=uLk2==1?mix(1.,uSig2R,clamp(dg.g/max(d,1e-4),0.,1.)):1.; if(uEmit==1) d*=ageFade(textureLod(uR,u,0.).a/max(d,1e-3)); return sk*(smoothstep(0.,uW,d-uTh-uAmt*0.06)*(0.45+0.55*clamp(d,0.,1.2))); }
 void main(){ vec3 u=vU(), p=u2p(u); float ds=uMaxL/40.; float s=0.; float vis=1.;
   for(int i=0;i<40;i++){ vec3 q=p+uL*(ds*(float(i)+0.5)); if(inGround(q)){ vis=0.; break; } s+=tg(q)*ds; }
   if(vis>0.&&uGround>1&&uGround<7){ float t=uMaxL; for(int i=0;i<16;i++){ vec3 q=p+uL*t; if(q.y>uGP.x*1.3+1.) break; if(inGround(q)){ vis=0.; break; } t+=max(uMaxL*0.25,uGP.y*0.05); } }   // hills beyond the box
@@ -787,7 +796,7 @@ function emitPlan(rec){ const S=rec.sim, E=rec.emit, H=rec.size[1];
   return {Uw,Tref,Vr,riseH,push,pushH,life,Tsim,Uwind,wdir:[Math.sin(wd),-Math.cos(wd)],y0:terrHJ(rec,E.x,E.z)+E.y}; }
 /* wind in the simulation's own units: fog runs on a compressed clock, so real m/s are scaled by how many sim seconds pass per real second */
 function windSim(rec){ return emitOn(rec)?rec.sim.wind:rec.sim.wind/Math.max(realTimeKF(rec),1e-3); }
-function realTimeKF(rec){ const S=rec.sim; const Usim=Math.max(S.turb,0.02)*S.eddy*0.6, Ureal=(0.6+1.4*S.turb)*Math.cbrt(Math.max(S.eddy,0.01)/10); return clamp(Ureal/Usim,0.005,1); }
+function realTimeKF(rec){ const S=rec.sim; const Usim=Math.max(S.turb,0.02)*S.eddy*0.6, Ureal=(0.9+1.6*S.turb)*Math.cbrt(Math.max(S.eddy,0.01)/10); return clamp(Ureal/Usim,0.005,1); }
 const windWords=v=>v<0.5?'calm':v<1.6?'light air':v<3.4?'light breeze':v<5.5?'gentle breeze':v<8?'moderate breeze':v<10.8?'fresh breeze':v<13.9?'strong breeze':v<17.2?'near gale':'gale';
 const EMIT_DEF={on:false,shape:'disc',w:4,d:4,ang:0,x:0,z:0,y:0,edge:0.35,patch:0.3,patchS:0,pulse:0.3,rate:0.6,push:0.2,heat:0.5,spread:0.4,life:0.5,tail:0.5,srcF:0.05};
 /* shading in the pipeline's terms. Extinction distance: how far light goes through the densest part before it drops to 1/e */
@@ -989,7 +998,7 @@ function mkCtx(N){ return {N,dims:null,ldims:null,mass:[],den:[],rc:[],light:nul
 function ensureVols(ctx,rec){ const d=recDims(rec,ctx.N); if(ctx.dims&&d.every((v,i)=>v===ctx.dims[i])) return false;
   for(const t of [...ctx.mass,...ctx.den,...ctx.rc,ctx.light]) if(t) gl.deleteTexture(t);
   ctx.dims=d; ctx.ldims=d.map(v=>Math.max(8,Math.ceil(v/2)));
-  ctx.mass=[0,1].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT)); ctx.den=[0,1,2].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT));
+  ctx.mass=[0,1].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT)); ctx.den=[0,1,2].map(()=>tex3D(...d,gl.RG16F,gl.RG,gl.HALF_FLOAT));   // density, and how much of it carries the painted second look
   ctx.rc=[0,1,2].map(()=>tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT)); ctx.light=tex3D(...ctx.ldims,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT);
   return true; }
 function ensureAcc(ctx,w,h){ const A=ctx.acc; if(A.w===w&&A.h===h) return; for(let i=0;i<2;i++){ if(A.tex[i]){ gl.deleteTexture(A.tex[i]); gl.deleteFramebuffer(A.fb[i]); }
@@ -1009,18 +1018,34 @@ function genMass(ctx,rec,extra){
   const fa=formAbs(rec); u1i(pr,'uForm',fa?fa.id:0); u4v(pr,'uF0',fa?fa.F0:[1,0,0,0]); u4v(pr,'uF1',fa?[fa.half[0],fa.half[1],fa.edge,0]:[1,1,1,0]);
   const wd=rec.sim.windDir*D2R; u2f(pr,'uWdir',Math.sin(wd),-Math.cos(wd));
   volPass(pr,[ctx.mass[0]],ctx.dims);
-  for(const s of [...rec.strokes,...(extra?[extra]:[])]) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);
+  for(const s of [...rec.strokes,...(extra?[extra]:[])]) if(s.t==null) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);   // older recipes sculpted the starting shape; strokes now land on the simulated fog at their time
   const un=rec.det.unify||0; if(un>0){ let pr2=use('unify'); bind3(pr2,0,'uM',ctx.mass[0]); boxU(pr2,rec); u1f(pr2,'uRu',Math.max(rec.sim.eddy*(0.08+0.3*un),voxSize(ctx,rec)*2)); u1f(pr2,'uK',un); volPass(pr2,[ctx.mass[1]],ctx.dims);
     pr2=use('copy'); bind3(pr2,0,'uSrc',ctx.mass[1]); boxU(pr2,rec); volPass(pr2,[ctx.mass[0]],ctx.dims); }
 }
-function dab(ctx,rec,op,d,r,s){ // d: [x,y,z, dx,dy,dz] in world metres; r: radius in metres
+/* a stroke on the simulated fog itself: what you see is what you sculpt */
+function dabDen(ctx,rec,op,d,r,s,lk){ dab(ctx,rec,op,d,r,s,ctx.den[0],ctx.den[1],lk); }
+/* strokes are replayed when the simulation reaches the moment they were made */
+function strokesByT(rec){ return rec.strokes.filter(s=>s.t!=null).map((s,i)=>[s,i]).sort((a,b)=>a[0].t-b[0].t||a[1]-b[1]).map(a=>a[0]); }
+function applyDue(ctx,rec){ const S=ctx.sim; if(S.si==null) S.si=0; const L=strokesByT(rec); let n=0;
+  while(S.si<L.length&&L[S.si].t<=S.t+1e-5){ const st=L[S.si++]; for(const d of st.dabs) dabDen(ctx,rec,st.op,d,st.r,st.s,st.lk??1); n++; } return n; }
+/* the box changed around fog that is already simulated: resample it into the new box instead of simulating again */
+function rebox(ctx,rec,oldDom){ if(!ctx.dims) return; const od=oldDom, olo=od[0], osz=[0,1,2].map(i=>od[1][i]-od[0][i]); const d=recDims(rec,ctx.N);
+  const mk=(f)=>f==='rc'?tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT):f==='den'?tex3D(...d,gl.RG16F,gl.RG,gl.HALF_FLOAT):tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT);
+  const pr=use('rebox'); boxU(pr,rec); u3v(pr,'uOLo',olo); u3v(pr,'uOSz',osz);
+  const res=(src,kind)=>{ const t=mk(kind); bind3(pr,0,'uSrc',src); u1i(pr,'uRc',kind==='rc'?1:0); volPass(pr,[t],d); return t; };
+  const nden=[res(ctx.den[0],'den'),mk('den'),mk('den')], nrc=[res(ctx.rc[0],'rc'),mk('rc'),mk('rc')], nmass=[res(ctx.mass[0],'mass'),mk('mass')];
+  for(const t of [...ctx.mass,...ctx.den,...ctx.rc,ctx.light]) if(t) gl.deleteTexture(t);
+  ctx.dims=d; ctx.ldims=d.map(v=>Math.max(8,Math.ceil(v/2))); ctx.den=nden; ctx.rc=nrc; ctx.mass=nmass; ctx.light=tex3D(...ctx.ldims,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT);
+  const sp=simParams(ctx,rec); Object.assign(ctx.sim,{dt:sp.dt,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit}); ctx.sim.steps=ctx.sim.step+Math.max(0,Math.ceil((ctx.sim.target-ctx.sim.t)/sp.dt-1e-6)); }
+function dab(ctx,rec,op,d,r,s,src,tmp,lk){ // d: [x,y,z, dx,dy,dz] in world metres; r: radius in metres
   const R=r, C=[d[0],d[1],d[2]], Dm=[d[3],d[4],d[5]]; const lo=domLo(rec), sz=domSize(rec);
   const ext=(R+len(Dm)*1.6)*1.05; const dm=ctx.dims;
   const box=[0,1,2].map(i=>{ const c=(C[i]-lo[i])/sz[i]*dm[i], e=ext/sz[i]*dm[i]; return [clamp(Math.floor(c-e)-1,0,dm[i]),clamp(Math.ceil(c+e)+1,0,dm[i])]; });
   const B=[box[0][0],box[1][0],box[2][0],box[0][1],box[1][1],box[2][1]]; if(B[3]<=B[0]||B[4]<=B[1]||B[5]<=B[2]) return;
-  let pr=use('dab'); bind3(pr,0,'uM',ctx.mass[0]); bind3(pr,1,'uNT',T.noise); u1i(pr,'uOp',op); u3v(pr,'uC',C); u3v(pr,'uDir',Dm); u1f(pr,'uR',R); u1f(pr,'uS',s); boxU(pr,rec);
-  volPass(pr,[ctx.mass[1]],dm,B);
-  pr=use('copy'); bind3(pr,0,'uSrc',ctx.mass[1]); boxU(pr,rec); volPass(pr,[ctx.mass[0]],dm,B);
+  src=src||ctx.mass[0]; tmp=tmp||ctx.mass[1];
+  let pr=use('dab'); bind3(pr,0,'uM',src); bind3(pr,1,'uNT',T.noise); u1i(pr,'uOp',op); u1f(pr,'uLkT',lk??1); u3v(pr,'uC',C); u3v(pr,'uDir',Dm); u1f(pr,'uR',R); u1f(pr,'uS',s); boxU(pr,rec);
+  volPass(pr,[tmp],dm,B);
+  pr=use('copy'); bind3(pr,0,'uSrc',tmp); boxU(pr,rec); volPass(pr,[src],dm,B);
 }
 /* ---- 2. simulation ---- */
 let CURL_RMS=1;
@@ -1039,7 +1064,7 @@ function simParams(ctx,rec){ const S=rec.sim; const EP=emitOn(rec)?emitPlan(rec)
 /* the simulation runs on one clock from the sculpted shape: it steps to a target time (the timeline's playhead), never past it */
 function simReset(ctx,rec,target){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); boxU(pr,rec); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
   const sp=simParams(ctx,rec); const tg=Math.max(0,target??sp.T); const tm=rec.time||{};
-  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit,checked:false,holdT:tm.hold?(tm.inT??sp.T):1e30}; }
+  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit,checked:false,holdT:tm.hold?(tm.inT??sp.T):1e30,si:0}; applyDue(ctx,rec); }
 /* move the target later without starting over */
 function simExtend(ctx,t){ const S=ctx.sim; S.target=t; S.steps=S.step+Math.max(0,Math.ceil((t-S.t)/S.dt-1e-6)); }
 function velUniforms(pr,ctx,rec){ const S=rec.sim; const held=!ctx.sim.emit&&ctx.sim.t>=ctx.sim.holdT;   // Hold: past In the fog churns in place instead of drifting off
@@ -1065,13 +1090,16 @@ function simStep(ctx,rec,h){
   const EP=ctx.sim.emit; if(EP){ const E=rec.emit; const pulse=Math.max(0.05,1+E.pulse*1.1*n1J(ctx.sim.t/(EP.Tref*0.35)+rec.seed*0.37));   // the source breathes: stronger and weaker, smoothly
     u1f(pr,'uRate',EP.rateK*pulse); u1f(pr,'uPatch',E.patch); u1f(pr,'uPatchS',Math.max(E.patchS||Math.max(E.w,E.d)*0.7,1e-3)); u1f(pr,'uLife',EP.life); }
   volPass(pr,[ctx.den[2],ctx.rc[2]],ctx.dims);
-  ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[2],ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.h; ctx.sim.step++; }
+  ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[2],ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.h; ctx.sim.step++; if(ctx.sim.step>=ctx.sim.steps) ctx.sim.t=ctx.sim.target; applyDue(ctx,rec); }
 /* ---- 3. transfer + light cache ---- */
 function transfer(rec){ return {th:0.12,w:0.04+0.66*rec.det.edge,amt:rec.det.amt*0.6}; }
-function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); terrU(pr,rec); emitFadeU(pr,ctx,rec); u1f(pr,'uSigmaL',sigmaOf(rec)); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(domSize(rec))); boxU(pr,rec);
+function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); const L2=look2U(rec); u1i(pr,'uLk2',L2.on); u1f(pr,'uSig2R',L2.b[2]); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); terrU(pr,rec); emitFadeU(pr,ctx,rec); u1f(pr,'uSigmaL',sigmaOf(rec)); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(domSize(rec))); boxU(pr,rec);
   volPass(pr,[ctx.light],ctx.ldims); }
 /* ---- 4. view ---- */
-function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
+/* the painted second look, as uniforms */
+function look2U(rec){ const L=rec.det2; if(!L||!rec.strokes.some(s=>s.op===7)) return {on:0,a:[0,0,0,0],b:[0,1,1,0]}; const tf=transfer({det:L});
+  return {on:1,a:[L.billow,tf.amt,tf.w,L.brk],b:[L.curl??0.5,L.size,clamp((rec.den.extD||1)/Math.max(L.extD||rec.den.extD||1,1e-3),0.05,20),0]}; }
+function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec); const L2=look2U(rec); u1i(pr,'uLk2',L2.on); u4v(pr,'uL2a',L2.a); u4v(pr,'uL2b',L2.b);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
   u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u3v(pr,'uVoxU',ctx.dims.map(v=>1/v)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
   u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uCurl',rec.det.curl??rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
@@ -1121,7 +1149,7 @@ function initGL(){
   if(!X.cbf){ fail('This GPU cannot render to floating-point targets, which Brume needs.'); return false; }
   VAfs=gl.createVertexArray(); gl.bindVertexArray(VAfs); const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
   FB1=gl.createFramebuffer(); FB2=gl.createFramebuffer();
-  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['unify',FS_UNIFY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['ext',FS_EXT],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
+  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['rebox',FS_REBOX],['unify',FS_UNIFY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['ext',FS_EXT],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
   T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR);
   T.curl=tex3D(64,64,64,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.REPEAT,gl.LINEAR);
   return true; }
@@ -1141,7 +1169,7 @@ const dirty={mass:true,sim:false,light:true};
 let exporting=false, frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
 function resetAccum(){ frames=0; }
 function poke(){ interacting=true; interactUntil=performance.now()+180; resetAccum(); }
-let autoGrowN=0, roomFlash=0, changeN=1;
+let autoGrowN=0, roomFlash=0, changeN=1, restK=1;
 function markMass(){ dirty.mass=true; autoGrowN=0; changeN++; resetAccum(); }
 function markSim(){ dirty.sim=true; autoGrowN=0; changeN++; resetAccum(); }
 /* a change to how the fog moves or where it is: forget room the last run asked for; the wall check adds it back if still needed */
@@ -1150,7 +1178,7 @@ const FACE_NAMES=['left','right','bottom','top','back','front'];
 /* after each simulation: if fog piled against a wall, give it room on that side and run again */
 function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[]; const nd=[REC.dom[0].slice(),REC.dom[1].slice()];
   w.forEach((v,f)=>{ if(f===2&&floorIn(REC)) return; if(v>0.22){   /* visible fog pressed against the wall */ const ax=f>>1, g=Math.max(sz[ax]*0.12,REC.size[ax]*0.08); REC.xpad[f]=+Math.min(REC.xpad[f]+g,REC.size[ax]*3).toPrecision(4); if(f%2) nd[1][ax]+=g; else nd[0][ax]-=g; grown.push(FACE_NAMES[f]); } });
-  if(grown.length){ REC.dom=nd.map(a=>a.map(v=>+v.toPrecision(5))); autoGrowN++; dirty.mass=true; roomFlash=performance.now(); toast('Gave the fog more room: '+grown.join(', ')); autosave(); } }
+  if(grown.length){ const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=nd.map(a=>a.map(v=>+v.toPrecision(5))); autoGrowN++; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); } }
 /* ---------- fitting the room to the fog ----------
    A quick low-resolution run of the whole timeline (to Out) in a generous box measures where the fog
    actually goes; the box is then cut to that, plus a margin, so the voxels are spent on fog. */
@@ -1178,7 +1206,7 @@ function refineToMain(){ if(REC.fit!=='auto'||FIT.on||FIT.refined||!FIT.ext||Mat
   if(flatBase(REC)) lo[1]=0; else if(hasGround(REC)) lo[1]=Math.max(lo[1],terrRange(REC,lo[0],hi[0],lo[2],hi[2],8).min-(hi[1]-lo[1])*0.02);
   for(let i=0;i<3;i++){ lo[i]=Math.max(lo[i],cur[0][i]); hi[i]=Math.min(hi[i],cur[1][i]); }               // only ever shrinks here
   const shrink=[0,1,2].some(i=>(cur[1][i]-cur[0][i])-(hi[i]-lo[i])>(cur[1][i]-cur[0][i])*0.06); if(!shrink) return false;
-  REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; dirty.mass=true; roomFlash=performance.now(); autosave(); return true; }
+  const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); return true; }
 function applyFit(){ const e=FIT.ext; if(!e) return; const fd=FIT.rec.dom; const lo=[], hi=[];
   // the margin is a few of the final voxels (for the soft wall fade) plus the measuring run's own coarseness
   const ex0=[0,1,2].map(i=>Math.max(e.hi[i]-e.lo[i],Math.max(...REC.size)*0.04)+e.vox[i]*3), vx=Math.cbrt(ex0[0]*ex0[1]*ex0[2]/(Math.pow(simN(REC),3)*0.3));
@@ -1191,7 +1219,7 @@ function applyFit(){ const e=FIT.ext; if(!e) return; const fd=FIT.rec.dom; const
 
 function markLight(){ dirty.light=true; resetAccum(); }
 function markView(){ resetAccum(); }
-function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; resetAccum(); }
+function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; if(ready) poke(); else resetAccum(); }
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min(0.1,(now-lastT)/1000); ftAvg=lerp(ftAvg,now-lastT,0.1); lastT=now;
@@ -1202,12 +1230,14 @@ function frame(now){
     if(!REC.dom){ refit(REC,null,true); dirty.mass=true; }
     if(changeN!==FIT.seen&&!brushing){ FIT.seen=changeN; startFit(); }      // something changed: measure the room again (quick, low resolution)
     if(FIT.on&&!brushing) stepFit(IS_MOBILE?4:6);                          // measured in the background; the view keeps rendering
-    if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
+    const waitFit=FIT.on&&(dirty.mass||dirty.sim);                         // measure the room first, then simulate once, in the right box
+    if(dirty.mass&&!waitFit){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
     if(exporting) return;
-    if(dirty.sim){ simReset(MAIN,REC,viewTime(REC)); dirty.sim=false; dirty.light=true; evolveStep=0; }
+    if(dirty.sim&&!waitFit){ simReset(MAIN,REC,viewTime(REC)); dirty.sim=false; dirty.light=true; evolveStep=0; }
+    if(!MAIN.dims){ drawOverlay(); if(now-hudT>200){ hudT=now; $('#hud').textContent='measuring the room…'; } return; }   // first launch: the box is measured before anything is simulated
     const S=MAIN.sim; let simmed=false;
     { const vt=viewTime(REC); if(vt<S.t-1e-6){ simReset(MAIN,REC,vt); dirty.light=true; } else if(vt>S.target+1e-6) simExtend(MAIN,vt); }   // scrubbing back starts over; forward just keeps going
-    if(!brushing&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
+    if(!brushing&&!waitFit&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
     if(UI.playing&&!brushing&&S.step>=S.steps) playAdvance(now);
     if(S.steps>0&&S.step>=S.steps&&!S.checked&&!UI.playing&&!brushing){ S.checked=true; if(!refineToMain()) wallGrow(); }
     if(simmed){ if(S.step>=S.steps||S.step%4===0) dirty.light=true; resetAccum(); }
@@ -1215,8 +1245,11 @@ function frame(now){
     const moving=interacting||brushing||simmed||UI.playing, fin=!moving;   // at rest: every detail octave and detailed self-shadowing; Detail level sets the voxels
     const rs=Math.min(UI.res||1024,glMaxTex)/Math.max(cw,ch);   // the viewport resolution: long edge in pixels
     const sc=moving?Math.min(IS_MOBILE?0.4:0.5,rs):rs; const vw=Math.max(16,Math.round(cw*sc)), vh=Math.max(16,Math.round(ch*sc));
-    const target=UI.res>=4096?96:UI.res>=2048?128:192;
-    if(frames<target||moving){ const blend=moving?1:1/(frames+1); const rk=roomK(REC); renderPass(MAIN,REC,CAM,vw,vh,blend,fin,frames,Math.round((moving?72:300)*rk)); frames++; }
+    const target=UI.res>=4096?320:UI.res>=2048?256:192;
+    // at rest the image refines over many cheap frames (each one jittered), so the view and the UI stay responsive; the step count adapts to how fast this GPU is
+    if(!moving&&frames>2&&frames<target){ restK=clamp(restK*(ftAvg>40?0.85:ftAvg<24?1.04:1),0.2,1); }
+    const pxK=clamp(Math.sqrt(0.8e6/(vw*vh)),0.35,1.2);
+    if(frames<target||moving){ const blend=moving?1:1/(frames+1); const rk=roomK(REC); renderPass(MAIN,REC,CAM,vw,vh,blend,fin,frames,Math.max(16,Math.round((moving?72:110*pxK*restK)*rk))); frames++; }
     displayPass(MAIN,cw,ch);
     if(capture){ const c=capture; capture=null; try{ c(glc); }catch(e){ console.error(e); } }
     drawOverlay();
@@ -1279,7 +1312,7 @@ function drawOverlay(){
 /* =====================================================================
    INTERACTION — Maya navigation, fog brushes, wind and light by hand
    ===================================================================== */
-const BRUSHES={add:0,erase:1,smooth:2,pull:3,smear:4,tear:5,fill:6};
+const BRUSHES={add:0,erase:1,smooth:2,pull:3,smear:4,tear:5,fill:6,look:7};
 function brushOp(ctrl){ const o=BRUSHES[UI.tool]; if(o===0&&ctrl) return 1; if(o===1&&ctrl) return 0; return o; }
 let drag=null; const pointers=new Map();
 function tumble(dx,dy){ CAM.yaw-=dx*0.006; CAM.pitch=clamp(CAM.pitch+dy*0.006,-1.45,1.45); poke(); }
@@ -1301,15 +1334,20 @@ function startStroke(mx,my,ev){
   const gh=pk.t>0?null:rayGround(ro,rd);
   if(pk.t>0) p=add(ro,mul(rd,pk.t)); else if(gh&&len(sub(gh,ro))<CAM.dist*3) p=add(gh,[0,UI.brushR*0.5,0]); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
   const op=brushOp(ev.ctrlKey||ev.metaKey); const r=+UI.brushR.toPrecision(4);
-  drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:UI.brushStr*(op===3?1:op===4?0.9:0.45),dabs:[]},lx:mx,ly:my};
+  drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:UI.brushStr*(op===3?1:op===4?0.9:0.45),dabs:[],t:+MAIN.sim.t.toFixed(5),...(op===7?{lk:(ev.ctrlKey||ev.metaKey)?0:1}:{})},lx:mx,ly:my};
+  if(op===7&&!REC.det2) setLook2('mist',false);
   brushing=true; if(op!==3&&op!==4) putDab(p,[0,0,0]); }
 const brushPlaneC=()=>REC.dom?[domCenter(REC)[0],REC.dom[0][1]+domSize(REC)[1]*0.35,domCenter(REC)[2]]:[0,REC.size[1]*0.4,0];
 function putDab(p,dm){ const s=drag.stroke; if(hasGround(REC)){ const g=terrHJ(REC,p[0],p[2]); if(p[1]<g) p=[p[0],g,p[2]]; }
   const d=[...p,...dm].map(v=>+v.toPrecision(5)); s.dabs.push(d);
   // a stroke heading out of the box: grow the box ahead of it and rebuild what is already there, so nothing flattens on a wall
-  if(REC.fit==='auto'&&GROW_OPS[s.op]&&outsideRoom(d,s.r)&&refit(REC,s)){ genMass(MAIN,REC,s); roomFlash=performance.now(); }
-  else dab(MAIN,REC,s.op,d,s.r,s.s);
-  dirty.sim=true; resetAccum(); }
+  if(REC.fit==='auto'&&GROW_OPS[s.op]&&outsideRoom(d,s.r)) growForDab(d,s.r);   // heading out of the box: grow it ahead of the stroke and carry the fog over
+  dabDen(MAIN,REC,s.op,d,s.r,s.s,s.lk??1);
+  dirty.light=true; resetAccum(); }
+function growForDab(d,r){ const lo=REC.dom[0].slice(), hi=REC.dom[1].slice(), sz=domSize(REC), old=[REC.dom[0].slice(),REC.dom[1].slice()]; let g=false;
+  for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN, pad=Math.max(sz[i]*0.2,r*1.5); if(d[i]-r<lo[i]+m){ lo[i]=d[i]-r-pad; g=true; } if(d[i]+r>hi[i]-m){ hi[i]=d[i]+r+pad; g=true; } }
+  if(!g) return; if(flatBase(REC)) lo[1]=0; if(REC.floor&&hasGround(REC)) lo[1]=old[0][1];
+  REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; rebox(MAIN,REC,old); roomFlash=performance.now(); }
 function outsideRoom(d,r){ const lo=REC.dom[0], hi=REC.dom[1], sz=domSize(REC); for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN; if(i===1&&REC.floor){ if(d[1]+r>hi[1]-m) return true; continue; } if(d[i]-r<lo[i]+m||d[i]+r>hi[i]-m) return true; } return false; }
 function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
   if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.2){ putDab(p,dm); drag.last=p; } }   // fewer, longer moves: each one resamples the fog
@@ -1323,7 +1361,7 @@ function drawSource(a,b){ const E=REC.emit; const dx=b[0]-a[0], dz=b[2]-a[2], L=
   else if(E.shape==='rect'){ E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(Math.abs(dx)/2); E.d=q(Math.abs(dz)/2); E.ang=0; drag.label=`${fmLen(Math.abs(dx))} × ${fmLen(Math.abs(dz))}`; }
   else { E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(L/2); E.ang=+(Math.atan2(dz,dx)/D2R).toFixed(1); drag.label=`line · ${fmLen(L)}`; }
   E.patchS=+(Math.max(E.w,E.d)*0.7).toPrecision(3); poke(); }
-function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); REC.xpad=[0,0,0,0,0,0]; pushUndo(); } markSim(); }
+function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); pushUndo(); MAIN.sim.si=(MAIN.sim.si||0)+1; if(drag.stroke.op===7) buildPanels(); } dirty.light=true; resetAccum(); }   // already on the fog: nothing to simulate again
 ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
@@ -1450,6 +1488,7 @@ const ICONS={
   pull:'<circle cx="7" cy="14" r="3.5"/><path d="M10.5 13c3-1 6-3 9-6"/><path d="M15 7h4.5v4.5"/>',
   smear:'<path d="M3 9h14"/><path d="M3 13h17"/><path d="M3 17h12"/><path d="M17 6l4 3-4 3"/>',
   fill:'<path d="M5 15c0-4 3-7 7-7s7 3 7 7-3 6-7 6-7-2-7-6z"/><path d="M8 15c1.5-1 2.5 1 4 0s2.5-1 4 0" />',
+  look:'<path d="M4 14c0-3 2.5-5.5 5.5-5.5S15 11 15 14s-2.5 5-5.5 5S4 17 4 14z"/><path d="M14 6l5-3 1 1.5-4.5 4"/><path d="M7 14h0M10 12h0M11 16h0" stroke-width="2.4" stroke-linecap="round"/>',
   tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
   wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
   source:'<ellipse cx="12" cy="18" rx="8" ry="3" stroke-dasharray="2.5 2"/><path d="M10 15c-2-3 2-5 0-8M14 15c-1-3 3-5 1-9"/>',
@@ -1461,16 +1500,17 @@ const TOOLS=[
   {id:'add',key:'1',name:'Add fog',hint:'Paint fog into the air. It lands on the fog under the cursor, on the ground, or in the middle of the box. Ctrl erases.'},
   {id:'erase',key:'2',name:'Erase',hint:'Carve fog away. Ctrl adds.'},
   {id:'smooth',key:'3',name:'Smooth',hint:'Soften and even out what you painted.'},
-  {id:'pull',key:'4',name:'Pull',hint:'Grab fog and drag it out into tendrils, or push a bulge back in.'},
-  {id:'smear',key:'5',name:'Comb',hint:'Streak fog along the stroke, like wind combing it out.'},
+  {id:'pull',key:'4',name:'Pull',hint:'Moves the fog as one piece, like a smudge: grab an edge and drag it out into a tendril, or push a bulge back in. The shape stays whole.'},
+  {id:'smear',key:'5',name:'Comb',hint:'Drags uneven strands through the fog, like a comb through hair: some move further than others, so it breaks into streaks and wisps with gaps between.'},
   {id:'tear',key:'6',name:'Tear',hint:'Rip ragged holes and torn edges.'},
   {id:'fill',key:'0',name:'Fill',hint:'Fill gaps and patchy spots inside fog that is already there, so it reads as one volume.'},
+  {id:'look',key:'l',name:'Paint look',hint:'Paint the second look (set in Detail) onto parts of the fog: torn fog that fades into soft mist, for example. It travels with the fog. Ctrl paints the base look back.'},
   {id:'wind',key:'7',name:'Wind',hint:'Drag across the view to blow wind that way. Longer drags blow harder; it re-simulates when you let go.'},
   {id:'flow',key:'p',name:'Wind path',hint:'Draw the path the air should take: to the side, then curling up and back, for example. Fog inside it is carried along. Radius and speed are in the Brush panel.'},
   {id:'light',key:'8',name:'Light',hint:'Drag to move the sun around the fog. Try it behind the fog: backlit fog glows.'},
   {id:'source',key:'9',name:'Source',hint:'Draw where the emitter makes smoke: disc and ring from the centre out, rectangle corner to corner, line end to end.'},
 ];
-function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===8){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
+function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{ if(i===1||i===9){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
 function setTool(id){ UI.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='orbit'?'grab':'crosshair'; hover=null; buildBrushRow(); }
 function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(BRUSHES[UI.tool]!=null?`<span>brush <b style="font-family:var(--f-mono)">${fmLen(UI.brushR)}</b> · [ ] to size</span>`:''); }
@@ -1514,6 +1554,10 @@ const DSTYLES=[
   {id:'billowy',label:'Billowy cloud',tip:'Bright billowing lobes like cloud tops',det:{billow:0.88,amt:0.75,edge:0.42,brk:0.08,curl:0.15,sz:0.45},ext:0.35,ecc:0.85,sim:{turb:0.45,calm:0.55}},
   {id:'torn',label:'Torn fog',tip:'Ragged holes and broken edges',det:{billow:0.4,amt:0.85,edge:0.55,brk:0.6,curl:0.5},ext:0.7,ecc:0.85,sim:{turb:0.6,age:0.7}},
   {id:'streaky',label:'Streaky',tip:'Combed out in layers by the wind',det:{billow:0.15,amt:0.7,edge:0.7,brk:0.2,curl:0.35},ext:0.8,ecc:0.85,sim:{strat:0.85,wind:5}}];
+/* the painted second look: a full look (detail, edge, breakup, curl, size, density) blended in where it is painted */
+function setLook2(id,toastIt=true){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; const {sz,...dt}=st.det; const b=REC.det;
+  REC.det2={style:id,billow:dt.billow??b.billow,amt:dt.amt??b.amt,edge:dt.edge??b.edge,brk:dt.brk??b.brk,curl:dt.curl??b.curl,size:+(sz?REC.sim.eddy*sz:b.size).toPrecision(3),extD:st.ext?+(Math.min(...REC.size)*st.ext).toPrecision(3):REC.den.extD};
+  markLight(); autosave(); if(toastIt){ pushUndo(); toast('Paint look: '+st.label.toLowerCase()); } refreshPanels(); if(UI.tool==='look') buildBrushRow(); }
 function applyStyle(id){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; const {sz,...dt}=st.det; Object.assign(REC.det,dt); if(sz) REC.det.size=+(REC.sim.eddy*sz).toPrecision(3);
   if(st.ext) REC.den.extD=+(Math.min(...REC.size)*st.ext).toPrecision(3); if(st.ecc!=null) REC.den.ecc=st.ecc;
   if(st.sim){ Object.assign(REC.sim,st.sim); markSimU(); } else markLight(); REC.style=id; pushUndo(); autosave(); refreshPanels(); lodRefresh(); toast(st.label+': '+st.tip.toLowerCase()); }
@@ -1574,6 +1618,12 @@ function buildPanels(){
   refreshers.push(slider(db,S_('Edge softness',0,1,()=>REC.det.edge,v=>REC.det.edge=v,pct,markLight,false,'Crisp defined edges or a soft graded falloff')));
   refreshers.push(slider(db,S_('Breakup',0,1,()=>REC.det.brk,v=>REC.det.brk=v,pct,markView,false,'Holes and separate clumps')));
   refreshers.push(slider(db,S_('Breakup size',0.1,2000,()=>REC.det.brkSize,v=>REC.det.brkSize=v,fmLen,markView,true)));
+  subH(db,'Painted look'); note(db,'A second look you paint onto parts of the fog with the Paint look brush (L).');
+  const l2=chips(db,'',DSTYLES.map(st=>[st.id,st.label,st.tip]),()=>REC.det2?.style||null,v=>setLook2(v)); refreshers.push(l2);
+  { const row=document.createElement('div'); row.className='row wide'; const n=REC.strokes.filter(s=>s.op===7).length; row.innerHTML=`<span class="note" style="margin:0">${n?n+' painted stroke'+(n>1?'s':''):'Nothing painted yet'}</span>`;
+    const bt=document.createElement('button'); bt.className='chip'; bt.textContent='Paint'; bt.onclick=()=>setTool('look'); row.appendChild(bt);
+    if(n){ const cl=document.createElement('button'); cl.className='chip'; cl.textContent='Clear'; cl.onclick=()=>{ REC.strokes=REC.strokes.filter(s=>s.op!==7); pushUndo(); markSim(); buildPanels(); toast('Painted look cleared'); }; row.appendChild(cl); }
+    db.appendChild(row); }
   refreshers.push(slider(db,S_('Fill gaps',0,1,()=>REC.det.unify||0,v=>REC.det.unify=v,v=>v<0.02?'off':pct(v),markMass,false,'Closes holes and patches so the fog reads as one volume. Or paint it in with the Fill brush (0)')));
   // detail level
   const ob=$('#lodBody'); ob.innerHTML='';
@@ -1676,6 +1726,7 @@ function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=nu
   brushRefs=[]; brushRefs.push(slider(lb,{label:'Radius',min:0.05,max:2000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen}));
   if(UI.tool==='flow') brushRefs.push(slider(lb,{label:'Speed',min:0.2,max:30,log:true,get:()=>UI.flowV,set:v=>{ UI.flowV=+v.toFixed(1); },fmt:v=>v.toFixed(1)+' m/s'}));
   else brushRefs.push(slider(lb,{label:'Strength',min:0.05,max:1,get:()=>UI.brushStr,set:v=>{ UI.brushStr=v; },fmt:pct}));
+  if(UI.tool==='look') note(lb,`Painting: <b>${REC.det2?(DSTYLES.find(x=>x.id===REC.det2.style)?.label||'second look'):'Soft mist'}</b>. Change it under Detail → Painted look.`);
   note(lb,'[ and ] change the radius. Ctrl+Z undoes a stroke.'); }
 function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are looking from
   const set=(el,rel,I,K,sky,skyK,ex=0)=>{ LOOK.el=el; LOOK.az=((-yaw+rel)%360+540)%360-180; LOOK.sunI=I; LOOK.sunK=K; LOOK.sky=sky; LOOK.skyK=skyK; LOOK.expo=ex; };   // a preset is a whole look, exposure included
