@@ -235,17 +235,17 @@ void main(){
 
 /* voxel helpers shared by the volume passes */
 const VOX_GLSL=`
-uniform vec3 uDims, uSize; uniform float uZ;
+uniform vec3 uDims, uSize, uLo; uniform float uZ, uHgt;    // the box: lower corner and size in world metres; uHgt is the asset's design height
 vec3 vU(){ return vec3(gl_FragCoord.xy/uDims.xy,uZ); }
-vec3 u2p(vec3 u){ return vec3((u.x-0.5)*uSize.x,u.y*uSize.y,(u.z-0.5)*uSize.z); }
-vec3 p2u(vec3 p){ return vec3(p.x/uSize.x+0.5,p.y/uSize.y,p.z/uSize.z+0.5); }
+vec3 u2p(vec3 u){ return uLo+u*uSize; }
+vec3 p2u(vec3 p){ return (p-uLo)/uSize; }
 `;
 
 /* template mass from primitives: ellipsoids, tapered capsules, rounded boxes, soft-unioned and roughened */
 const FS_GEN=HEAD+VOX_GLSL+`
 #define NP 40
 uniform int uNP; uniform vec4 uP0[NP], uP1[NP], uP2[NP];
-uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft; uniform vec3 uSeedOff; uniform int uProfile;
+uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft, uFl; uniform vec3 uSeedOff; uniform int uProfile;
 out vec4 o;
 float sdPrim(vec3 p,int i){ vec4 a=uP0[i], b=uP1[i], c=uP2[i]; int ty=int(a.w+0.5);
   if(ty==0){ vec3 q=(p-a.xyz)/b.xyz; float k=length(q); return (k-1.)*min(b.x,min(b.y,b.z)); }
@@ -259,11 +259,11 @@ void main(){
   for(int i=0;i<NP;i++){ if(i>=uNP) break; float w=uP1[i].w; float d=sdPrim(p,i)+disp;
     float v=smoothstep(uSoft,-uSoft,d);
     if(w>=0.) m=1.-(1.-m)*(1.-w*v); else m*=1.+w*v; }
-  float y=u.y;
+  float y=max(p.y,0.)/uHgt;
   if(uProfile==1) m*=exp(-y*2.2)*1.15;            // densest at the ground
   else if(uProfile==2) m*=mix(1.,0.3,y);           // wisps thin as they rise
   else if(uProfile==3) m*=smoothstep(0.05,0.22,y);  // floating mass with a ragged base
-  m*=smoothstep(0.,0.04,u.x)*smoothstep(1.,0.96,u.x)*smoothstep(1.,0.96,u.y)*smoothstep(0.,0.04,u.z)*smoothstep(1.,0.96,u.z);
+  m*=smoothstep(0.,0.04,u.x)*smoothstep(1.,0.96,u.x)*smoothstep(1.,0.96,u.y)*smoothstep(0.,0.04,u.z)*smoothstep(1.,0.96,u.z)*(uFl>0.5?1.:smoothstep(0.,0.04,u.y));
   o=vec4(clamp(m,0.,1.),0.,0.,1.);
 }`;
 
@@ -288,7 +288,7 @@ const FS_COPY=HEAD+VOX_GLSL+`uniform sampler3D uSrc; out vec4 o; void main(){ o=
 
 /* simulation: density + rest coordinates advected by a swirling, divergence-free velocity field */
 const VEL_GLSL=`
-uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uStrat, uCalm, uSpread, uTime, uDt, uFloor; uniform vec3 uWind, uCurlOff;
+uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uStrat, uCalm, uSpread, uSpreadK, uTime, uDt, uFloor; uniform vec3 uWind, uCurlOff;
 vec3 curlAt(vec3 p,float s){ return textureLod(uCurl,p/s+uCurlOff+vec3(0.,uTime*0.06,0.),0.).xyz; }
 vec3 vel(vec3 p,vec3 u,sampler3D den){
   float d=textureLod(den,u,0.).r;
@@ -296,9 +296,9 @@ vec3 vel(vec3 p,vec3 u,sampler3D den){
   v.y*=1.-uStrat*0.75; v.xz*=1.+uStrat*0.35;
   v*=uU*mix(1.,1.-uCalm,smoothstep(0.3,0.85,d));          // calm core, lively edges
   v+=uWind+vec3(0.,uLift,0.);
-  if(uFloor>0.5){ float band=max(uSize.y*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,p.y);
+  if(uFloor>0.5){ float band=max(uHgt*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,p.y);
     vec3 e=vec3(1.5)/uDims; float gx=textureLod(den,u+vec3(e.x,0,0),0.).r-textureLod(den,u-vec3(e.x,0,0),0.).r, gz=textureLod(den,u+vec3(0,0,e.z),0.).r-textureLod(den,u-vec3(0,0,e.z),0.).r;
-    v.xz-=vec2(gx,gz)*uSpread*uU*6.*k;                      // a gravity current spreads out along the ground
+    v.xz-=vec2(gx,gz)*uSpread*uU*6.*uSpreadK*k;             // a gravity current slumps out along the ground, a set distance
     v.y=mix(v.y,max(v.y,0.),k); }
   return v; }
 `;
@@ -319,6 +319,12 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   d=clamp(d,mn,mx); d*=exp(-uDiss*uDt);
   vec3 em=min(u,1.-u); float sp=smoothstep(0.,0.06,em.x)*smoothstep(0.,0.06,em.z)*smoothstep(0.,0.06,1.-u.y)*(uFloor>0.5?1.:smoothstep(0.,0.06,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
   o=vec4(max(d,0.),0,0,1); }`;
+
+/* after a simulation: how much fog reached each wall of the box (one pixel per face: -x +x -y +y -z +z) */
+const FS_WALL=HEAD+`uniform sampler3D uD; out vec4 o;
+void main(){ int f=int(gl_FragCoord.x); int ax=f/2; float w=(f%2==0)?0.05:0.95; float m=0.;
+  for(int j=0;j<24;j++) for(int i=0;i<24;i++){ vec2 q=(vec2(i,j)+0.5)/24.; vec3 u=ax==0?vec3(w,q.x,q.y):ax==1?vec3(q.x,w,q.y):vec3(q.x,q.y,w); m=max(m,textureLod(uD,u,0.).r); }
+  o=vec4(m,0,0,1); }`;
 
 /* the fog itself: grid density, broken up and detailed by noise carried along with the simulation */
 const DENS_GLSL=`
@@ -474,7 +480,7 @@ const TEMPLATES={
 function makeRecipe(tpl,cls='mid',seed=Math.floor(Math.random()*9999)){
   const T=TEMPLATES[tpl], C=CLASSES[cls]; const size=T.size.map(v=>+(v*C.k).toPrecision(3)); const md=Math.max(...size), mn=Math.min(...size);
   const eddy=+(Math.max(mn*0.55,md*0.14)).toPrecision(3);
-  return {v:1,name:T.label,template:tpl,cls,seed,size,floor:T.floor,
+  return {v:2,name:T.label,template:tpl,cls,seed,size,floor:T.floor,fit:'auto',dom:null,xpad:[0,0,0,0,0,0],
     sim:{age:T.sim.age,turb:T.sim.turb,eddy,lift:T.sim.lift,strat:C.strat,calm:T.sim.calm,spread:T.sim.spread,wind:T.sim.wind,windDir:70,diss:T.sim.diss},
     det:{billow:T.det.billow,amt:T.det.amt,size:+(eddy*0.42).toPrecision(3),edge:T.det.edge,brk:T.det.brk,brkSize:+(md*0.35).toPrecision(3)},
     den:{d:T.den.d,fadeT:0,fadeB:0,drop:12,ms:0.5},
@@ -502,6 +508,54 @@ function templatePrims(rec){
   else { ell(0,H*0.5,0,W*0.24,H*0.28,D*0.26,1); for(let i=0;i<5;i++){ const a=R()*6.283; ell(Math.cos(a)*W*0.2,H*(0.4+R()*0.25),Math.sin(a)*D*0.18,W*0.13,H*0.2,D*0.14,0.9); } }
   return P.slice(0,40);
 }
+
+/* ---------------- room: the simulation box fits itself around the fog ----------------
+   The fog lives in world metres (origin at the asset's base centre). The box is only the
+   simulation's container: it is sized from where the fog is, plus room for where it will
+   drift, and grows when a stroke or the simulation reaches a wall. */
+const GROW_OPS={0:1,2:1,3:1,4:1};                     // add, smooth, pull, comb can put fog somewhere new
+function migrateRecipe(r){
+  if(!r.v||r.v<2){ const [W,H,D]=r.size, md=Math.max(...r.size); const q=v=>+v.toPrecision(5);
+    r.strokes=(r.strokes||[]).map(s=>({op:s.op,s:s.s,r:q(s.r*md),dabs:s.dabs.map(d=>[q((d[0]-0.5)*W),q(d[1]*H),q((d[2]-0.5)*D),q(d[3]*W),q(d[4]*H),q(d[5]*D)])}));
+    r.v=2; r.dom=null; }
+  if(!r.fit) r.fit='auto'; if(!Array.isArray(r.xpad)||r.xpad.length!==6) r.xpad=[0,0,0,0,0,0]; if(r.dom===undefined) r.dom=null;
+  return r; }
+function contentBounds(rec,extra){
+  const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9]; const inc=(c,e)=>{ for(let i=0;i<3;i++){ lo[i]=Math.min(lo[i],c[i]-e[i]); hi[i]=Math.max(hi[i],c[i]+e[i]); } };
+  for(const q of templatePrims(rec)){ const ty=q[3];
+    if(ty===0){ if(q[7]>0) inc(q,[q[4],q[5],q[6]]); }
+    else if(ty===1){ const r=Math.max(q[4],q[11]); inc(q,[r,r,r]); inc([q[8],q[9],q[10]],[r,r,r]); }
+    else inc(q,[q[4],q[5],q[6]]); }
+  const mn=Math.min(...rec.size), rough=TEMPLATES[rec.template].rough??1; const g=mn*0.35*rough*0.4+mn*0.05; for(let i=0;i<3;i++){ lo[i]-=g; hi[i]+=g; }
+  for(const s of [...rec.strokes,...(extra?[extra]:[])]) if(GROW_OPS[s.op]) for(const d of s.dabs) inc(d,[s.r,s.r,s.r]);
+  if(rec.floor) lo[1]=Math.max(lo[1],0);
+  return {lo,hi}; }
+/* how far the simulation will carry fog past its starting shape, per face: -x +x -y +y -z +z */
+function motionPad(rec){ const S=rec.sim, [W,H,D]=rec.size; const a=S.age;
+  const turb=a*S.eddy*(0.45+0.6*S.turb)*(1-S.calm*0.3); const p=[turb,turb,rec.floor?0:turb,turb,turb,turb];
+  const wd=S.windDir*D2R, ws=S.wind*0.3*Math.hypot(W,D)*0.5*(a>0?1:0); const wx=Math.sin(wd)*ws, wz=-Math.cos(wd)*ws;
+  if(wx>0) p[1]+=wx; else p[0]-=wx; if(wz>0) p[5]+=wz; else p[4]-=wz;
+  const lift=S.lift*0.3*H*(a>0?1:0); if(lift>0) p[3]+=lift*1.2; else if(!rec.floor) p[2]-=lift*1.2; else { const k=-lift*0.6; p[0]+=k; p[1]+=k; p[4]+=k; p[5]+=k; }
+  if(rec.floor){ const sp=S.spread*(1.5*H+0.5*S.eddy)*a*1.4; p[0]+=sp; p[1]+=sp; p[4]+=sp; p[5]+=sp; }
+  return p.map((v,i)=>v+(rec.xpad?rec.xpad[i]:0)); }
+const ROOM_MARGIN=0.09;                                 // fog stays this far (of the box) from the walls, clear of the soft edge
+function fitDomain(rec,extra){ const b=contentBounds(rec,extra), p=motionPad(rec); const lo=[], hi=[];
+  for(let i=0;i<3;i++){ lo[i]=b.lo[i]-p[i*2]; hi[i]=b.hi[i]+p[i*2+1]; }
+  const ext=[0,1,2].map(i=>hi[i]-lo[i]); const mx=Math.max(...ext);
+  for(let i=0;i<3;i++){ const e=Math.max(ext[i],mx*0.06); const m=e*ROOM_MARGIN/(1-2*ROOM_MARGIN); lo[i]-=m+(e-ext[i])/2; hi[i]+=m+(e-ext[i])/2; }
+  if(rec.floor) lo[1]=0;
+  const q=v=>+v.toPrecision(5); return [lo.map(q),hi.map(q)]; }
+const domLo=rec=>rec.dom[0], domSize=rec=>[0,1,2].map(i=>rec.dom[1][i]-rec.dom[0][i]);
+const domCenter=rec=>[0,1,2].map(i=>(rec.dom[0][i]+rec.dom[1][i])/2);
+/* keep the box steady while it fits; refit only when the fog needs more room or the box is far too loose */
+function refit(rec,extra,force){ if(!rec.dom||force){ rec.dom=fitDomain(rec,extra); return true; } if(rec.fit!=='auto') return false;
+  const id=fitDomain(rec,extra), cur=rec.dom; const ce=domSize(rec), ie=[0,1,2].map(i=>id[1][i]-id[0][i]);
+  let grow=false, loose=false; for(let i=0;i<3;i++){ const tol=ce[i]*0.02; if(id[0][i]<cur[0][i]-tol||id[1][i]>cur[1][i]+tol) grow=true; if(ce[i]>ie[i]*1.6+1e-6) loose=true; }
+  if(!grow&&!loose) return false;
+  if(grow){ const nd=[cur[0].slice(),cur[1].slice()]; for(let i=0;i<3;i++){ const extra_=ie[i]*0.15; if(id[0][i]<cur[0][i]) nd[0][i]=id[0][i]-extra_; if(id[1][i]>cur[1][i]) nd[1][i]=id[1][i]+extra_; }
+    if(rec.floor) nd[0][1]=0; rec.dom=nd; for(let i=0;i<3;i++) if(nd[1][i]-nd[0][i]>ie[i]*1.6){ rec.dom=id; break; } }
+  else rec.dom=id;
+  return true; }
 
 /* ---------------- state ---------------- */
 const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,grid:128,preset:'backlit'};
@@ -547,8 +601,13 @@ function volPass(pr,targets,dims,box){
 
 /* a volume context: one asset's grids. The main view has one, variations and thumbnails share a small one */
 function dimsFor(size,N){ const m=Math.max(...size); return size.map(v=>Math.max(12,Math.round(N*v/m))); }
+/* voxels along the box's longest side: the grid setting covers the fog itself, up to 1.45x more when the box has extra room */
+const roomK=rec=>clamp(Math.max(...domSize(rec))/Math.max(...rec.size),1,1.45);
+const gridN=(rec,N)=>Math.round(N*roomK(rec));
+const recDims=(rec,N)=>dimsFor(domSize(rec),gridN(rec,N));
+function boxU(pr,rec){ u3v(pr,'uSize',domSize(rec)); u3v(pr,'uLo',domLo(rec)); u1f(pr,'uHgt',rec.size[1]); }
 function mkCtx(N){ return {N,dims:null,ldims:null,mass:[],den:[],rc:[],light:null,sim:{step:0,steps:0,dt:0,t:0},acc:{w:0,h:0,tex:[],fb:[],cur:0}}; }
-function ensureVols(ctx,rec){ const d=dimsFor(rec.size,ctx.N); if(ctx.dims&&d.every((v,i)=>v===ctx.dims[i])) return false;
+function ensureVols(ctx,rec){ const d=recDims(rec,ctx.N); if(ctx.dims&&d.every((v,i)=>v===ctx.dims[i])) return false;
   for(const t of [...ctx.mass,...ctx.den,...ctx.rc,ctx.light]) if(t) gl.deleteTexture(t);
   ctx.dims=d; ctx.ldims=d.map(v=>Math.max(8,Math.ceil(v/2)));
   ctx.mass=[0,1].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT)); ctx.den=[0,1,2].map(()=>tex3D(...d,gl.R16F,gl.RED,gl.HALF_FLOAT));
@@ -557,28 +616,28 @@ function ensureVols(ctx,rec){ const d=dimsFor(rec.size,ctx.N); if(ctx.dims&&d.ev
 function ensureAcc(ctx,w,h){ const A=ctx.acc; if(A.w===w&&A.h===h) return; for(let i=0;i<2;i++){ if(A.tex[i]){ gl.deleteTexture(A.tex[i]); gl.deleteFramebuffer(A.fb[i]); }
     A.tex[i]=tex2D(w,h,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR); A.fb[i]=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[i]); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,A.tex[i],0); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); }
   gl.bindFramebuffer(gl.FRAMEBUFFER,null); A.w=w; A.h=h; A.cur=0; }
-const voxSize=(ctx,rec)=>Math.min(...rec.size.map((v,i)=>v/ctx.dims[i]));
+const voxSize=(ctx,rec)=>Math.min(...domSize(rec).map((v,i)=>v/ctx.dims[i]));
 
 /* ---- 1. mass: the starting shape, then every brush stroke replayed on top ---- */
-function genMass(ctx,rec){
-  ensureVols(ctx,rec); const pr=use('gen'); const P=templatePrims(rec);
+function genMass(ctx,rec,extra){
+  if(!rec.dom) refit(rec,extra,true); ensureVols(ctx,rec); const pr=use('gen'); const P=templatePrims(rec);
   const p0=new Float32Array(160), p1=new Float32Array(160), p2=new Float32Array(160);
   P.forEach((q,i)=>{ p0.set(q.slice(0,4),i*4); p1.set(q.slice(4,8),i*4); p2.set(q.slice(8,12),i*4); });
   gl.uniform4fv(U(pr,'uP0[0]'),p0); gl.uniform4fv(U(pr,'uP1[0]'),p1); gl.uniform4fv(U(pr,'uP2[0]'),p2); u1i(pr,'uNP',P.length);
   const md=Math.max(...rec.size), mn=Math.min(...rec.size);
   const rough=TEMPLATES[rec.template].rough??1; bind3(pr,0,'uNT',T.noise); u1f(pr,'uNoiseAmp',mn*0.35*rough); u1f(pr,'uNoiseScale',md*0.45); u1f(pr,'uSoft',Math.max(mn*0.08,voxSize(ctx,rec)*1.5));
-  const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile); u3v(pr,'uSize',rec.size);
+  const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile); u1f(pr,'uFl',rec.floor?1:0); boxU(pr,rec);
   volPass(pr,[ctx.mass[0]],ctx.dims);
-  for(const s of rec.strokes) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);
+  for(const s of [...rec.strokes,...(extra?[extra]:[])]) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);
 }
-function dab(ctx,rec,op,d,r,s){ // d: [u,v,w, du,dv,dw] in normalized coords; r: radius / largest side
-  const md=Math.max(...rec.size), R=r*md; const C=[(d[0]-0.5)*rec.size[0],d[1]*rec.size[1],(d[2]-0.5)*rec.size[2]]; const Dm=[d[3]*rec.size[0],d[4]*rec.size[1],d[5]*rec.size[2]];
+function dab(ctx,rec,op,d,r,s){ // d: [x,y,z, dx,dy,dz] in world metres; r: radius in metres
+  const R=r, C=[d[0],d[1],d[2]], Dm=[d[3],d[4],d[5]]; const lo=domLo(rec), sz=domSize(rec);
   const ext=(R+len(Dm)*1.6)*1.05; const dm=ctx.dims;
-  const box=[0,1,2].map(i=>{ const c=d[i]*dm[i], e=ext/rec.size[i]*dm[i]; return [clamp(Math.floor(c-e)-1,0,dm[i]),clamp(Math.ceil(c+e)+1,0,dm[i])]; });
+  const box=[0,1,2].map(i=>{ const c=(C[i]-lo[i])/sz[i]*dm[i], e=ext/sz[i]*dm[i]; return [clamp(Math.floor(c-e)-1,0,dm[i]),clamp(Math.ceil(c+e)+1,0,dm[i])]; });
   const B=[box[0][0],box[1][0],box[2][0],box[0][1],box[1][1],box[2][1]]; if(B[3]<=B[0]||B[4]<=B[1]||B[5]<=B[2]) return;
-  let pr=use('dab'); bind3(pr,0,'uM',ctx.mass[0]); bind3(pr,1,'uNT',T.noise); u1i(pr,'uOp',op); u3v(pr,'uC',C); u3v(pr,'uDir',Dm); u1f(pr,'uR',R); u1f(pr,'uS',s); u3v(pr,'uSize',rec.size);
+  let pr=use('dab'); bind3(pr,0,'uM',ctx.mass[0]); bind3(pr,1,'uNT',T.noise); u1i(pr,'uOp',op); u3v(pr,'uC',C); u3v(pr,'uDir',Dm); u1f(pr,'uR',R); u1f(pr,'uS',s); boxU(pr,rec);
   volPass(pr,[ctx.mass[1]],dm,B);
-  pr=use('copy'); bind3(pr,0,'uSrc',ctx.mass[1]); u3v(pr,'uSize',rec.size); volPass(pr,[ctx.mass[0]],dm,B);
+  pr=use('copy'); bind3(pr,0,'uSrc',ctx.mass[1]); boxU(pr,rec); volPass(pr,[ctx.mass[0]],dm,B);
 }
 /* ---- 2. simulation ---- */
 let CURL_RMS=1;
@@ -586,15 +645,17 @@ let CURL_RMS=1;
 function simParams(ctx,rec){ const S=rec.sim; const U_=Math.max(S.turb,0.02)*S.eddy*0.6/CURL_RMS; const Uw=Math.max(S.turb,0.02)*S.eddy*0.6;
   const T_=S.age*1.3*S.eddy/Uw;                                   // about one and a third eddy turnovers at full age
   const wd=S.windDir*D2R, wsp=T_>0?S.wind*0.3*Math.hypot(rec.size[0],rec.size[2])*0.5/T_:0; const wind=[Math.sin(wd)*wsp,0,-Math.cos(wd)*wsp];
-  const liftV=T_>0?S.lift*0.3*rec.size[1]/T_:0;                   // full lift moves fog about a third of the box height
+  const liftV=T_>0?S.lift*0.3*rec.size[1]/T_:0;                   // full lift carries fog about a third of its own height
+  // the ground current slumps about spread x (1.5 height + half an eddy) at full age, then stops: a fixed reach, not a run to the walls
+  const Tfull=1.3*S.eddy/Uw; const spreadK=Math.min(1,(1.5*rec.size[1]+0.5*S.eddy)/(2.4*U_*Tfull));
   const vmax=Uw*2.2+len(wind)+Math.abs(liftV); const vx=voxSize(ctx,rec);
   let steps=S.age<=0.001?0:Math.ceil(T_/(vx/vmax)); steps=clamp(steps,S.age>0?6:0,140); const dt=steps?T_/steps:0;
-  return {U:U_,wind,steps,dt,lift:liftV}; }
-function simReset(ctx,rec){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); u3v(pr,'uSize',rec.size); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
-  const sp=simParams(ctx,rec); ctx.sim={step:0,steps:sp.steps,dt:sp.dt,t:0,U:sp.U,wind:sp.wind,lift:sp.lift}; }
-function velUniforms(pr,ctx,rec){ const S=rec.sim; u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread);
+  return {U:U_,wind,steps,dt,lift:liftV,spreadK}; }
+function simReset(ctx,rec){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); boxU(pr,rec); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
+  const sp=simParams(ctx,rec); ctx.sim={step:0,steps:sp.steps,dt:sp.dt,t:0,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,checked:false}; }
+function velUniforms(pr,ctx,rec){ const S=rec.sim; u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread); u1f(pr,'uSpreadK',ctx.sim.spreadK??1);
   u1f(pr,'uTime',ctx.sim.t/Math.max(S.eddy/Math.max(S.turb*S.eddy*0.6,1e-3),1e-3)); u1f(pr,'uDt',ctx.sim.dt); u1f(pr,'uFloor',rec.floor?1:0); u3v(pr,'uWind',ctx.sim.wind);
-  const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); u3v(pr,'uSize',rec.size); }
+  const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); }
 function simStep(ctx,rec,dtOverride){
   if(dtOverride) ctx.sim.dt=dtOverride;
   let pr=use('simA'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u1f(pr,'uReseed',0.7/Math.max(rec.sim.eddy/Math.max(rec.sim.turb*rec.sim.eddy*0.6,1e-3),1e-3));
@@ -604,12 +665,12 @@ function simStep(ctx,rec,dtOverride){
   ctx.den=[ctx.den[2],ctx.den[1],ctx.den[0]]; ctx.rc=[ctx.rc[1],ctx.rc[0]]; ctx.sim.t+=ctx.sim.dt; ctx.sim.step++; }
 /* ---- 3. transfer + light cache ---- */
 function transfer(rec){ return {th:0.12,w:0.04+0.66*rec.det.edge,amt:rec.det.amt*0.42}; }
-function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(rec.size)); u3v(pr,'uSize',rec.size);
+function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bind3(pr,0,'uD',ctx.den[0]); u3v(pr,'uL',sunDir()); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt); u1f(pr,'uMaxL',len(domSize(rec))); boxU(pr,rec);
   volPass(pr,[ctx.light],ctx.ldims); }
 /* ---- 4. view ---- */
 function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
-  u3v(pr,'uBMin',[-rec.size[0]/2,0,-rec.size[2]/2]); u3v(pr,'uBSize',rec.size); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
+  u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
   u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uTurb',rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
   u1i(pr,'uOct',final?6:4); u1i(pr,'uFloorOn',rec.floor?1:0); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
@@ -627,8 +688,13 @@ let PICKT=null, PICKFB=null;
 function pickRay(ctx,rec,ro,rd){ if(!PICKT){ PICKT=tex2D(1,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); PICKFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,PICKT,0); }
   gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.viewport(0,0,1,1); const pr=use('pick'); densUniforms(pr,ctx,rec,false); u3v(pr,'uCam',ro); u3v(pr,'uRd',rd); fullscreen();
   const a=new Float32Array(4); gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return {t:a[0],t0:a[1],t1:a[2]}; }
+/* after a simulation: the most fog found just inside each wall */
+let WALLT=null, WALLFB=null;
+function wallCheck(ctx){ if(!WALLT){ WALLT=tex2D(6,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); WALLFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,WALLT,0); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,6,1); const pr=use('wall'); bind3(pr,0,'uD',ctx.den[0]); fullscreen();
+  const a=new Float32Array(24); gl.readPixels(0,0,6,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return [0,1,2,3,4,5].map(i=>a[i*4]); }
 /* bake the final density (detail included) to a voxel array for export */
-async function bake(ctx,rec,N,prog){ const ed=dimsFor(rec.size,N); const out=new Float32Array(ed[0]*ed[1]*ed[2]);
+async function bake(ctx,rec,N,prog){ const ed=dimsFor(domSize(rec),N); const out=new Float32Array(ed[0]*ed[1]*ed[2]);
   const t=tex2D(ed[0],ed[1],gl.RGBA32F,gl.RGBA,gl.FLOAT); const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
   const pr=use('bake'); densUniforms(pr,ctx,rec,true); u3v(pr,'uEDims',ed); const buf=new Float32Array(ed[0]*ed[1]*4);
   for(let z=0;z<ed[2];z++){ gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.viewport(0,0,ed[0],ed[1]); u1f(pr,'uEZ',(z+0.5)/ed[2]); fullscreen(); gl.readPixels(0,0,ed[0],ed[1],gl.RGBA,gl.FLOAT,buf);
@@ -642,7 +708,7 @@ function initGL(){
   if(!X.cbf){ fail('This GPU cannot render to floating-point targets, which Brume needs.'); return false; }
   VAfs=gl.createVertexArray(); gl.bindVertexArray(VAfs); const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
   FB1=gl.createFramebuffer(); FB2=gl.createFramebuffer();
-  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
+  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
   T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR);
   T.curl=tex3D(64,64,64,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.REPEAT,gl.LINEAR);
   return true; }
@@ -662,8 +728,16 @@ const dirty={mass:true,sim:false,light:true};
 let frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
 function resetAccum(){ frames=0; }
 function poke(){ interacting=true; interactUntil=performance.now()+180; resetAccum(); }
-function markMass(){ dirty.mass=true; resetAccum(); }
-function markSim(){ dirty.sim=true; resetAccum(); }
+let autoGrowN=0, roomFlash=0;
+function markMass(){ dirty.mass=true; autoGrowN=0; resetAccum(); }
+function markSim(){ dirty.sim=true; autoGrowN=0; resetAccum(); }
+/* a change to how the fog moves or where it is: forget room the last run asked for; the wall check adds it back if still needed */
+function markSimU(){ REC.xpad=[0,0,0,0,0,0]; markSim(); }
+const FACE_NAMES=['left','right','bottom','top','back','front'];
+/* after each simulation: if fog piled against a wall, give it room on that side and run again */
+function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[];
+  w.forEach((v,f)=>{ if(f===2&&REC.floor) return; if(v>0.08){ const ax=f>>1; REC.xpad[f]=+Math.min(REC.xpad[f]+Math.max(sz[ax]*0.12,REC.size[ax]*0.12),REC.size[ax]*3).toPrecision(4); grown.push(FACE_NAMES[f]); } });
+  if(grown.length&&refit(REC)){ autoGrowN++; dirty.mass=true; roomFlash=performance.now(); toast('Gave the fog more room: '+grown.join(', ')); autosave(); } }
 function markLight(){ dirty.light=true; resetAccum(); }
 function markView(){ resetAccum(); }
 function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; resetAccum(); }
@@ -674,18 +748,20 @@ function frame(now){
   try{
     if(interacting&&now>interactUntil){ interacting=false; resetAccum(); }
     if(MAIN.N!==LOOK.grid){ MAIN.N=LOOK.grid; dirty.mass=true; }
+    if((dirty.mass||dirty.sim)&&!brushing&&refit(REC)){ dirty.mass=true; roomFlash=now; }
     if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
     if(dirty.sim){ simReset(MAIN,REC); dirty.sim=false; dirty.light=true; evolveStep=0; }
     const S=MAIN.sim; let simmed=false;
     if(!brushing&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
     else if(UI.playing&&!brushing){ simStep(MAIN,REC,S.dt||(S.steps?S.dt:0.02*REC.sim.eddy/Math.max(S.U,1e-3))); simmed=true; evolveStep++; }
+    if(S.steps>0&&S.step>=S.steps&&!S.checked&&!UI.playing&&!brushing){ S.checked=true; wallGrow(); }
     if(simmed){ if(S.step>=S.steps||S.step%4===0||UI.playing&&evolveStep%3===0) dirty.light=true; resetAccum(); }
     if(dirty.light){ lightUpdate(MAIN,REC); dirty.light=false; resetAccum(); }
     const fin=UI.quality==='final'&&!interacting&&!brushing&&!simmed&&!UI.playing;
     const moving=interacting||brushing||simmed||UI.playing;
     const sc=moving?(IS_MOBILE?0.4:0.5):fin?1:(IS_MOBILE?0.6:0.75); const vw=Math.max(16,Math.round(cw*sc)), vh=Math.max(16,Math.round(ch*sc));
     const target=fin?256:48;
-    if(frames<target||moving){ const blend=moving?1:1/(frames+1); renderPass(MAIN,REC,CAM,vw,vh,blend,fin,frames,moving?72:fin?300:140); frames++; }
+    if(frames<target||moving){ const blend=moving?1:1/(frames+1); const rk=roomK(REC); renderPass(MAIN,REC,CAM,vw,vh,blend,fin,frames,Math.round((moving?72:fin?300:140)*rk)); frames++; }
     displayPass(MAIN,cw,ch);
     if(capture){ const c=capture; capture=null; try{ c(glc); }catch(e){ console.error(e); } }
     drawOverlay();
@@ -704,25 +780,26 @@ const fmLen=v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+' km':v>=10?v.toFixed(0)+'
 let hover=null;
 function drawOverlay(){
   octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH);
-  const [W,H,D]=REC.size, x0=-W/2,x1=W/2,z0=-D/2,z1=D/2;
-  // bounds
-  octx.strokeStyle='rgba(166,203,221,.22)'; octx.lineWidth=1; octx.setLineDash([3,5]);
-  const C=[[x0,0,z0],[x1,0,z0],[x1,0,z1],[x0,0,z1]]; for(let i=0;i<4;i++){ const a=C[i], b=C[(i+1)%4]; line3(a,b); line3([a[0],H,a[2]],[b[0],H,b[2]]); line3(a,[a[0],H,a[2]]); } octx.setLineDash([]);
-  const lab=project([x0,H,z1]); if(lab){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(166,203,221,.6)'; octx.fillText(`${fmLen(W)} × ${fmLen(H)} × ${fmLen(D)}`,lab[0]+4,lab[1]-6); }
+  if(!REC.dom) return; const [W,H,D]=domSize(REC), [x0,y0,z0]=REC.dom[0], [x1,y1,z1]=REC.dom[1];
+  // the box: the simulation's room. It flashes when it grows to fit the fog
+  const fl=clamp(1-(performance.now()-roomFlash)/900,0,1); if(fl>0) poke();
+  octx.strokeStyle=fl>0?`rgba(239,178,77,${0.22+0.6*fl})`:REC.fit==='auto'?'rgba(166,203,221,.22)':'rgba(166,203,221,.4)'; octx.lineWidth=1; octx.setLineDash(REC.fit==='auto'?[3,5]:[]);
+  const C=[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]]; for(let i=0;i<4;i++){ const a=C[i], b=C[(i+1)%4]; line3(a,b); line3([a[0],y1,a[2]],[b[0],y1,b[2]]); line3(a,[a[0],y1,a[2]]); } octx.setLineDash([]);
+  const lab=project([x0,y1,z1]); if(lab){ octx.font='500 11px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(166,203,221,.6)'; octx.fillText(`${fmLen(W)} × ${fmLen(H)} × ${fmLen(D)}${REC.fit==='auto'?' · auto':' · locked'}`,lab[0]+4,lab[1]-6); }
   // scale reference: a 1.8 m figure at the front corner, and a ruler along the front edge
-  if(LOOK.figure){ const base=[x0-Math.max(W*0.04,0.6),0,z1], top=[base[0],1.8,base[2]]; const a=project(base), b=project(top);
+  if(LOOK.figure){ const base=[x0-Math.max(W*0.04,0.6),REC.floor?0:y0,z1], top=[base[0],base[1]+1.8,base[2]]; const a=project(base), b=project(top);
     if(a&&b&&a[1]-b[1]>6){ const h=a[1]-b[1], x=a[0]; octx.fillStyle='rgba(220,226,232,.55)'; octx.beginPath(); octx.arc(x,b[1]+h*0.07,h*0.07,0,Math.PI*2); octx.fill();
       octx.beginPath(); octx.moveTo(x-h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.1,b[1]+h*0.17); octx.lineTo(x+h*0.08,b[1]+h*0.55); octx.lineTo(x+h*0.06,a[1]); octx.lineTo(x+h*0.015,a[1]); octx.lineTo(x,b[1]+h*0.6); octx.lineTo(x-h*0.015,a[1]); octx.lineTo(x-h*0.06,a[1]); octx.lineTo(x-h*0.08,b[1]+h*0.55); octx.closePath(); octx.fill();
       octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillText('1.8 m',x+h*0.14,b[1]+8); }
-    const L=niceLen(W*0.25); const r0=[x0,0,z1+Math.max(D*0.03,0.3)]; const r1=[x0+L,0,r0[2]]; const p=project(r0), q=project(r1);
-    if(p&&q){ octx.strokeStyle='rgba(220,226,232,.5)'; octx.lineWidth=1.5; octx.beginPath(); octx.moveTo(p[0],p[1]); octx.lineTo(q[0],q[1]); octx.stroke(); for(const k of [0,0.5,1]){ const t=project([x0+L*k,0,r0[2]]); if(t){ octx.beginPath(); octx.moveTo(t[0],t[1]-4); octx.lineTo(t[0],t[1]+4); octx.stroke(); } }
+    const L=niceLen(W*0.25); const r0=[x0,base[1],z1+Math.max(D*0.03,0.3)]; const r1=[x0+L,base[1],r0[2]]; const p=project(r0), q=project(r1);
+    if(p&&q){ octx.strokeStyle='rgba(220,226,232,.5)'; octx.lineWidth=1.5; octx.beginPath(); octx.moveTo(p[0],p[1]); octx.lineTo(q[0],q[1]); octx.stroke(); for(const k of [0,0.5,1]){ const t=project([x0+L*k,base[1],r0[2]]); if(t){ octx.beginPath(); octx.moveTo(t[0],t[1]-4); octx.lineTo(t[0],t[1]+4); octx.stroke(); } }
       octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(220,226,232,.6)'; octx.fillText(fmLen(L),q[0]+6,q[1]+4); } }
   // brush ring, on the camera plane at the depth the stroke will land
   if(BRUSHES[UI.tool]&&hover){ const B=camBasis(CAM); const c=project(hover.p); if(c){ const rpx=UI.brushR/c[2]*(cssH/2)/B.tanY; const op=brushOp(hover.ctrl);
       octx.strokeStyle=op===1||op===5?'rgba(224,111,94,.95)':op===2?'rgba(166,203,221,.95)':'rgba(239,178,77,.95)'; octx.lineWidth=1.5; octx.setLineDash(op===1?[4,3]:[]);
       octx.beginPath(); octx.arc(c[0],c[1],rpx,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.globalAlpha=0.5; octx.beginPath(); octx.arc(c[0],c[1],rpx*0.5,0,Math.PI*2); octx.stroke(); octx.globalAlpha=1; } }
   // wind arrow on the ground, sun glyph in the sky
-  if(UI.tool==='wind'||drag&&drag.mode==='wind'||REC.sim.wind>0.02){ const wd=REC.sim.windDir*D2R; const L=Math.max(W,D)*0.32*(0.3+REC.sim.wind); const c=[0,Math.min(H*0.04,1),0]; const e=[Math.sin(wd)*L,c[1],-Math.cos(wd)*L];
+  if(UI.tool==='wind'||drag&&drag.mode==='wind'||REC.sim.wind>0.02){ const wd=REC.sim.windDir*D2R; const L=Math.max(...REC.size)*0.32*(0.3+REC.sim.wind); const c=[0,(REC.floor?0:y0)+Math.min(REC.size[1]*0.04,1),0]; const e=[Math.sin(wd)*L,0,-Math.cos(wd)*L];
     const a=project(add(c,mul(e,-0.5))), b=project(add(c,mul(e,0.5))); if(a&&b){ octx.globalAlpha=UI.tool==='wind'?0.95:0.35; octx.strokeStyle='#a6cbdd'; octx.lineWidth=2; octx.beginPath(); octx.moveTo(a[0],a[1]); octx.lineTo(b[0],b[1]); octx.stroke();
       const ang=Math.atan2(b[1]-a[1],b[0]-a[0]); octx.fillStyle='#a6cbdd'; octx.beginPath(); octx.moveTo(b[0]+Math.cos(ang)*8,b[1]+Math.sin(ang)*8); octx.lineTo(b[0]+Math.cos(ang+2.5)*9,b[1]+Math.sin(ang+2.5)*9); octx.lineTo(b[0]+Math.cos(ang-2.5)*9,b[1]+Math.sin(ang-2.5)*9); octx.fill(); octx.globalAlpha=1; } }
   if(UI.tool==='light'||drag&&drag.mode==='light'){ const B=camBasis(CAM); const s=project(add(CAM.tgt,mul(sunDir(),CAM.dist*0.7))); if(s){ octx.strokeStyle='#efb24d'; octx.fillStyle='rgba(239,178,77,.25)'; octx.lineWidth=1.5; octx.beginPath(); octx.arc(s[0],s[1],11,0,Math.PI*2); octx.fill(); octx.stroke();
@@ -739,22 +816,28 @@ function brushOp(ctrl){ const o=BRUSHES[UI.tool]; if(o===0&&ctrl) return 1; if(o
 let drag=null; const pointers=new Map();
 function tumble(dx,dy){ CAM.yaw-=dx*0.006; CAM.pitch=clamp(CAM.pitch+dy*0.006,-1.45,1.45); poke(); }
 function track(dx,dy){ const B=camBasis(CAM); const s=2*CAM.dist*CAM.tanY/cssH; CAM.tgt=add(CAM.tgt,add(mul(B.r,-dx*s),mul(B.u,dy*s))); poke(); }
-function dolly(k){ CAM.dist=clamp(CAM.dist*k,Math.max(...REC.size)*0.05,Math.max(...REC.size)*12); poke(); }
-function frameAll(){ const [W,H,D]=REC.size; CAM.tgt=[0,H*0.42,0]; CAM.dist=Math.hypot(W,H,D)*0.5/Math.tan(Math.atan(CAM.tanY)*0.92)*1.05; poke(); }
+function dolly(k){ const m=Math.max(...(REC.dom?domSize(REC):REC.size)); CAM.dist=clamp(CAM.dist*k,m*0.04,m*12); poke(); }
+function frameAll(){ if(!REC.dom) refit(REC,null,true); const [W,H,D]=domSize(REC), c=domCenter(REC); CAM.tgt=[c[0],REC.dom[0][1]+H*0.42,c[2]]; CAM.dist=Math.hypot(W,H,D)*0.5/Math.tan(Math.atan(CAM.tanY)*0.92)*1.05; poke(); }
 function brushDepthPoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const z=drag.depth; return add(ro,mul(rd,z/Math.max(dot(rd,B.f),1e-4))); }
 function startStroke(mx,my,ev){
   const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pk=pickRay(MAIN,REC,ro,rd); let p;
-  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else { const c=[0,REC.size[1]*0.4,0]; const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
-  const op=brushOp(ev.ctrlKey||ev.metaKey); const r=UI.brushR/Math.max(...REC.size);
+  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
+  const op=brushOp(ev.ctrlKey||ev.metaKey); const r=+UI.brushR.toPrecision(4);
   drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:UI.brushStr*(op===3?1:op===4?0.9:0.45),dabs:[]},lx:mx,ly:my};
   brushing=true; if(op!==3&&op!==4) putDab(p,[0,0,0]); }
-function putDab(p,dm){ const s=drag.stroke; const u=[p[0]/REC.size[0]+0.5,p[1]/REC.size[1],p[2]/REC.size[2]+0.5]; const du=[dm[0]/REC.size[0],dm[1]/REC.size[1],dm[2]/REC.size[2]];
-  const d=[...u,...du].map(v=>+v.toFixed(5)); s.dabs.push(d); dab(MAIN,REC,s.op,d,s.r,s.s); dirty.sim=true; resetAccum(); }
+const brushPlaneC=()=>REC.dom?[domCenter(REC)[0],REC.dom[0][1]+domSize(REC)[1]*0.35,domCenter(REC)[2]]:[0,REC.size[1]*0.4,0];
+function putDab(p,dm){ const s=drag.stroke; if(REC.floor&&p[1]<0) p=[p[0],0,p[2]];
+  const d=[...p,...dm].map(v=>+v.toPrecision(5)); s.dabs.push(d);
+  // a stroke heading out of the box: grow the box ahead of it and rebuild what is already there, so nothing flattens on a wall
+  if(REC.fit==='auto'&&GROW_OPS[s.op]&&outsideRoom(d,s.r)&&refit(REC,s)){ genMass(MAIN,REC,s); roomFlash=performance.now(); }
+  else dab(MAIN,REC,s.op,d,s.r,s.s);
+  dirty.sim=true; resetAccum(); }
+function outsideRoom(d,r){ const lo=REC.dom[0], hi=REC.dom[1], sz=domSize(REC); for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN; if(i===1&&REC.floor){ if(d[1]+r>hi[1]-m) return true; continue; } if(d[i]-r<lo[i]+m||d[i]+r>hi[i]-m) return true; } return false; }
 function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
   if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.06){ putDab(p,dm); drag.last=p; } }
   else if(L>UI.brushR*0.22){ const n=Math.min(8,Math.floor(L/(UI.brushR*0.22))); for(let i=1;i<=n;i++) putDab(add(drag.last,mul(dm,i/n)),[0,0,0]); drag.last=p; }
   hover={p,ctrl:drag.op===1}; }
-function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); pushUndo(); } dirty.sim=true; resetAccum(); }
+function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); REC.xpad=[0,0,0,0,0,0]; pushUndo(); } markSim(); }
 ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
@@ -766,7 +849,7 @@ ov.addEventListener('pointerdown',ev=>{
 });
 ov.addEventListener('pointermove',ev=>{
   const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
-  if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const c=[0,REC.size[1]*0.4,0]; const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }
+  if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }
   if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); track(cx-drag.cx,cy-drag.cy); drag.d=d; drag.cx=cx; drag.cy=cy; return; }
   if(drag.mode==='tumble'){ tumble(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='track'){ track(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
@@ -777,7 +860,7 @@ ov.addEventListener('pointermove',ev=>{
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
 function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
-  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSim(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
+  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSimU(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
 ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
 ov.addEventListener('pointerleave',()=>{ if(!drag) hover=null; });
 ov.addEventListener('wheel',ev=>{ ev.preventDefault(); dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
@@ -822,7 +905,7 @@ function buildRail(){ const r=$('#rail'); r.innerHTML=''; TOOLS.forEach((t,i)=>{
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="k">${t.key.toUpperCase()}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
 function setTool(id){ UI.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='orbit'?'grab':'crosshair'; hover=null; buildBrushRow(); }
 function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(BRUSHES[UI.tool]!=null?`<span>brush <b style="font-family:var(--f-mono)">${fmLen(UI.brushR)}</b> · [ ] to size</span>`:''); }
-function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.01,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
+function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.005,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
 function setQuality(q){ UI.quality=q; $('#qDraft').setAttribute('aria-pressed',q==='draft'); $('#qFinal').setAttribute('aria-pressed',q==='final'); resetAccum(); if(q==='final') toast('Final: full resolution, every detail octave, detailed self-shadowing'); }
 $('#qDraft').onclick=()=>setQuality('draft'); $('#qFinal').onclick=()=>setQuality('final');
 function togglePlay(){ UI.playing=!UI.playing; $('#playBtn').setAttribute('aria-pressed',UI.playing); $('#playIco').innerHTML=UI.playing?'<path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z"/>':'<path d="M2.5 1.5v9l7.5-4.5z"/>'; resetAccum(); }
@@ -862,22 +945,23 @@ function buildPanels(){
   refreshers.push(chips(zb,'Scale',Object.entries(CLASSES).map(([k,c])=>[k,c.label,c.range]),()=>REC.cls,v=>setClass(v)));
   const dims=document.createElement('div'); dims.className='dims'; dims.innerHTML=['Width','Height','Depth'].map((n,i)=>`<label>${n}<input type="number" id="dim${i}" min="0.1" step="any"></label>`).join(''); zb.appendChild(dims);
   const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
-  dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } REC.size[i]=clamp(v,0.1,5000); markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }; }); refreshers.push(dimRefresh);
-  refreshers.push(chips(zb,'Sits on',[[true,'Ground','Fog rests on a floor and spreads along it'],[false,'Nothing','Floating: clouds, puffs']],()=>REC.floor,v=>{ REC.floor=v; markSim(); pushUndo(); autosave(); }));
-  note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch.');
+  dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } const k=[1,1,1]; k[i]=clamp(v,0.1,5000)/REC.size[i]; resizeAsset(k); }; }); refreshers.push(dimRefresh);
+  refreshers.push(chips(zb,'Sits on',[[true,'Ground','Fog rests on a floor and spreads along it'],[false,'Nothing','Floating: clouds, puffs']],()=>REC.floor,v=>{ REC.floor=v; REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); }));
+  refreshers.push(chips(zb,'Room',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
+  note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch. The dashed box is only the simulation\'s room: on Auto it makes space wherever you pull or the fog drifts.');
   // simulate
   const mb=$('#simBody'); mb.innerHTML=''; const s=REC.sim;
   const md=()=>Math.max(...REC.size);
-  refreshers.push(slider(mb,S_('Age',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.02?'as sculpted':v<0.35?'young':v<0.7?'settled':'old & torn',markSim,false,'How long the fog has been drifting: young is dense and soft, old is torn into wisps')));
-  refreshers.push(slider(mb,S_('Turbulence',0,1,()=>REC.sim.turb,v=>REC.sim.turb=v,pct,markSim,false,'How hard it swirls')));
-  refreshers.push(slider(mb,S_('Eddy size',0.1,1500,()=>REC.sim.eddy,v=>REC.sim.eddy=v,fmLen,markSim,true,'Size of the biggest swirls')));
-  refreshers.push(slider(mb,S_('Sink ↔ rise',-1,1,()=>REC.sim.lift,v=>REC.sim.lift=v,v=>v<-0.05?'sinks':v>0.05?'rises':'neutral',markSim,false,'Cold fog sinks and spreads; steam and warm mist rise')));
-  refreshers.push(slider(mb,S_('Layering',0,1,()=>REC.sim.strat,v=>REC.sim.strat=v,pct,markSim,false,'Flattens the swirls into horizontal layers, as in calm, stable air')));
-  refreshers.push(slider(mb,S_('Calm core',0,1,()=>REC.sim.calm,v=>REC.sim.calm=v,pct,markSim,false,'Keeps the inside dense and quiet while the edges churn')));
-  if(REC.floor) refreshers.push(slider(mb,S_('Spread on ground',0,1,()=>REC.sim.spread,v=>REC.sim.spread=v,pct,markSim,false,'Fog piled on the ground slumps outward')));
-  refreshers.push(slider(mb,S_('Wind',0,1,()=>REC.sim.wind,v=>REC.sim.wind=v,pct,markSim,false,'Or use the Wind tool (7) and drag in the view')));
-  refreshers.push(slider(mb,S_('Wind toward',0,360,()=>REC.sim.windDir,v=>REC.sim.windDir=v,v=>v.toFixed(0)+'°',markSim)));
-  refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSim,false,'Fog evaporates as it ages')));
+  refreshers.push(slider(mb,S_('Age',0,1,()=>REC.sim.age,v=>REC.sim.age=v,v=>v<0.02?'as sculpted':v<0.35?'young':v<0.7?'settled':'old & torn',markSimU,false,'How long the fog has been drifting: young is dense and soft, old is torn into wisps')));
+  refreshers.push(slider(mb,S_('Turbulence',0,1,()=>REC.sim.turb,v=>REC.sim.turb=v,pct,markSimU,false,'How hard it swirls')));
+  refreshers.push(slider(mb,S_('Eddy size',0.1,1500,()=>REC.sim.eddy,v=>REC.sim.eddy=v,fmLen,markSimU,true,'Size of the biggest swirls')));
+  refreshers.push(slider(mb,S_('Sink ↔ rise',-1,1,()=>REC.sim.lift,v=>REC.sim.lift=v,v=>v<-0.05?'sinks':v>0.05?'rises':'neutral',markSimU,false,'Cold fog sinks and spreads; steam and warm mist rise')));
+  refreshers.push(slider(mb,S_('Layering',0,1,()=>REC.sim.strat,v=>REC.sim.strat=v,pct,markSimU,false,'Flattens the swirls into horizontal layers, as in calm, stable air')));
+  refreshers.push(slider(mb,S_('Calm core',0,1,()=>REC.sim.calm,v=>REC.sim.calm=v,pct,markSimU,false,'Keeps the inside dense and quiet while the edges churn')));
+  if(REC.floor) refreshers.push(slider(mb,S_('Spread on ground',0,1,()=>REC.sim.spread,v=>REC.sim.spread=v,pct,markSimU,false,'Fog piled on the ground slumps outward')));
+  refreshers.push(slider(mb,S_('Wind',0,1,()=>REC.sim.wind,v=>REC.sim.wind=v,pct,markSimU,false,'Or use the Wind tool (7) and drag in the view')));
+  refreshers.push(slider(mb,S_('Wind toward',0,360,()=>REC.sim.windDir,v=>REC.sim.windDir=v,v=>v.toFixed(0)+'°',markSimU)));
+  refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSimU,false,'Fog evaporates as it ages')));
   // detail
   const db=$('#detBody'); db.innerHTML='';
   refreshers.push(slider(db,S_('Wisps ↔ billows',0,1,()=>REC.det.billow,v=>REC.det.billow=v,v=>v<0.33?'wispy':v>0.67?'billowy':'mixed',markLight)));
@@ -919,7 +1003,10 @@ function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are look
   if(v==='backlit') set(12,28,1,5200,0.35,10500); else if(v==='side') set(18,90,1,5600,0.4,10500); else if(v==='front') set(25,180,1,5800,0.45,10000);
   else if(v==='overcast') set(55,30,0.12,6500,1.6,7000); else if(v==='dusk') set(3,-25,0.9,2600,0.3,13000); else set(28,60,0.06,7800,0.08,14000);
   LOOK.preset=v; markLight(); refreshPanels(); saveLook(); }
-function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls; REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
+/* scale the asset per axis: the sculpt goes with it, and the room refits */
+function scaleStrokes(rec,k){ const kr=Math.cbrt(k[0]*k[1]*k[2]); const q=v=>+v.toPrecision(5); rec.strokes=rec.strokes.map(s=>({...s,r:q(s.r*kr),dabs:s.dabs.map(d=>d.map((v,i)=>q(v*k[i%3])))})); }
+function resizeAsset(k){ REC.size=REC.size.map((v,i)=>+(v*k[i]).toPrecision(4)); scaleStrokes(REC,k); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }
+function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls; REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); scaleStrokes(REC,[k,k,k]); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
   UI.brushR*=k; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); buildHint(); }
 function startFrom(k){ const keepName=REC.name===TEMPLATES[REC.template].label; const r=makeRecipe(k,REC.cls); if(!keepName) r.name=REC.name; REC=r; $('#assetName').value=REC.name;
   UI.brushR=Math.max(...REC.size)*0.12; markMass(); pushUndo(); autosave(); buildPanels(); frameAll(); hideVariations(); toastUndo('Started a new '+TEMPLATES[k].label.toLowerCase()); }
@@ -927,7 +1014,7 @@ function startFrom(k){ const keepName=REC.name===TEMPLATES[REC.template].label; 
 /* ---------------- undo ---------------- */
 const undoS=[], redoS=[];
 function pushUndo(){ const s=JSON.stringify(REC); if(undoS[undoS.length-1]===s) return; undoS.push(s); if(undoS.length>60) undoS.shift(); redoS.length=0; autosave(); }
-function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&old.strokes.length===REC.strokes.length&&MAIN.N===LOOK.grid;
+function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&old.strokes.length===REC.strokes.length&&MAIN.N===LOOK.grid;
   if(shapeSame) markSim(); else markMass(); buildPanels(); autosave(); }
 function undo(){ if(undoS.length<2){ toast('Nothing to undo'); return; } redoS.push(undoS.pop()); restore(undoS[undoS.length-1]); toast('Undone'); }
 function redo(){ if(!redoS.length){ toast('Nothing to redo'); return; } const s=redoS.pop(); undoS.push(s); restore(s); toast('Redone'); }
@@ -938,7 +1025,7 @@ function saveLook(){ store.set('brume.designer.look',LOOK); }
 const THUMB=mkCtx(56); let varRun=0;
 function jitterRecipe(base,i){ const r=JSON.parse(JSON.stringify(base)); const R=mulberry(base.seed*31+i*977+Date.now()%1000); const j=(v,a,lo,hi)=>clamp(v+(R()*2-1)*a,lo,hi);
   r.seed=Math.floor(R()*9999); r.sim.turb=j(r.sim.turb,0.22,0.05,1); r.sim.eddy=+(r.sim.eddy*Math.exp((R()*2-1)*0.45)).toPrecision(3); r.sim.age=j(r.sim.age,0.22,0.1,1); r.sim.lift=j(r.sim.lift,0.25,-1,1);
-  r.det.billow=j(r.det.billow,0.3,0,1); r.det.brk=j(r.det.brk,0.2,0,0.9); r.det.amt=j(r.det.amt,0.15,0.2,1); r.sim.windDir=(r.sim.windDir+(R()*2-1)*60+360)%360; return r; }
+  r.det.billow=j(r.det.billow,0.3,0,1); r.det.brk=j(r.det.brk,0.2,0,0.9); r.det.amt=j(r.det.amt,0.15,0.2,1); r.sim.windDir=(r.sim.windDir+(R()*2-1)*60+360)%360; r.xpad=[0,0,0,0,0,0]; if(r.fit==='auto') r.dom=null; return r; }
 async function renderThumb(rec,canvas,w,h){
   genMass(THUMB,rec); simReset(THUMB,rec); while(THUMB.sim.step<THUMB.sim.steps){ simStep(THUMB,rec); if(THUMB.sim.step%20===0) await yieldUI(); }
   lightUpdate(THUMB,rec); const cam={...CAM,tgt:CAM.tgt.slice()};
@@ -952,7 +1039,7 @@ async function renderThumb(rec,canvas,w,h){
   c2.putImageData(im,0,0); }
 async function makeVariations(){ const run=++varRun; const strip=$('#strip'); strip.hidden=false; strip.innerHTML='<div class="lab"><b>Variations</b>Click one to use it. Your strokes are kept.</div>';
   const base=JSON.parse(JSON.stringify(REC)); const W=224,H=126;
-  const items=[0,1,2,3,4,5].map(i=>{ const r=jitterRecipe(base,i); const b=document.createElement('button'); b.className='var busy'; b.innerHTML=`<canvas width="${W}" height="${H}"></canvas><span>take ${i+1}</span>`; b.onclick=()=>{ const keep={name:REC.name,strokes:REC.strokes}; REC={...r,...keep}; markMass(); pushUndo(); buildPanels(); toastUndo('Using take '+(i+1)); }; strip.appendChild(b); return {r,b}; });
+  const items=[0,1,2,3,4,5].map(i=>{ const r=jitterRecipe(base,i); const b=document.createElement('button'); b.className='var busy'; b.innerHTML=`<canvas width="${W}" height="${H}"></canvas><span>take ${i+1}</span>`; b.onclick=()=>{ const keep={name:REC.name,strokes:REC.strokes}; REC={...JSON.parse(JSON.stringify(r)),...keep}; markMass(); pushUndo(); buildPanels(); toastUndo('Using take '+(i+1)); }; strip.appendChild(b); return {r,b}; });
   const close=document.createElement('button'); close.className='btn'; close.textContent='Close'; close.style.alignSelf='center'; close.onclick=hideVariations; strip.appendChild(close);
   resize();
   for(const it of items){ if(run!==varRun) return; await renderThumb(it.r,it.b.querySelector('canvas'),W,H); it.b.classList.remove('busy'); await yieldUI(); }
@@ -967,7 +1054,7 @@ function buildShelf(){ const b=$('#shelfBody'); b.innerHTML=''; const items=shel
   if(!items.length){ note(b,'Saved assets show up here, kept in this browser. A recipe file holds the whole asset, strokes and all, for sharing.'); return; }
   const g=document.createElement('div'); g.className='shelf'; b.appendChild(g);
   items.forEach((it,i)=>{ const e=document.createElement('button'); e.className='it'; e.title='Open '+it.rec.name; e.innerHTML=`<img alt=""><span></span><i aria-label="Remove" title="Remove from shelf">×</i>`; e.querySelector('img').src=it.thumb||''; e.querySelector('span').textContent=it.rec.name;
-    e.onclick=ev=>{ if(ev.target.tagName==='I'){ const s=shelf(); s.splice(i,1); store.set('brume.designer.shelf',s); buildShelf(); return; } REC=JSON.parse(JSON.stringify(it.rec)); $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); };
+    e.onclick=ev=>{ if(ev.target.tagName==='I'){ const s=shelf(); s.splice(i,1); store.set('brume.designer.shelf',s); buildShelf(); return; } REC=migrateRecipe(JSON.parse(JSON.stringify(it.rec))); $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); };
     g.appendChild(e); }); }
 function saveToShelf(){ capture=c=>{ const t=document.createElement('canvas'); t.width=320; t.height=180; const x=t.getContext('2d'); const a=c.width/c.height, b=16/9; let sw=c.width, sh=c.height, sx=0, sy=0; if(a>b){ sw=c.height*b; sx=(c.width-sw)/2; } else { sh=c.width/b; sy=(c.height-sh)/2; } x.drawImage(c,sx,sy,sw,sh,0,0,320,180);
     const items=shelf().filter(it=>it.rec.name!==REC.name); items.unshift({rec:JSON.parse(JSON.stringify(REC)),thumb:t.toDataURL('image/jpeg',0.8)}); if(!store.set('brume.designer.shelf',items.slice(0,24))) toast('This browser would not keep it. Save a recipe file instead.'); else toast('Saved '+REC.name+' to the shelf'); buildShelf(); }; }
@@ -977,7 +1064,7 @@ async function offerFile(name,data,mime){
 const slug=s=>(s||'fog').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||'fog';
 function saveRecipeFile(){ offerFile(slug(REC.name)+'.brume.json',JSON.stringify({brume:'designer-recipe',look:LOOK,...REC},null,1),'application/json'); }
 function loadRecipeText(txt){ try{ const j=JSON.parse(txt); if(!j.size||!j.sim||!j.template) throw new Error('not a Brume recipe'); const r=makeRecipe(j.template,j.cls||'mid',j.seed||1);
-    REC={...r,...j,sim:{...r.sim,...j.sim},det:{...r.det,...j.det},den:{...r.den,...j.den},strokes:j.strokes||[]}; delete REC.brume; delete REC.look; $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); }
+    REC=migrateRecipe({...r,...j,v:j.v||1,sim:{...r.sim,...j.sim},det:{...r.det,...j.det},den:{...r.den,...j.den},strokes:j.strokes||[]}); delete REC.brume; delete REC.look; $('#assetName').value=REC.name; markMass(); pushUndo(); buildPanels(); frameAll(); toastUndo('Opened '+REC.name); }
   catch(e){ toast('That file is not a Brume recipe ('+e.message+')'); } }
 $('#fileIn').addEventListener('change',ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(f) f.text().then(loadRecipeText); });
 ['dragenter','dragover'].forEach(t=>$('#view').addEventListener(t,ev=>{ ev.preventDefault(); $('#drop').hidden=false; }));
@@ -1004,14 +1091,14 @@ geo.addAttrib(hou.attribType.Prim, "name", "")
 vol.setAttribValue("name", "density")
 # density is extinction per metre: render with density scale 1, scattering ~0.98, droplet phase g ~${mieParams(meta.droplet_um)[0].toFixed(2)}
 `; }
-function openExport(){ const m=$('#mBody'); const ed=dimsFor(REC.size,exportN);
-  m.innerHTML=`<p>Exports the fog as you see it, detail included, as a voxel grid in metres: <b>${fmLen(REC.size[0])} × ${fmLen(REC.size[1])} × ${fmLen(REC.size[2])}</b>. The zip holds the density (half float), its bounds and settings, the recipe to reopen it here, and a Python SOP that loads it in Houdini.</p>
+function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); const DS=domSize(REC);
+  m.innerHTML=`<p>Exports the fog as you see it, detail included, as a voxel grid in metres covering the box: <b>${fmLen(DS[0])} × ${fmLen(DS[1])} × ${fmLen(DS[2])}</b>. The zip holds the density (half float), its bounds and settings, the recipe to reopen it here, and a Python SOP that loads it in Houdini.</p>
     <div class="row wide"><label>Resolution</label><div class="chips" id="exRes"></div></div>
     <p id="exInfo" style="font-family:var(--f-mono);font-size:12px"></p>
     <div class="btns"><button class="btn prim" id="exGo">Bake and save .zip</button></div>
     <p id="exStatus"></p>
     <div style="display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--f-mono);color:var(--faint)">Houdini · Python SOP</span><button class="btn" id="exCopy" style="margin-left:auto">Copy</button></div><pre class="code" id="exPy"></pre>`;
-  const draw=()=>{ const d=dimsFor(REC.size,exportN); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...REC.size)/exportN)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const n of [128,192,256,320]){ const b=document.createElement('button'); b.className='chip'; b.textContent=n; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
+  const draw=()=>{ const d=dimsFor(DS,exportN); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/exportN)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const n of [128,192,256,320]){ const b=document.createElement('button'); b.className='chip'; b.textContent=n; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
   draw(); const py=houdiniPy(REC.name,{droplet_um:REC.den.drop}); $('#exPy').textContent=py;
   $('#exCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
   $('#exGo').onclick=doExport; $('#modal').hidden=false; $('#mClose').focus(); }
@@ -1019,8 +1106,8 @@ async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disa
   try{ if(MAIN.sim.step<MAIN.sim.steps){ st.textContent='Finishing the simulation…'; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(MAIN.sim.step%10===0) await yieldUI(); } lightUpdate(MAIN,REC); }
     const b=await bake(MAIN,REC,exportN,p=>{ st.textContent='Baking '+Math.round(p*100)+'%'; }); st.textContent='Packing…'; await yieldUI();
     const h=new Uint16Array(b.data.length); let mx=0; for(let i=0;i<b.data.length;i++){ h[i]=f32to16(b.data[i]); if(b.data[i]>mx) mx=b.data[i]; }
-    const meta={format:'brume-designer-volume',version:1,name:REC.name,resolution:b.dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:[-REC.size[0]/2,0,-REC.size[2]/2],bbox_max:[REC.size[0]/2,REC.size[1],REC.size[2]/2],
-      voxel_size_m:REC.size.map((v,i)=>v/b.dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor};
+    const meta={format:'brume-designer-volume',version:1,name:REC.name,resolution:b.dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:REC.dom[0],bbox_max:REC.dom[1],
+      voxel_size_m:domSize(REC).map((v,i)=>v/b.dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor};
     const name=slug(REC.name); const enc=new TextEncoder();
     if(!window.fflate) throw new Error('The zip library did not load; check the connection and try again.');
     const zip=fflate.zipSync({[name+'/density.f16']:[new Uint8Array(h.buffer),{level:0}],[name+'/meta.json']:enc.encode(JSON.stringify(meta,null,1)),[name+'/recipe.brume.json']:enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC})),[name+'/load_in_houdini.py']:enc.encode(houdiniPy(REC.name,meta))});
@@ -1043,9 +1130,9 @@ function fail(msg){ const l=$('#loader'); l.hidden=false; l.classList.add('err')
 
 /* ---------------- boot ---------------- */
 async function boot(){
-  const saved=store.get('brume.designer.current'); if(saved&&saved.size&&saved.sim&&TEMPLATES[saved.template]){ const r=makeRecipe(saved.template,saved.cls||'mid',saved.seed); REC={...r,...saved,sim:{...r.sim,...saved.sim},det:{...r.det,...saved.det},den:{...r.den,...saved.den}}; }
+  const saved=store.get('brume.designer.current'); if(saved&&saved.size&&saved.sim&&TEMPLATES[saved.template]){ const r=makeRecipe(saved.template,saved.cls||'mid',saved.seed); REC=migrateRecipe({...r,...saved,v:saved.v||1,sim:{...r.sim,...saved.sim},det:{...r.det,...saved.det},den:{...r.den,...saved.den}}); }
   const lk=store.get('brume.designer.look'); if(lk) Object.assign(LOOK,lk); else applyLight('backlit');
-  try{ if(window.__BRUME_TEST){ Object.assign(LOOK,window.__BRUME_TEST.look||{}); if(window.__BRUME_TEST.rec) REC=window.__BRUME_TEST.rec; } }catch(_){}
+  try{ if(window.__BRUME_TEST){ Object.assign(LOOK,window.__BRUME_TEST.look||{}); if(window.__BRUME_TEST.rec) REC=migrateRecipe(window.__BRUME_TEST.rec); } }catch(_){}
   $('#assetName').value=REC.name; UI.brushR=Math.max(...REC.size)*0.12;
   buildRail(); buildHint(); buildPanels();
   if(!initGL()) return;

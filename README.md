@@ -28,6 +28,6 @@ Live: https://x14halo.github.io/brume/
 
 ## Designer (rebuild, step 1)
 
-`designer/` is the start of the rebuild: a black void for designing one fog asset at a time. Pick a starting shape (fog bank, ground fog, mist veil, cloud mass, rising wisps, tendrils, smoke puff), sculpt it with brushes (add, erase, smooth, pull, comb, tear), let it drift and churn in a small GPU simulation, then set detail, density and look-dev light. Sizes are real metres in three scale classes, so changing size re-runs the fog instead of stretching it. Variations gives six takes, the shelf keeps favourites, recipes save as JSON, and Export bakes the density with a Houdini loader script.
+`designer/` is the start of the rebuild: a black void for designing one fog asset at a time. Pick a starting shape (fog bank, ground fog, mist veil, cloud mass, rising wisps, tendrils, smoke puff), sculpt it with brushes (add, erase, smooth, pull, comb, tear), let it drift and churn in a small GPU simulation, then set detail, density and look-dev light. Sizes are real metres in three scale classes, so changing size re-runs the fog instead of stretching it. The dashed box is only the simulation's room: on Auto it fits itself around the fog, grows ahead of a stroke that reaches a wall, and gives the fog more room if a simulation piles it against one; Locked keeps it fixed. Variations gives six takes, the shelf keeps favourites, recipes save as JSON, and Export bakes the density with a Houdini loader script.
 
 Live: https://x14halo.github.io/brume/designer/
