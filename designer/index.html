@@ -881,7 +881,12 @@ function refit(rec,extra,force){ if(!rec.dom||force){ rec.dom=fitDomain(rec,extr
   return true; }
 
 /* ---------------- state ---------------- */
-const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,preset:'backlit'};
+const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,preset:'backlit',daylight:'physical'};
+/* physical daylight: a low sun shines through far more air (air mass, Kasten-Young) so it is dimmer, and the sky darkens with it.
+   Sun strength and Sky are then the values at a high sun. */
+function airMass(el){ const e=Math.max(el,-0.5); return 1/(Math.sin(Math.max(e,0.01)*D2R)+0.50572*Math.pow(e+6.07995,-1.6364)); }
+function daylight(){ if(LOOK.daylight!=='physical') return {sun:1,sky:1}; const el=LOOK.el; const sun=Math.exp(-0.15*(airMass(el)-1))*clamp((el+1)/3,0,1);   // clear air, visible light
+  const sky=0.22+0.78*Math.sqrt(clamp(Math.sin(Math.max(el,0)*D2R)/Math.sin(60*D2R),0,1)); return {sun,sky}; }
 let REC=makeRecipe('bank','mid',1234);
 let TEST_GRID=0, TEST_NOFIT=false; try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) TEST_GRID=window.__BRUME_TEST.grid; if(window.__BRUME_TEST&&window.__BRUME_TEST.nofit) TEST_NOFIT=true; }catch(_){}
 /* ---------------- detail level: how heavy an asset is to simulate, store and render ----------------
@@ -1039,7 +1044,7 @@ function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps){
   const pr=use('render'); densUniforms(pr,ctx,rec,final); bind3(pr,4,'uLV',ctx.light); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr,'uPrev',6);
   const B=camBasis(cam); u3v(pr,'uCam',B.pos); u3v(pr,'uCR',B.r); u3v(pr,'uCU',B.u); u3v(pr,'uCF',B.f); u1f(pr,'uTanY',B.tanY); u2f(pr,'uRes',w,h);
   u1f(pr,'uFrame',frameNo); u1f(pr,'uBlend',blend); u1i(pr,'uSteps',steps); u1i(pr,'uFinal',final?1:0); u1i(pr,'uBg',LOOK.bg);
-  const L=sunDir(); u3v(pr,'uL',L); const sunI=LOOK.sunI*3.2*clamp(L[1]*4+0.25,0,1); u3v(pr,'uSunC',kelvin(LOOK.sunK).map(v=>v*sunI)); u3v(pr,'uSkyC',kelvin(LOOK.skyK).map(v=>v*LOOK.sky*0.32));
+  const L=sunDir(); u3v(pr,'uL',L); const DL=daylight(); const sunI=LOOK.sunI*3.2*(LOOK.daylight==='physical'?DL.sun:clamp(L[1]*4+0.25,0,1)); u3v(pr,'uSunC',kelvin(LOOK.sunK).map(v=>v*sunI)); u3v(pr,'uSkyC',kelvin(LOOK.skyK).map(v=>v*LOOK.sky*0.32*DL.sky));
   u1f(pr,'uMS',rec.den.ms); u4v(pr,'uPh',mieParams(rec.den.drop)); u1f(pr,'uFloorAlb',LOOK.bg===0?0.07:0.16); u1f(pr,'uGrid',Math.pow(10,Math.floor(Math.log10(Math.max(...rec.size)*0.12))));
   const alb=hexLin(rec.den.tint).map(v=>v*(rec.den.alb??0.985)); u3v(pr,'uAlbC',alb); u3v(pr,'uGlowC',hexLin(rec.den.glowC).map(v=>v*(rec.den.glow||0)*1.2));
   u1f(pr,'uFar',cam.dist*10+Math.max(...domSize(rec))*3+(rec.gnd?rec.gnd.L*4:0));
@@ -1146,7 +1151,7 @@ function frame(now){
     const wantN=simN(REC); if(MAIN.N!==wantN){ MAIN.N=wantN; dirty.mass=true; }
     if(!REC.dom){ refit(REC,null,true); dirty.mass=true; }
     if(changeN!==FIT.seen&&!brushing){ FIT.seen=changeN; startFit(); }      // something changed: measure the room again (quick, low resolution)
-    if(FIT.on&&!brushing){ stepFit(IS_MOBILE?6:9); if(FIT.on){ drawOverlay(); if(now-hudT>200){ hudT=now; $('#hud').textContent='fitting the room to the fog over the timeline · '+Math.round(FIT.ctx.sim.step/Math.max(FIT.ctx.sim.steps,1)*100)+'%'; } return; } }   // keep the current view until the room is measured
+    if(FIT.on&&!brushing) stepFit(IS_MOBILE?4:6);                          // measured in the background; the view keeps rendering
     if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
     if(exporting) return;
     if(dirty.sim){ simReset(MAIN,REC,viewTime(REC)); dirty.sim=false; dirty.light=true; evolveStep=0; }
@@ -1287,9 +1292,10 @@ ov.addEventListener('pointermove',ev=>{
     const w=add(mul(r,dx),mul(f,-dy)); REC.sim.windDir=((Math.atan2(w[0],-w[2])/D2R)+360)%360; REC.sim.wind=clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1); drag.label=`wind ${(REC.sim.wind*100).toFixed(0)}% toward ${REC.sim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag) return; if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
   if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markSimU(); } else if(drag.mode==='source'){ pushUndo(); markSimU(); refreshPanels(); } else if(drag.mode==='light'){ saveLook(); } drag=null; resetAccum(); }
-ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer);
+ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer); ov.addEventListener('lostpointercapture',endPointer);
+addEventListener('blur',()=>{ if(drag&&drag.mode==='brush'){ endStroke(); drag=null; } pointers.clear(); brushing=false; });
 ov.addEventListener('pointerleave',()=>{ if(!drag) hover=null; });
 ov.addEventListener('wheel',ev=>{ ev.preventDefault(); dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
 const typing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); };
@@ -1530,6 +1536,7 @@ function buildPanels(){
   refreshers.push(slider(lb,L_('Sky',0,3,()=>LOOK.sky,v=>LOOK.sky=v,v=>v.toFixed(2),markView)));
   refreshers.push(slider(lb,L_('Exposure',-5,5,()=>LOOK.expo,v=>LOOK.expo=v,v=>(v>=0?'+':'')+v.toFixed(1)+' EV',markView)));
   refreshers.push(chips(lb,'Background',[[0,'Black'],[1,'Grey'],[2,'Sky']],()=>LOOK.bg,v=>{ LOOK.bg=v; markView(); saveLook(); }));
+  refreshers.push(chips(lb,'Daylight',[['physical','Physical','A low sun is dimmer and the sky darker, as in real daylight. Sun strength and Sky are their values at a high sun'],['manual','Manual','Sun and sky stay as set, whatever the sun height']],()=>LOOK.daylight||'physical',v=>{ LOOK.daylight=v; markView(); saveLook(); }));
   refreshers.push(chips(lb,'Scale guide',[[true,'On'],[false,'Off']],()=>LOOK.figure,v=>{ LOOK.figure=v; saveLook(); }));
   buildBrushRow(); buildShelf(); drawTimeline();
 }
@@ -1594,9 +1601,9 @@ function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=nu
   brushRefs.push(slider(lb,{label:'Strength',min:0.05,max:1,get:()=>UI.brushStr,set:v=>{ UI.brushStr=v; },fmt:pct}));
   note(lb,'[ and ] change the radius. Ctrl+Z undoes a stroke.'); }
 function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are looking from
-  const set=(el,rel,I,K,sky,skyK)=>{ LOOK.el=el; LOOK.az=((-yaw+rel)%360+540)%360-180; LOOK.sunI=I; LOOK.sunK=K; LOOK.sky=sky; LOOK.skyK=skyK; };
+  const set=(el,rel,I,K,sky,skyK,ex=0)=>{ LOOK.el=el; LOOK.az=((-yaw+rel)%360+540)%360-180; LOOK.sunI=I; LOOK.sunK=K; LOOK.sky=sky; LOOK.skyK=skyK; LOOK.expo=ex; };   // a preset is a whole look, exposure included
   if(v==='backlit') set(12,28,1,5200,0.35,10500); else if(v==='side') set(18,90,1,5600,0.4,10500); else if(v==='front') set(25,180,1,5800,0.45,10000);
-  else if(v==='overcast') set(55,30,0.12,6500,1.6,7000); else if(v==='dusk') set(3,-25,0.9,2600,0.3,13000); else set(28,60,0.06,7800,0.08,14000);
+  else if(v==='overcast') set(55,30,0.12,6500,1.6,7000); else if(v==='dusk') set(3,-25,1.2,2600,0.3,13000,1.5); else set(28,60,0.06,7800,0.08,14000);
   LOOK.preset=v; markLight(); refreshPanels(); saveLook(); }
 /* scale the asset per axis: the sculpt goes with it, and the room refits */
 function scaleStrokes(rec,k){ const kr=Math.cbrt(k[0]*k[1]*k[2]); const q=v=>+v.toPrecision(5); rec.strokes=rec.strokes.map(s=>({...s,r:q(s.r*kr),dabs:s.dabs.map(d=>d.map((v,i)=>q(v*k[i%3])))})); }
@@ -1739,7 +1746,7 @@ $('#exportBtn').onclick=openExport; $('#mClose').onclick=closeModal; $('#modal')
 /* ---------------- status ---------------- */
 let lastDomS=''; function updateHud(vw,vh,fin,target){ const ds=JSON.stringify(REC.dom); if(ds!==lastDomS){ lastDomS=ds; lodRefresh(); } const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
   const bar=$('#simBar'); bar.style.width=(simDone?Math.min(1,frames/target):p)*100+'%'; bar.classList.toggle('fin',fin);
-  const st=brushing?'sculpting':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'playing':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
+  const st=brushing?'sculpting':FIT.on?'fitting the room '+Math.round(FIT.ctx.sim.step/Math.max(FIT.ctx.sim.steps,1)*100)+'%':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'playing':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
   $('#hud').textContent=`${MAIN.dims?MAIN.dims.join('×'):''} voxels · ${fin?'final':'draft'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
 function toast(msg){ const t=$('#toast'); t.innerHTML=''; t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2400); }
 function toastUndo(msg){ const t=$('#toast'); t.innerHTML=''; const s=document.createElement('span'); s.textContent=msg; const b=document.createElement('button'); b.textContent='Undo'; b.onclick=()=>{ undo(); t.hidden=true; }; t.append(s,b); t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,4000); }
