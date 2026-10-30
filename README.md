@@ -34,8 +34,8 @@ Live: https://x14halo.github.io/brume/
 - **Stand-in ground** to design against (flat, slope, peak, valley, bowl, street, pool, lake). Fog rests on it, drains down it, flows over and along it, and it casts shadows. Fog types that form by a rule (a layer that pools in hollows, fill to a level, upslope on the windward side, stacked sheets, a deck, a lid, even haze) form relative to it.
 - **Emitters**: draw the source on the ground (disc, rectangle, line, ring) with the Source tool, then set soft edge, patchiness, pulse, rate, push, heat, spread, lifetime, tail fade and source fade. Plumes rise, level off as they cool and bend over in the wind.
 - **Wind** gusts and lulls that roll through with the wind, veer slowly and slow near the ground.
-- **Sculpt** with brushes (add, erase, smooth, pull, comb, tear), one-click detail styles, density, tint, brightness, self glow and look-dev light.
-- **Real sizes** in three scale classes; the simulation box fits itself around the fog (Auto) or stays put (Locked).
+- **Sculpt** with brushes (add, erase, smooth, pull, comb, tear; pull and comb resample sharply so strokes keep the detail), one-click detail styles, density, tint, brightness, self glow and look-dev light.
+- **Real sizes** in three scale classes. On Auto the simulation box is measured, not guessed: a quick low-resolution run of the whole timeline (to Out) finds where the fog actually goes and the box is cut to that, plus a few voxels. A fixed voxel budget is then spent on that box, so a tighter box means finer voxels. Locked keeps the box as it is.
 - **Detail level** per asset (Soft, Medium, Detailed, Hero, or Auto) sets the sim grid, detail octaves and export resolution, with export size and render weight shown.
 - **Timeline**: scrub the simulation, set In and Out on the stretch you like, set frames and fps, retime (slow motion re-simulates in finer steps rather than blending frames), extend a range for a longer shot, or Hold so the fog churns in place.
 - **Export** this frame or the whole In–Out sequence as half-float density with a Houdini Python SOP that loads the right frame; recipes save as JSON.

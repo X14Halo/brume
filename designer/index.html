@@ -325,13 +325,19 @@ void main(){
   else if(uForm==7){ mf=exp(-max(hy,0.)/uF0.x)*(0.85+disp/max(uNoiseAmp,1e-3)*0.15); }
   m=1.-(1.-m)*(1.-clamp(mf*rgn,0.,1.));
   if(uGround>0) m*=smoothstep(-uSoft*0.5,uSoft*0.5,hy);                         // nothing inside the ground
-  m*=smoothstep(0.,0.04,u.x)*smoothstep(1.,0.96,u.x)*smoothstep(1.,0.96,u.y)*smoothstep(0.,0.04,u.z)*smoothstep(1.,0.96,u.z)*(uFl>0.5?1.:smoothstep(0.,0.04,u.y));
+  vec3 fw=2./uDims; m*=smoothstep(0.,fw.x,u.x)*smoothstep(0.,fw.x,1.-u.x)*smoothstep(0.,fw.y,1.-u.y)*smoothstep(0.,fw.z,u.z)*smoothstep(0.,fw.z,1.-u.z)*(uFl>0.5?1.:smoothstep(0.,fw.y,u.y));   // a thin fade at the walls, in voxels
   o=vec4(clamp(m,0.,1.),0.,0.,1.);
 }`;
 
 /* one brush dab on the mass grid (only the slices and rect the dab touches are drawn) */
 const FS_DAB=HEAD+VOX_GLSL+`
 uniform sampler3D uM; uniform sampler3D uNT; uniform int uOp; uniform vec3 uC, uDir; uniform float uR, uS; out vec4 o;
+/* sharp resampling for moving fog around: Catmull-Rom, clamped to the neighbours so it never rings. Linear sampling would blur a little on every dab */
+vec4 crw(float t){ float t2=t*t, t3=t2*t; return vec4(-0.5*t3+t2-0.5*t,1.5*t3-2.5*t2+1.,-1.5*t3+2.*t2+0.5*t,0.5*t3-0.5*t2); }
+float sampleC(vec3 u){ vec3 g=u*uDims-0.5, i=floor(g), f=g-i; vec4 wx=crw(f.x), wy=crw(f.y), wz=crw(f.z); float s=0., mn=1e9, mx=-1e9;
+  for(int z=0;z<4;z++) for(int y=0;y<4;y++) for(int x=0;x<4;x++){ float v=texelFetch(uM,ivec3(clamp(i+vec3(x-1,y-1,z-1),vec3(0.),uDims-1.)),0).r; s+=v*wx[x]*wy[y]*wz[z];
+    if(x>0&&x<3&&y>0&&y<3&&z>0&&z<3){ mn=min(mn,v); mx=max(mx,v); } }
+  return clamp(s,mn,mx); }
 void main(){
   vec3 u=vU(), p=u2p(u); float m=textureLod(uM,u,0.).r;
   float d=length(p-uC)/uR; if(d>=1.){ o=vec4(m,0,0,1); return; }
@@ -341,8 +347,9 @@ void main(){
   else if(uOp==2){ vec3 e=vec3(uR*0.18)/uSize; float a=0.;      // smooth
     a+=textureLod(uM,u+vec3(e.x,0,0),0.).r+textureLod(uM,u-vec3(e.x,0,0),0.).r+textureLod(uM,u+vec3(0,e.y,0),0.).r+textureLod(uM,u-vec3(0,e.y,0),0.).r+textureLod(uM,u+vec3(0,0,e.z),0.).r+textureLod(uM,u-vec3(0,0,e.z),0.).r;
     m=mix(m,a/6.,clamp(s*1.4,0.,1.)); }
-  else if(uOp==3){ m=textureLod(uM,p2u(p-uDir*f),0.).r; }      // pull: drag the mass along
-  else if(uOp==4){ float a=0.; for(int k=0;k<6;k++) a+=textureLod(uM,p2u(p-uDir*f*(float(k)/5.)*1.6),0.).r; m=mix(m,a/6.,clamp(f*1.2,0.,1.)); } // smear / comb
+  else if(uOp==3){ m=sampleC(p2u(p-uDir*f)); }                  // pull: drag the mass along
+  else if(uOp==4){ float n=textureLod(uNT,p/(uR*0.3)+vec3(0.21,0.67,0.43),0.).g; float k=0.2+1.3*smoothstep(0.25,0.8,n);
+    m=sampleC(p2u(p-uDir*f*k*1.6)); }                              // comb: the teeth drag some strands further than others, leaving streaks, not blur
   else { float n=textureLod(uNT,p/(uR*0.45)+vec3(0.37,0.11,0.73),0.).r; m=m*(1.-s*smoothstep(0.4,0.62,n)); } // tear
   o=vec4(clamp(m,0.,1.),0,0,1);
 }`;
@@ -401,7 +408,7 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   vec3 ub=p2u(p-v*uDt)*uDims-0.5; vec3 i0=floor(ub); float mn=1e9, mx=-1e9;
   for(int k=0;k<8;k++){ vec3 c=i0+vec3(k&1,(k>>1)&1,(k>>2)&1); float s=texelFetch(uD,ivec3(clamp(c,vec3(0.),uDims-1.)),0).r; mn=min(mn,s); mx=max(mx,s); }
   d=clamp(d,mn,mx); d*=exp(-uDiss*uDt);
-  vec3 em=min(u,1.-u); float sp=smoothstep(0.,0.06,em.x)*smoothstep(0.,0.06,em.z)*smoothstep(0.,0.06,1.-u.y)*(uFloorIn>0.5?1.:smoothstep(0.,0.06,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
+  vec3 em=min(u,1.-u), sw=3./uDims; float sp=smoothstep(0.,sw.x,em.x)*smoothstep(0.,sw.z,em.z)*smoothstep(0.,sw.y,1.-u.y)*(uFloorIn>0.5?1.:smoothstep(0.,sw.y,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
   vec4 rc=textureLod(uR,u,0.); float gh=uGround>0?terrH(p.xz):0.;
   if(uGround>0&&p.y<gh) d=0.;
   float age=rc.a/max(h,1e-4); rc.a=age*max(d,0.);                // keep age per unit of fog through the corrections above
@@ -413,15 +420,24 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
     if(rc.a/max(d,1e-4)>uLife*1.08){ d=0.; rc.a=0.; } }
   o=vec4(max(d,0.),0,0,1); oR=rc; }`;
 
+/* where the visible fog is: one pixel per (x,z) column holding the densest value and the lowest and highest y above a threshold */
+const FS_EXT=HEAD+VOX_GLSL+`uniform sampler3D uD, uR; uniform int uEmit; uniform float uLife, uTailF, uSrcF, uThr; out vec4 o;
+float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
+void main(){ vec2 c=floor(gl_FragCoord.xy); int ny=int(uDims.y+0.5); float y0=1e9, y1=-1e9, m=0.;
+  for(int y=0;y<1024;y++){ if(y>=ny) break; vec3 u=(vec3(c.x,float(y),c.y)+0.5)/uDims; float d=textureLod(uD,u,0.).r;
+    if(uEmit==1&&d>0.) d*=ageFade(textureLod(uR,u,0.).a/max(d,1e-3));
+    if(d>uThr){ y0=min(y0,float(y)); y1=max(y1,float(y)); m=max(m,d); } }
+  o=vec4(m,y0,y1,1.); }`;
+
 /* after a simulation: how much fog reached each wall of the box (one pixel per face: -x +x -y +y -z +z) */
-const FS_WALL=HEAD+`uniform sampler3D uD; out vec4 o;
-void main(){ int f=int(gl_FragCoord.x); int ax=f/2; float w=(f%2==0)?0.05:0.95; float m=0.;
+const FS_WALL=HEAD+`uniform sampler3D uD; uniform vec3 uDims; out vec4 o;
+void main(){ int f=int(gl_FragCoord.x); int ax=f/2; float e=4.5/uDims[ax]; float w=(f%2==0)?e:1.-e; float m=0.;
   for(int j=0;j<24;j++) for(int i=0;i<24;i++){ vec2 q=(vec2(i,j)+0.5)/24.; vec3 u=ax==0?vec3(w,q.x,q.y):ax==1?vec3(q.x,w,q.y):vec3(q.x,q.y,w); m=max(m,textureLod(uD,u,0.).r); }
   o=vec4(m,0,0,1); }`;
 
 /* the fog itself: grid density, broken up and detailed by noise carried along with the simulation */
 const DENS_GLSL=TERR_GLSL+`
-uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
+uniform sampler3D uD, uR, uNT, uND; uniform vec3 uBMin, uBSize, uVoxU; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
 float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
 uniform float uSigma, uTh, uW, uAmt, uBillow, uTurb, uDet, uBreak, uBreakS, uFadeT, uFadeB; uniform int uOct, uFloorOn; uniform vec3 uSeedV;
 float gFoot=0.01;
@@ -431,7 +447,7 @@ float densGrid(vec3 p){ vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||a
 float dens(vec3 p,int lvl){
   vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
   float d=textureLod(uD,u,0.).r; if(d<0.008) return 0.;
-  vec3 em=min(u,1.-u); d*=smoothstep(0.,0.07,em.x)*smoothstep(0.,0.07,em.z)*smoothstep(0.,0.07,1.-u.y)*(uFloorOn==1?1.:smoothstep(0.,0.07,u.y));  // no hard cut at the box walls
+  vec3 em=min(u,1.-u), fw=uVoxU*3.; d*=smoothstep(0.,fw.x,em.x)*smoothstep(0.,fw.z,em.z)*smoothstep(0.,fw.y,1.-u.y)*(uFloorOn==1?1.:smoothstep(0.,fw.y,u.y));  // no hard cut at the box walls (a few voxels)
   d*=smoothstep(0.,uFadeB+1e-4,u.y)*(1.-smoothstep(1.-uFadeT-1e-4,1.,u.y));
   vec4 rcs=textureLod(uR,u,0.); vec3 rc=rcs.xyz+uSeedV;
   if(uEmit==1){ d*=ageFade(rcs.a/max(textureLod(uD,u,0.).r,1e-3)); if(d<0.008) return 0.; }            // fade the tail of the plume, and right at the source
@@ -867,7 +883,7 @@ function refit(rec,extra,force){ if(!rec.dom||force){ rec.dom=fitDomain(rec,extr
 /* ---------------- state ---------------- */
 const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,preset:'backlit'};
 let REC=makeRecipe('bank','mid',1234);
-let TEST_GRID=0; try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) TEST_GRID=window.__BRUME_TEST.grid; }catch(_){}
+let TEST_GRID=0, TEST_NOFIT=false; try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) TEST_GRID=window.__BRUME_TEST.grid; if(window.__BRUME_TEST&&window.__BRUME_TEST.nofit) TEST_NOFIT=true; }catch(_){}
 /* ---------------- detail level: how heavy an asset is to simulate, store and render ----------------
    sim: voxels along the fog's longest side · oct: detail octaves · exp: export voxels along the fog */
 const LODS=[
@@ -923,7 +939,9 @@ function dimsFor(size,N){ const m=Math.max(...size); return size.map(v=>Math.max
 /* voxels along the box's longest side: the grid setting covers the fog itself, up to 1.45x more when the box has extra room */
 const roomK=rec=>clamp(Math.max(...domSize(rec))/Math.max(...rec.size),1,1.45);
 const gridN=(rec,N)=>Math.round(N*roomK(rec));
-const recDims=(rec,N)=>dimsFor(domSize(rec),gridN(rec,N));
+/* spend a fixed voxel budget on the box: a tighter box gets finer voxels (flat sheets get far finer ones than a cube would) */
+function budgetDims(size,N){ const B=N*N*N*0.4; let vox=Math.cbrt(size[0]*size[1]*size[2]/B); vox=Math.max(vox,Math.max(...size)/(N*2)); return size.map(s=>Math.max(12,Math.round(s/vox))); }
+const recDims=(rec,N)=>budgetDims(domSize(rec),N);
 function boxU(pr,rec){ u3v(pr,'uSize',domSize(rec)); u3v(pr,'uLo',domLo(rec)); u1f(pr,'uHgt',rec.size[1]); }
 /* the stand-in ground, the same function the JS side uses (terrHJ) */
 function terrU(pr,rec){ const g=rec.gnd||{t:'none'}; u1i(pr,'uGround',GIDX[g.t]||0); u4v(pr,'uGP',[g.relief||0,g.L||100,g.w||7,g.seed||0]); u4v(pr,'uWater',waterOf(rec)); }
@@ -980,15 +998,15 @@ function simParams(ctx,rec){ const S=rec.sim; const EP=emitOn(rec)?emitPlan(rec)
   const vmax=Uw*2.2*(EP?1+rec.emit.spread:1)+len(wind)*(1+0.7*(S.gust||0))+Math.abs(liftV)+(EP?EP.Vr+EP.push:0); const vx=voxSize(ctx,rec);
   let steps=S.age<=0.001&&!EP?0:Math.ceil(T_/(vx/vmax)); steps=clamp(steps,S.age>0||EP?6:0,EP?180:140); const dt=steps?T_/steps:vx/vmax;   // the step the CFL allows, used at any time on the timeline
   let emit=null; if(EP){ const th=Math.max(vx*2.5,vmax*dt*0.8); emit={...EP,th,rateK:(0.08+rec.emit.rate*1.1)*EP.Vr/th}; }
-  return {U:U_,wind,steps,dt,lift:liftV,spreadK,emit,T:T_}; }
+  return {U:U_,wind,steps,dt,lift:liftV,spreadK,emit,T:T_,Tfull}; }
 /* the simulation runs on one clock from the sculpted shape: it steps to a target time (the timeline's playhead), never past it */
 function simReset(ctx,rec,target){ const pr=use('siminit'); bind3(pr,0,'uM',ctx.mass[0]); boxU(pr,rec); volPass(pr,[ctx.den[0],ctx.rc[0]],ctx.dims);
   const sp=simParams(ctx,rec); const tg=Math.max(0,target??sp.T); const tm=rec.time||{};
-  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit,checked:false,holdT:tm.hold?(tm.inT??sp.T):1e30}; }
+  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:sp.lift,spreadK:sp.spreadK,emit:sp.emit,checked:false,holdT:tm.hold?(tm.inT??sp.T):1e30}; }
 /* move the target later without starting over */
 function simExtend(ctx,t){ const S=ctx.sim; S.target=t; S.steps=S.step+Math.max(0,Math.ceil((t-S.t)/S.dt-1e-6)); }
 function velUniforms(pr,ctx,rec){ const S=rec.sim; const held=!ctx.sim.emit&&ctx.sim.t>=ctx.sim.holdT;   // Hold: past In the fog churns in place instead of drifting off
-  u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',held?0:ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread); u1f(pr,'uSpreadK',ctx.sim.spreadK??1);
+  u1f(pr,'uEddy',S.eddy); u1f(pr,'uU',ctx.sim.U); u1f(pr,'uLift',held?0:ctx.sim.lift||0); u1f(pr,'uStrat',S.strat); u1f(pr,'uCalm',S.calm); u1f(pr,'uSpread',S.spread); u1f(pr,'uSpreadK',(ctx.sim.spreadK??1)*2/Math.pow(1+ctx.sim.t/Math.max(ctx.sim.Tfull||1,1e-3),2));   /* the slump slows as it thins: a finite reach however long the shot */
   u1f(pr,'uTime',ctx.sim.t*(ctx.sim.U*CURL_RMS)/Math.max(S.eddy,1e-3)); /* in eddy turnovers */ u1f(pr,'uDt',ctx.sim.h); u1f(pr,'uFloor',hasGround(rec)?1:0); u1f(pr,'uFloorIn',floorIn(rec)?1:0); u3v(pr,'uWind',held?[0,0,0]:ctx.sim.wind);
   u1f(pr,'uLiftN',S.lift||0); u1f(pr,'uSimT',ctx.sim.t); u1f(pr,'uGust',S.gust||0); u1f(pr,'uGustL',Math.max(S.gustL||S.eddy*3,1e-3));
   const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); terrU(pr,rec);
@@ -1012,7 +1030,7 @@ function lightUpdate(ctx,rec){ const pr=use('light'); const tf=transfer(rec); bi
 /* ---- 4. view ---- */
 function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
-  u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
+  u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u3v(pr,'uVoxU',ctx.dims.map(v=>1/v)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
   u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uTurb',rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
   u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',hasGround(rec)?1:0); terrU(pr,rec); emitFadeU(pr,ctx,rec); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
@@ -1035,10 +1053,18 @@ function pickRay(ctx,rec,ro,rd){ if(!PICKT){ PICKT=tex2D(1,1,gl.RGBA32F,gl.RGBA,
 /* after a simulation: the most fog found just inside each wall */
 let WALLT=null, WALLFB=null;
 function wallCheck(ctx){ if(!WALLT){ WALLT=tex2D(6,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); WALLFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,WALLT,0); }
-  gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,6,1); const pr=use('wall'); bind3(pr,0,'uD',ctx.den[0]); fullscreen();
+  gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,6,1); const pr=use('wall'); bind3(pr,0,'uD',ctx.den[0]); u3v(pr,'uDims',ctx.dims); fullscreen();
   const a=new Float32Array(24); gl.readPixels(0,0,6,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return [0,1,2,3,4,5].map(i=>a[i*4]); }
+/* the world-space bounds of the visible fog in a context (null if there is none) */
+let EXTT=null, EXTFB=null, EXTW=0, EXTH=0;
+function measureExtent(ctx,rec,thr=0.08){ const d=ctx.dims; if(!EXTT||EXTW!==d[0]||EXTH!==d[2]){ if(EXTT){ gl.deleteTexture(EXTT); gl.deleteFramebuffer(EXTFB); } EXTT=tex2D(d[0],d[2],gl.RGBA32F,gl.RGBA,gl.FLOAT); EXTFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,EXTFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,EXTT,0); EXTW=d[0]; EXTH=d[2]; }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,EXTFB); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,d[0],d[2]); const pr=use('ext'); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u3v(pr,'uDims',d); u1f(pr,'uThr',thr); emitFadeU(pr,ctx,rec); fullscreen();
+  const a=new Float32Array(d[0]*d[2]*4); gl.readPixels(0,0,d[0],d[2],gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  let x0=1e9,x1=-1,z0=1e9,z1=-1,y0=1e9,y1=-1; for(let z=0;z<d[2];z++) for(let x=0;x<d[0];x++){ const i=(z*d[0]+x)*4; if(a[i]>0){ x0=Math.min(x0,x); x1=Math.max(x1,x); z0=Math.min(z0,z); z1=Math.max(z1,z); y0=Math.min(y0,a[i+1]); y1=Math.max(y1,a[i+2]); } }
+  if(x1<0) return null; const lo=domLo(rec), sz=domSize(rec), v=[0,1,2].map(i=>sz[i]/d[i]);
+  return {lo:[lo[0]+x0*v[0],lo[1]+y0*v[1],lo[2]+z0*v[2]],hi:[lo[0]+(x1+1)*v[0],lo[1]+(y1+1)*v[1],lo[2]+(z1+1)*v[2]],idx:[[x0,x1],[y0,y1],[z0,z1]],dims:d,vox:v}; }
 /* bake the final density (detail included) to a voxel array for export */
-async function bake(ctx,rec,N,prog){ const ed=dimsFor(domSize(rec),N); const out=new Float32Array(ed[0]*ed[1]*ed[2]);
+async function bake(ctx,rec,N,prog){ const ed=budgetDims(domSize(rec),N); const out=new Float32Array(ed[0]*ed[1]*ed[2]);
   const t=tex2D(ed[0],ed[1],gl.RGBA32F,gl.RGBA,gl.FLOAT); const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
   const pr=use('bake'); densUniforms(pr,ctx,rec,true); u3v(pr,'uEDims',ed); const buf=new Float32Array(ed[0]*ed[1]*4);
   for(let z=0;z<ed[2];z++){ gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.viewport(0,0,ed[0],ed[1]); u1f(pr,'uEZ',(z+0.5)/ed[2]); fullscreen(); gl.readPixels(0,0,ed[0],ed[1],gl.RGBA,gl.FLOAT,buf);
@@ -1052,7 +1078,7 @@ function initGL(){
   if(!X.cbf){ fail('This GPU cannot render to floating-point targets, which Brume needs.'); return false; }
   VAfs=gl.createVertexArray(); gl.bindVertexArray(VAfs); const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
   FB1=gl.createFramebuffer(); FB2=gl.createFramebuffer();
-  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
+  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['ext',FS_EXT],['bake',FS_BAKE],['disp',FS_DISP]]) mkProg(n,s);
   T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR);
   T.curl=tex3D(64,64,64,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.REPEAT,gl.LINEAR);
   return true; }
@@ -1072,16 +1098,42 @@ const dirty={mass:true,sim:false,light:true};
 let exporting=false, frames=0, ready=false, brushing=false, interacting=false, interactUntil=0, lastT=performance.now(), ftAvg=16, hudT=0, cw=2,ch=2,dpr=1,cssW=1,cssH=1, evolveStep=0, capture=null;
 function resetAccum(){ frames=0; }
 function poke(){ interacting=true; interactUntil=performance.now()+180; resetAccum(); }
-let autoGrowN=0, roomFlash=0;
-function markMass(){ dirty.mass=true; autoGrowN=0; resetAccum(); }
-function markSim(){ dirty.sim=true; autoGrowN=0; resetAccum(); }
+let autoGrowN=0, roomFlash=0, changeN=1;
+function markMass(){ dirty.mass=true; autoGrowN=0; changeN++; resetAccum(); }
+function markSim(){ dirty.sim=true; autoGrowN=0; changeN++; resetAccum(); }
 /* a change to how the fog moves or where it is: forget room the last run asked for; the wall check adds it back if still needed */
 function markSimU(){ REC.xpad=[0,0,0,0,0,0]; markSim(); }
 const FACE_NAMES=['left','right','bottom','top','back','front'];
 /* after each simulation: if fog piled against a wall, give it room on that side and run again */
-function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[];
-  w.forEach((v,f)=>{ if(f===2&&floorIn(REC)) return; if(v>0.08){ const ax=f>>1; REC.xpad[f]=+Math.min(REC.xpad[f]+Math.max(sz[ax]*0.12,REC.size[ax]*0.12),REC.size[ax]*3).toPrecision(4); grown.push(FACE_NAMES[f]); } });
-  if(grown.length&&refit(REC)){ autoGrowN++; dirty.mass=true; roomFlash=performance.now(); toast('Gave the fog more room: '+grown.join(', ')); autosave(); } }
+function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[]; const nd=[REC.dom[0].slice(),REC.dom[1].slice()];
+  w.forEach((v,f)=>{ if(f===2&&floorIn(REC)) return; if(v>0.15){   /* visible fog pressed against the wall */ const ax=f>>1, g=Math.max(sz[ax]*0.12,REC.size[ax]*0.08); REC.xpad[f]=+Math.min(REC.xpad[f]+g,REC.size[ax]*3).toPrecision(4); if(f%2) nd[1][ax]+=g; else nd[0][ax]-=g; grown.push(FACE_NAMES[f]); } });
+  if(grown.length){ REC.dom=nd.map(a=>a.map(v=>+v.toPrecision(5))); autoGrowN++; dirty.mass=true; roomFlash=performance.now(); toast('Gave the fog more room: '+grown.join(', ')); autosave(); } }
+/* ---------- fitting the room to the fog ----------
+   A quick low-resolution run of the whole timeline (to Out) in a generous box measures where the fog
+   actually goes; the box is then cut to that, plus a margin, so the voxels are spent on fog. */
+const FIT={ctx:mkCtx(44),on:false,rec:null,ext:null,k:0,end:0,touch:null,seen:0};
+function startFit(dom,tries=0){ if(REC.fit!=='auto'||TEST_NOFIT) return; const r=JSON.parse(JSON.stringify(REC));
+  if(dom) r.dom=dom; else { const pd=fitDomain(r); const ex=pd[1].map((v,i)=>v-pd[0][i]); const tk=clamp(timing(r).outT/Math.max(simClockT(r),1e-3),1,4);   // more room when the timeline runs past the designed moment
+    r.dom=[pd[0].map((v,i)=>v-ex[i]*(0.1+0.12*tk)),pd[1].map((v,i)=>v+ex[i]*(0.1+0.12*tk))]; }
+  if(flatBase(r)) r.dom[0][1]=0; FIT.tries=tries;
+  FIT.rec=r; FIT.end=Math.max(timing(r).outT,UI.viewT||0); genMass(FIT.ctx,r); simReset(FIT.ctx,r,FIT.end); FIT.ext=null; FIT.touch=[0,0,0,0,0,0]; FIT.k=0; FIT.on=true; fitUnion(); }
+function fitUnion(){ const e=measureExtent(FIT.ctx,FIT.rec); if(!e) return; if(!FIT.ext) FIT.ext={lo:e.lo.slice(),hi:e.hi.slice(),vox:e.vox}; else for(let i=0;i<3;i++){ FIT.ext.lo[i]=Math.min(FIT.ext.lo[i],e.lo[i]); FIT.ext.hi[i]=Math.max(FIT.ext.hi[i],e.hi[i]); }
+  for(let i=0;i<3;i++){ if(e.idx[i][0]<=1) FIT.touch[i*2]=1; if(e.idx[i][1]>=e.dims[i]-2) FIT.touch[i*2+1]=1; } }
+function stepFit(budget){ const S=FIT.ctx.sim; const t0=performance.now(); while(S.step<S.steps&&performance.now()-t0<budget){ simStep(FIT.ctx,FIT.rec); if(++FIT.k%5===0) fitUnion(); }
+  if(S.step<S.steps) return false; fitUnion(); FIT.on=false;
+  if(FIT.touch.some(v=>v)&&FIT.tries<2){ const d=FIT.rec.dom, nd=[d[0].slice(),d[1].slice()]; for(let i=0;i<3;i++){ const ex=d[1][i]-d[0][i]; if(FIT.touch[i*2]) nd[0][i]-=ex*0.6; if(FIT.touch[i*2+1]) nd[1][i]+=ex*0.6; }
+    startFit(nd,FIT.tries+1); return false; }                       // the fog reached the measuring box: measure again with more room on that side
+  applyFit(); return true; }
+function applyFit(){ const e=FIT.ext; if(!e) return; const fd=FIT.rec.dom; const lo=[], hi=[];
+  // the margin is a few of the final voxels (for the soft wall fade) plus the measuring run's own coarseness
+  const ex0=[0,1,2].map(i=>Math.max(e.hi[i]-e.lo[i],Math.max(...REC.size)*0.04)+e.vox[i]*3), vx=Math.cbrt(ex0[0]*ex0[1]*ex0[2]/(Math.pow(simN(REC),3)*0.3));
+  for(let i=0;i<3;i++){ const ext=e.hi[i]-e.lo[i]; const m=vx*4.5+e.vox[i]*1.2+ext*0.02;
+    lo[i]=FIT.touch[i*2]?fd[0][i]-(fd[1][i]-fd[0][i])*0.1:e.lo[i]-m-REC.xpad[i*2]; hi[i]=FIT.touch[i*2+1]?fd[1][i]+(fd[1][i]-fd[0][i])*0.1:e.hi[i]+m+REC.xpad[i*2+1]; }
+  if(flatBase(REC)) lo[1]=0; else if(hasGround(REC)) lo[1]=Math.max(lo[1],terrRange(REC,lo[0],hi[0],lo[2],hi[2],8).min-(hi[1]-lo[1])*0.02);
+  const nd=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; const cur=REC.dom;
+  const differs=!cur||[0,1,2].some(i=>{ const ce=cur[1][i]-cur[0][i]; return Math.abs(nd[0][i]-cur[0][i])>ce*0.04||Math.abs(nd[1][i]-cur[1][i])>ce*0.04; });
+  if(differs){ REC.dom=nd; dirty.mass=true; roomFlash=performance.now(); autosave(); } }
+
 function markLight(){ dirty.light=true; resetAccum(); }
 function markView(){ resetAccum(); }
 function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; resetAccum(); }
@@ -1092,7 +1144,9 @@ function frame(now){
   try{
     if(interacting&&now>interactUntil){ interacting=false; resetAccum(); }
     const wantN=simN(REC); if(MAIN.N!==wantN){ MAIN.N=wantN; dirty.mass=true; }
-    if((dirty.mass||dirty.sim)&&!brushing&&refit(REC)){ dirty.mass=true; roomFlash=now; }
+    if(!REC.dom){ refit(REC,null,true); dirty.mass=true; }
+    if(changeN!==FIT.seen&&!brushing){ FIT.seen=changeN; startFit(); }      // something changed: measure the room again (quick, low resolution)
+    if(FIT.on&&!brushing){ stepFit(IS_MOBILE?6:9); if(FIT.on){ drawOverlay(); if(now-hudT>200){ hudT=now; $('#hud').textContent='fitting the room to the fog over the timeline · '+Math.round(FIT.ctx.sim.step/Math.max(FIT.ctx.sim.steps,1)*100)+'%'; } return; } }   // keep the current view until the room is measured
     if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
     if(exporting) return;
     if(dirty.sim){ simReset(MAIN,REC,viewTime(REC)); dirty.sim=false; dirty.light=true; evolveStep=0; }
@@ -1198,7 +1252,7 @@ function putDab(p,dm){ const s=drag.stroke; if(hasGround(REC)){ const g=terrHJ(R
   dirty.sim=true; resetAccum(); }
 function outsideRoom(d,r){ const lo=REC.dom[0], hi=REC.dom[1], sz=domSize(REC); for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN; if(i===1&&REC.floor){ if(d[1]+r>hi[1]-m) return true; continue; } if(d[i]-r<lo[i]+m||d[i]+r>hi[i]-m) return true; } return false; }
 function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
-  if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.06){ putDab(p,dm); drag.last=p; } }
+  if(drag.op===3||drag.op===4){ if(L>UI.brushR*0.2){ putDab(p,dm); drag.last=p; } }   // fewer, longer moves: each one resamples the fog
   else if(L>UI.brushR*0.22){ const n=Math.min(8,Math.floor(L/(UI.brushR*0.22))); for(let i=1;i<=n;i++) putDab(add(drag.last,mul(dm,i/n)),[0,0,0]); drag.last=p; }
   hover={p,ctrl:drag.op===1}; }
 /* draw the source on the ground: disc and ring from the centre out, rectangle corner to corner, line end to end */
@@ -1259,15 +1313,18 @@ addEventListener('keydown',ev=>{
    ===================================================================== */
 /* the designed moment: where the Age slider lands (or where an emitter's plume is developed) */
 function simClockT(rec){ if(emitOn(rec)) return emitPlan(rec).Tsim; const S=rec.sim, Uw=Math.max(S.turb,0.02)*S.eddy*0.6; return S.age*1.3*S.eddy/Uw; }
+/* real time: the sim swirls fog fast so a look forms in seconds; real fog turns over at roughly 0.3 to 1 m/s
+   (bigger eddies faster). This is how many sim seconds pass in one second of the shot at real speed. Plumes already run in m/s. */
+function realTimeK(rec){ if(emitOn(rec)) return 1; const S=rec.sim; const Usim=Math.max(S.turb,0.02)*S.eddy*0.6, Ureal=0.5*Math.cbrt(Math.max(S.eddy,0.01)/10)*(0.3+S.turb); return clamp(Ureal/Usim,0.005,1); }
 const TIME_DEF={frames:120,fps:24,start:1,inT:null,outT:null,hold:false};
-function timing(rec){ const t={...TIME_DEF,...(rec.time||{})}; const base=simClockT(rec); const N=Math.max(2,Math.round(t.frames)), fps=t.fps||24;
-  const inT=t.inT??base; const outT=Math.max(t.outT??inT+(N-1)/fps,inT+1e-3);
-  return {inT,outT,frames:N,fps,start:t.start||1,hold:!!t.hold,follow:t.inT==null,speed:(outT-inT)/((N-1)/fps)}; }
+function timing(rec){ const t={...TIME_DEF,...(rec.time||{})}; const base=simClockT(rec); const N=Math.max(2,Math.round(t.frames)), fps=t.fps||24, rt=realTimeK(rec);
+  const inT=t.inT??base; const outT=Math.max(t.outT??inT+rt*(N-1)/fps,inT+1e-4); const speed=(outT-inT)/((N-1)/fps);
+  return {inT,outT,frames:N,fps,start:t.start||1,hold:!!t.hold,follow:t.inT==null,speed,rt,speedRT:speed/rt}; }
 const frameT=(tm,f)=>tm.inT+(f-tm.start)/Math.max(tm.frames-1,1)*(tm.outT-tm.inT);
 const frameOf=(tm,t)=>tm.start+(t-tm.inT)/Math.max(tm.outT-tm.inT,1e-6)*(tm.frames-1);
 function viewTime(rec){ return UI.viewT??timing(rec).inT; }
 function setViewT(t){ UI.viewT=Math.max(0,t); resetAccum(); drawTimeline(); }
-function setTime(patch,undo=true){ REC.time={...TIME_DEF,...(REC.time||{}),...patch}; if(undo) pushUndo(); autosave(); dirty.sim=true; drawTimeline(); }
+function setTime(patch,undo=true){ REC.time={...TIME_DEF,...(REC.time||{}),...patch}; if(undo) pushUndo(); autosave(); markSim(); drawTimeline(); }
 /* playing: one output frame per tick at the shot's frame rate, as fast as the sim keeps up */
 let lastAdv=0;
 function playAdvance(now){ const tm=timing(REC); if(now-lastAdv<1000/tm.fps) return; lastAdv=now;
@@ -1284,7 +1341,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"></div><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
   <label class="tlnum" title="Frames in the shot. Add frames to extend: same speed, the simulation keeps going">Frames<input type="number" id="tlN" min="2" max="100000" step="1"></label>
   <label class="tlnum" title="Frames per second">fps<input type="number" id="tlFps" min="1" max="120" step="1"></label>
-  <label class="tlnum" title="Simulation seconds per second of the shot: 1 is real time, below 1 is slow motion">Speed<input type="number" id="tlSpd" min="0.001" max="100" step="any"></label>
+  <label class="tlnum" title="1 is real time; below 1 is slow motion, above 1 is sped up">Speed<input type="number" id="tlSpd" min="0.001" max="100" step="any"></label>
   <button class="chip" id="tlHold" title="Hold: after In the fog churns in place instead of drifting off. Useful when extending a long shot">Hold</button>
   <button class="chip" id="tlReset" title="In and Out follow the Age setting again, at real-time speed">Reset</button>
   <button class="vbtn" id="rerunBtn" title="Run the simulation again from the sculpted shape">Re-run</button>
@@ -1293,7 +1350,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   $('#playBtn').onclick=togglePlay; $('#rerunBtn').onclick=rerun;
   $('#tlN').onchange=ev=>{ const tm=timing(REC); const N=Math.max(2,Math.round(+ev.target.value||tm.frames)); setTime({frames:N,inT:tm.inT,outT:tm.inT+tm.speed*(N-1)/tm.fps}); toast(N>tm.frames?`Extended to ${N} frames at the same speed`:`${N} frames at the same speed`); };
   $('#tlFps').onchange=ev=>{ const tm=timing(REC); const f=clamp(+ev.target.value||tm.fps,1,120); setTime({fps:f,inT:tm.inT,outT:tm.inT+tm.speed*(tm.frames-1)/f}); };
-  $('#tlSpd').onchange=ev=>{ const tm=timing(REC); const k=clamp(+ev.target.value||tm.speed,0.001,100); setTime({inT:tm.inT,outT:tm.inT+k*(tm.frames-1)/tm.fps}); };
+  $('#tlSpd').onchange=ev=>{ const tm=timing(REC); const k=clamp(+ev.target.value||tm.speedRT,0.001,1000); setTime({inT:tm.inT,outT:tm.inT+k*tm.rt*(tm.frames-1)/tm.fps}); };
   $('#tlHold').onclick=()=>{ const tm=timing(REC); setTime({hold:!tm.hold,inT:tm.inT}); toast(!tm.hold?'Hold: past In the fog churns in place':'Hold off: the fog drifts with the wind'); };
   $('#tlReset').onclick=()=>{ setTime({inT:null,outT:null}); UI.viewT=null; toast('In and Out follow Age again, in real time'); };
   const tAt=x=>{ const r=TL.track.getBoundingClientRect(); return clamp((x-r.left)/r.width,0,1)*tlMax(timing(REC)); };
@@ -1303,7 +1360,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
     if(TL.drag==='ph') setViewT(t);
     else if(TL.drag==='in'){ REC.time={...TIME_DEF,...(REC.time||{}),inT:+Math.min(t,tm.outT-0.01).toFixed(3),outT:tm.outT}; setViewT(REC.time.inT); }
     else { REC.time={...TIME_DEF,...(REC.time||{}),inT:tm.inT,outT:+Math.max(t,tm.inT+0.01).toFixed(3)}; setViewT(REC.time.outT); } });
-  const up=()=>{ if(TL.drag&&TL.drag!=='ph'){ pushUndo(); autosave(); MAIN.sim.holdT=timing(REC).hold?timing(REC).inT:1e30; } TL.drag=null; };
+  const up=()=>{ if(TL.drag&&TL.drag!=='ph'){ pushUndo(); autosave(); MAIN.sim.holdT=timing(REC).hold?timing(REC).inT:1e30; changeN++; } TL.drag=null; };   // a new range: refit the room to it
   TL.track.addEventListener('pointerup',up); TL.track.addEventListener('pointercancel',up);
   TL.track.addEventListener('keydown',ev=>{ const tm=timing(REC); const f=Math.round(frameOf(tm,viewTime(REC))); if(ev.key==='ArrowRight'){ setViewT(frameT(tm,f+1)); ev.preventDefault(); } else if(ev.key==='ArrowLeft'){ setViewT(frameT(tm,f-1)); ev.preventDefault(); } });
   drawTimeline(); }
@@ -1313,9 +1370,9 @@ function drawTimeline(){ if(!TL.track) return; const tm=timing(REC), mx=tlMax(tm
   const f=frameOf(tm,vt); const inRange=vt>=tm.inT-1e-6&&vt<=tm.outT+1e-6;
   $('#tlFrame').textContent=inRange?`frame ${Math.round(f)} / ${tm.start+tm.frames-1}`:vt<tm.inT?'pre-roll':'after Out';
   $('#tlTime').textContent=`sim ${fmT(vt)} · shot ${fmT((tm.frames-1)/tm.fps)}`;
-  for(const [id,v] of [['tlN',tm.frames],['tlFps',tm.fps],['tlSpd',+tm.speed.toPrecision(3)]]){ const e=$('#'+id); if(document.activeElement!==e) e.value=v; }
+  for(const [id,v] of [['tlN',tm.frames],['tlFps',tm.fps],['tlSpd',+tm.speedRT.toPrecision(3)]]){ const e=$('#'+id); if(document.activeElement!==e) e.value=v; }
   $('#tlHold').setAttribute('aria-pressed',tm.hold); $('#tlReset').disabled=tm.follow&&REC.time?.outT==null;
-  $('#tlWords').textContent=speedWords(tm.speed)+(tm.follow?' · In follows Age':''); }
+  $('#tlWords').textContent=speedWords(tm.speedRT)+(tm.follow?' · In follows Age':''); }
 /* =====================================================================
    UI
    ===================================================================== */
@@ -1446,7 +1503,7 @@ function buildPanels(){
   lodRefresh=()=>{ lodChips(); const lv=lodOf(REC), L=LODS[lv], n=autoLodNeed(REC);
     const why=n<0.2?'soft edges and little fine detail':n<0.36?'some fine detail on soft edges':'crisp billows and wisps up close';
     lodNote.innerHTML=(REC.lod==='auto'?`<b>Auto: ${L.label}</b> · ${why}. `:`<b>${L.label}</b> · `)+L.tip+'.';
-    const DS=REC.dom?domSize(REC):REC.size; const ed=dimsFor(DS,Math.round(L.exp*(REC.dom?roomK(REC):1))); const vox=ed[0]*ed[1]*ed[2]; const mb=vox*2/1048576;
+    const DS=REC.dom?domSize(REC):REC.size; const ed=budgetDims(DS,L.exp); const vox=ed[0]*ed[1]*ed[2]; const mb=vox*2/1048576;
     const fin=Math.max(REC.det.size*Math.pow(0.42,L.oct-1),Math.max(...DS)/Math.max(...ed)*2);   // a baked grid holds detail down to about two voxels
     lodCost.textContent=`finest detail ${fmLen(fin)} · export ${ed.join('×')} · ${mb<10?mb.toFixed(1):mb.toFixed(0)} MB · render ${mb<4?'light':mb<16?'medium':mb<48?'heavy':'very heavy'}`; };
   refreshers.push(lodRefresh);
@@ -1645,11 +1702,11 @@ function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); c
     <p id="exStatus"></p>
     <div style="display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--f-mono);color:var(--faint)">Houdini · Python SOP</span><button class="btn" id="exCopy" style="margin-left:auto">Copy</button></div><pre class="code" id="exPy"></pre>`;
   const chipRow=(id,opts,get,set)=>{ const c=$('#'+id); c.innerHTML=''; for(const [v,t,title] of opts){ const b=document.createElement('button'); b.className='chip'; b.textContent=t; if(title) b.title=title; b.setAttribute('aria-pressed',get()===v); b.onclick=()=>{ set(v); draw(); }; c.appendChild(b); } };
-  const draw=()=>{ const tm=timing(REC); const N=Math.round(exportN*rk); const d=dimsFor(DS,N); const mb=(d[0]*d[1]*d[2]*2)/1048576; const nF=exportMode==='seq'?Math.ceil(tm.frames/exportEvery):1;
+  const draw=()=>{ const tm=timing(REC); const N=exportN; const d=budgetDims(DS,N); const mb=(d[0]*d[1]*d[2]*2)/1048576; const nF=exportMode==='seq'?Math.ceil(tm.frames/exportEvery):1;
     chipRow('exMode',[['frame','This frame','The moment under the playhead'],['seq',`Sequence · ${tm.frames} frames`,'Every frame from In to Out, retimed']],()=>exportMode,v=>exportMode=v);
     $('#exEveryRow').hidden=exportMode!=='seq'; chipRow('exEvery',[[1,'frame'],[2,'2nd'],[4,'4th']],()=>exportEvery,v=>exportEvery=v);
     chipRow('exRes',LODS.map(L=>[L.exp,L.label,L.exp+' voxels along the fog']),()=>exportN,v=>exportN=v);
-    const tot=mb*nF; $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/N)} each · ${mb.toFixed(1)} MB a frame`+(nF>1?` · ${nF} frames · ${tot<1024?tot.toFixed(0)+' MB':(tot/1024).toFixed(1)+' GB'}`:'')+(tot>1500?' · large: try Soft, or every 2nd frame':'');
+    const tot=mb*nF; $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(DS[0]/d[0])} each · ${mb.toFixed(1)} MB a frame`+(nF>1?` · ${nF} frames · ${tot<1024?tot.toFixed(0)+' MB':(tot/1024).toFixed(1)+' GB'}`:'')+(tot>1500?' · large: try Soft, or every 2nd frame':'');
     const py=houdiniPy(REC.name,{droplet_um:REC.den.drop,frames:exportMode==='seq'?[1]:null}); $('#exPy').textContent=py; };
   draw();
   $('#exCopy').onclick=async()=>{ const py=$('#exPy').textContent; try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
@@ -1657,7 +1714,7 @@ function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); c
 /* step the main simulation to a time (starting over if it is earlier than where the sim is) */
 async function simTo(t,prog){ if(t<MAIN.sim.t-1e-6) simReset(MAIN,REC,t); else simExtend(MAIN,t); let k=0; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(++k%10===0){ prog&&prog(); await yieldUI(); } } }
 async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disabled=true; if(UI.playing) togglePlay();
-  const name=slug(REC.name); const enc=new TextEncoder(); const N=Math.round(exportN*roomK(REC)); const tm=timing(REC);
+  const name=slug(REC.name); const enc=new TextEncoder(); const N=exportN; const tm=timing(REC);
   try{ if(!window.fflate) throw new Error('The zip library did not load; check the connection and try again.');
     exporting=true; const parts=[]; let zerr=null; const zip=new fflate.Zip((err,dat)=>{ if(err) zerr=err; else parts.push(dat); });
     const addFile=(nm,u8,store)=>{ const z=store?new fflate.ZipPassThrough(nm):new fflate.ZipDeflate(nm,{level:6}); zip.add(z); z.push(u8,true); };
@@ -1670,7 +1727,7 @@ async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disa
     if(zerr) throw zerr;
     const meta={format:'brume-designer-volume',version:2,name:REC.name,resolution:dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:REC.dom[0],bbox_max:REC.dom[1],
       voxel_size_m:domSize(REC).map((v,i)=>v/dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor,
-      ...(frs.length?{frames:frs,fps:tm.fps,frame_start:tm.start,frame_end:tm.start+tm.frames-1,sim_in_s:tm.inT,sim_out_s:tm.outT,speed:tm.speed}:{sim_time_s:viewTime(REC)})};
+      ...(frs.length?{frames:frs,fps:tm.fps,frame_start:tm.start,frame_end:tm.start+tm.frames-1,sim_in_s:tm.inT,sim_out_s:tm.outT,speed_vs_real_time:tm.speedRT}:{sim_time_s:viewTime(REC)})};
     addFile(name+'/meta.json',enc.encode(JSON.stringify(meta,null,1))); addFile(name+'/recipe.brume.json',enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC}))); addFile(name+'/load_in_houdini.py',enc.encode(houdiniPy(REC.name,meta)));
     zip.end(); if(zerr) throw zerr; exporting=false; dirty.sim=true;
     st.textContent=''; const ok=await offerFile(name+'_brume.zip',new Blob(parts,{type:'application/zip'}),'application/zip'); st.textContent=ok?`Saved ${name}_brume.zip · ${frs.length?frs.length+' frames · ':''}${dims.join(' × ')} voxels`:'Not saved.'; }
