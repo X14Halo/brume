@@ -185,6 +185,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <details class="sec" open><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
     <details class="sec" open><summary>Simulate</summary><div class="body" id="simBody"></div></details>
     <details class="sec" open><summary>Detail</summary><div class="body" id="detBody"></div></details>
+    <details class="sec" open><summary>Detail level</summary><div class="body" id="lodBody"></div></details>
     <details class="sec"><summary>Density</summary><div class="body" id="denBody"></div></details>
     <details class="sec"><summary>Light &amp; view</summary><div class="body" id="lightBody"></div></details>
     <details class="sec"><summary>Shelf</summary><div class="body" id="shelfBody"></div></details>
@@ -480,7 +481,7 @@ const TEMPLATES={
 function makeRecipe(tpl,cls='mid',seed=Math.floor(Math.random()*9999)){
   const T=TEMPLATES[tpl], C=CLASSES[cls]; const size=T.size.map(v=>+(v*C.k).toPrecision(3)); const md=Math.max(...size), mn=Math.min(...size);
   const eddy=+(Math.max(mn*0.55,md*0.14)).toPrecision(3);
-  return {v:2,name:T.label,template:tpl,cls,seed,size,floor:T.floor,fit:'auto',dom:null,xpad:[0,0,0,0,0,0],
+  return {v:2,name:T.label,template:tpl,cls,seed,size,floor:T.floor,fit:'auto',dom:null,xpad:[0,0,0,0,0,0],lod:'auto',
     sim:{age:T.sim.age,turb:T.sim.turb,eddy,lift:T.sim.lift,strat:C.strat,calm:T.sim.calm,spread:T.sim.spread,wind:T.sim.wind,windDir:70,diss:T.sim.diss},
     det:{billow:T.det.billow,amt:T.det.amt,size:+(eddy*0.42).toPrecision(3),edge:T.det.edge,brk:T.det.brk,brkSize:+(md*0.35).toPrecision(3)},
     den:{d:T.den.d,fadeT:0,fadeB:0,drop:12,ms:0.5},
@@ -518,7 +519,7 @@ function migrateRecipe(r){
   if(!r.v||r.v<2){ const [W,H,D]=r.size, md=Math.max(...r.size); const q=v=>+v.toPrecision(5);
     r.strokes=(r.strokes||[]).map(s=>({op:s.op,s:s.s,r:q(s.r*md),dabs:s.dabs.map(d=>[q((d[0]-0.5)*W),q(d[1]*H),q((d[2]-0.5)*D),q(d[3]*W),q(d[4]*H),q(d[5]*D)])}));
     r.v=2; r.dom=null; }
-  if(!r.fit) r.fit='auto'; if(!Array.isArray(r.xpad)||r.xpad.length!==6) r.xpad=[0,0,0,0,0,0]; if(r.dom===undefined) r.dom=null;
+  if(!r.fit) r.fit='auto'; if(r.lod===undefined) r.lod='auto'; if(!Array.isArray(r.xpad)||r.xpad.length!==6) r.xpad=[0,0,0,0,0,0]; if(r.dom===undefined) r.dom=null;
   return r; }
 function contentBounds(rec,extra){
   const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9]; const inc=(c,e)=>{ for(let i=0;i<3;i++){ lo[i]=Math.min(lo[i],c[i]-e[i]); hi[i]=Math.max(hi[i],c[i]+e[i]); } };
@@ -558,9 +559,21 @@ function refit(rec,extra,force){ if(!rec.dom||force){ rec.dom=fitDomain(rec,extr
   return true; }
 
 /* ---------------- state ---------------- */
-const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,grid:128,preset:'backlit'};
+const LOOK={el:13,az:180,sunI:1,sunK:5400,sky:0.35,skyK:10500,expo:0,bg:0,figure:true,preset:'backlit'};
 let REC=makeRecipe('bank','mid',1234);
-try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) LOOK.grid=window.__BRUME_TEST.grid; }catch(_){}
+let TEST_GRID=0; try{ if(window.__BRUME_TEST&&window.__BRUME_TEST.grid) TEST_GRID=window.__BRUME_TEST.grid; }catch(_){}
+/* ---------------- detail level: how heavy an asset is to simulate, store and render ----------------
+   sim: voxels along the fog's longest side · oct: detail octaves · exp: export voxels along the fog */
+const LODS=[
+  {label:'Soft',sim:72,oct:2,exp:96,tip:'Background mist and haze: smooth, light and quick to render'},
+  {label:'Medium',sim:96,oct:3,exp:160,tip:'Midground fog: soft detail, moderate weight'},
+  {label:'Detailed',sim:128,oct:5,exp:224,tip:'Fog near camera: full billows and wisps'},
+  {label:'Hero',sim:160,oct:6,exp:320,tip:'Close-up hero volumes: every octave, heaviest to render'}];
+/* Auto reads the look: soft-edged fog with little fine detail does not need a fine grid. In a shot it will also weigh distance to camera. */
+function autoLodNeed(rec){ const d=rec.det; return d.amt*(1-0.55*d.edge)+d.brk*0.3+(rec.den.d>0.5?0.1:0); }
+function autoLod(rec){ const n=autoLodNeed(rec); return n<0.2?0:n<0.36?1:2; }
+const lodOf=rec=>rec.lod==null||rec.lod==='auto'?autoLod(rec):rec.lod;
+const simN=rec=>TEST_GRID||LODS[lodOf(rec)].sim;
 const UI={tool:'orbit',brushR:0,brushStr:0.5,quality:'draft',playing:false};
 const CAM={yaw:0.55,pitch:0.22,dist:100,tgt:[0,8,0],tanY:Math.tan(20*D2R)};
 const sunDir=()=>{ const e=LOOK.el*D2R, a=LOOK.az*D2R; return [Math.cos(e)*Math.sin(a),Math.sin(e),-Math.cos(e)*Math.cos(a)]; };
@@ -672,7 +685,7 @@ function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
   u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
   u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uTurb',rec.sim.turb); u1f(pr,'uDet',rec.det.size); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
-  u1i(pr,'uOct',final?6:4); u1i(pr,'uFloorOn',rec.floor?1:0); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
+  u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',rec.floor?1:0); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
 function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps){
   ensureAcc(ctx,w,h); const A=ctx.acc, src=A.cur, dst=1-src; gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb[dst]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,w,h);
@@ -747,7 +760,7 @@ function frame(now){
   if(!ready) return;
   try{
     if(interacting&&now>interactUntil){ interacting=false; resetAccum(); }
-    if(MAIN.N!==LOOK.grid){ MAIN.N=LOOK.grid; dirty.mass=true; }
+    const wantN=simN(REC); if(MAIN.N!==wantN){ MAIN.N=wantN; dirty.mass=true; }
     if((dirty.mass||dirty.sim)&&!brushing&&refit(REC)){ dirty.mass=true; roomFlash=now; }
     if(dirty.mass){ genMass(MAIN,REC); dirty.mass=false; dirty.sim=true; }
     if(dirty.sim){ simReset(MAIN,REC); dirty.sim=false; dirty.light=true; evolveStep=0; }
@@ -932,7 +945,8 @@ function note(p,html){ const d=document.createElement('div'); d.className='note'
 const pct=v=>Math.round(v*100)+'%';
 let refreshers=[], brushRefs=[]; function refreshPanels(){ refreshers.forEach(f=>f()); brushRefs.forEach(f=>f()); }
 /* every change: what it invalidates, and an undo point when the drag ends */
-const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); what(); poke(); autosave(); },fmt,log,tip,commit:pushUndo});
+let lodRefresh=()=>{};
+const S_=(label,min,max,get,set,fmt,what,log,tip)=>({label,min,max,get,set:v=>{ set(v); what(); poke(); autosave(); lodRefresh(); },fmt,log,tip,commit:pushUndo});
 function buildPanels(){
   refreshers=[];
   // start from
@@ -970,6 +984,17 @@ function buildPanels(){
   refreshers.push(slider(db,S_('Edge softness',0,1,()=>REC.det.edge,v=>REC.det.edge=v,pct,markLight,false,'Crisp defined edges or a soft graded falloff')));
   refreshers.push(slider(db,S_('Breakup',0,1,()=>REC.det.brk,v=>REC.det.brk=v,pct,markView,false,'Holes and separate clumps')));
   refreshers.push(slider(db,S_('Breakup size',0.1,2000,()=>REC.det.brkSize,v=>REC.det.brkSize=v,fmLen,markView,true)));
+  // detail level
+  const ob=$('#lodBody'); ob.innerHTML='';
+  const lodChips=chips(ob,'',[['auto','Auto','Picks a level from the look'],...LODS.map((L,i)=>[i,L.label,L.tip])],()=>REC.lod??'auto',v=>{ REC.lod=v; pushUndo(); autosave(); lodRefresh(); });
+  const lodNote=note(ob,''), lodCost=document.createElement('div'); lodCost.className='note'; lodCost.style.fontFamily='var(--f-mono)'; ob.appendChild(lodCost);
+  lodRefresh=()=>{ lodChips(); const lv=lodOf(REC), L=LODS[lv], n=autoLodNeed(REC);
+    const why=n<0.2?'soft edges and little fine detail':n<0.36?'some fine detail on soft edges':'crisp billows and wisps up close';
+    lodNote.innerHTML=(REC.lod==='auto'?`<b>Auto: ${L.label}</b> · ${why}. `:`<b>${L.label}</b> · `)+L.tip+'.';
+    const DS=REC.dom?domSize(REC):REC.size; const ed=dimsFor(DS,Math.round(L.exp*(REC.dom?roomK(REC):1))); const vox=ed[0]*ed[1]*ed[2]; const mb=vox*2/1048576;
+    const fin=Math.max(REC.det.size*Math.pow(0.42,L.oct-1),Math.max(...DS)/Math.max(...ed)*2);   // a baked grid holds detail down to about two voxels
+    lodCost.textContent=`finest detail ${fmLen(fin)} · export ${ed.join('×')} · ${mb<10?mb.toFixed(1):mb.toFixed(0)} MB · render ${mb<4?'light':mb<16?'medium':mb<48?'heavy':'very heavy'}`; };
+  refreshers.push(lodRefresh);
   // density
   const nb=$('#denBody'); nb.innerHTML='';
   refreshers.push(slider(nb,S_('Density',0,1,()=>REC.den.d,v=>REC.den.d=v,()=>'vis '+fmLen(visOf(REC)),markLight,false,'How far you can see inside it')));
@@ -989,7 +1014,6 @@ function buildPanels(){
   refreshers.push(slider(lb,L_('Exposure',-5,5,()=>LOOK.expo,v=>LOOK.expo=v,v=>(v>=0?'+':'')+v.toFixed(1)+' EV',markView)));
   refreshers.push(chips(lb,'Background',[[0,'Black'],[1,'Grey'],[2,'Sky']],()=>LOOK.bg,v=>{ LOOK.bg=v; markView(); saveLook(); }));
   refreshers.push(chips(lb,'Scale guide',[[true,'On'],[false,'Off']],()=>LOOK.figure,v=>{ LOOK.figure=v; saveLook(); }));
-  refreshers.push(chips(lb,'Grid',[[96,'96'],[128,'128'],[160,'160']].map(([v,t])=>[v,t,'Simulation voxels along the longest side']),()=>LOOK.grid,v=>{ LOOK.grid=v; saveLook(); }));
   buildBrushRow(); buildShelf();
 }
 let brushRow=null;
@@ -1014,7 +1038,7 @@ function startFrom(k){ const keepName=REC.name===TEMPLATES[REC.template].label; 
 /* ---------------- undo ---------------- */
 const undoS=[], redoS=[];
 function pushUndo(){ const s=JSON.stringify(REC); if(undoS[undoS.length-1]===s) return; undoS.push(s); if(undoS.length>60) undoS.shift(); redoS.length=0; autosave(); }
-function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&old.strokes.length===REC.strokes.length&&MAIN.N===LOOK.grid;
+function restore(s){ const old=REC; REC=JSON.parse(s); $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&old.strokes.length===REC.strokes.length&&MAIN.N===simN(REC);
   if(shapeSame) markSim(); else markMass(); buildPanels(); autosave(); }
 function undo(){ if(undoS.length<2){ toast('Nothing to undo'); return; } redoS.push(undoS.pop()); restore(undoS[undoS.length-1]); toast('Undone'); }
 function redo(){ if(!redoS.length){ toast('Nothing to redo'); return; } const s=redoS.pop(); undoS.push(s); restore(s); toast('Redone'); }
@@ -1091,20 +1115,20 @@ geo.addAttrib(hou.attribType.Prim, "name", "")
 vol.setAttribValue("name", "density")
 # density is extinction per metre: render with density scale 1, scattering ~0.98, droplet phase g ~${mieParams(meta.droplet_um)[0].toFixed(2)}
 `; }
-function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); const DS=domSize(REC);
+function openExport(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); const DS=domSize(REC); exportN=LODS[lodOf(REC)].exp; const rk=roomK(REC);
   m.innerHTML=`<p>Exports the fog as you see it, detail included, as a voxel grid in metres covering the box: <b>${fmLen(DS[0])} × ${fmLen(DS[1])} × ${fmLen(DS[2])}</b>. The zip holds the density (half float), its bounds and settings, the recipe to reopen it here, and a Python SOP that loads it in Houdini.</p>
-    <div class="row wide"><label>Resolution</label><div class="chips" id="exRes"></div></div>
+    <div class="row wide"><label>Detail level</label><div class="chips" id="exRes"></div></div>
     <p id="exInfo" style="font-family:var(--f-mono);font-size:12px"></p>
     <div class="btns"><button class="btn prim" id="exGo">Bake and save .zip</button></div>
     <p id="exStatus"></p>
     <div style="display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--f-mono);color:var(--faint)">Houdini · Python SOP</span><button class="btn" id="exCopy" style="margin-left:auto">Copy</button></div><pre class="code" id="exPy"></pre>`;
-  const draw=()=>{ const d=dimsFor(DS,exportN); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/exportN)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const n of [128,192,256,320]){ const b=document.createElement('button'); b.className='chip'; b.textContent=n; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
+  const draw=()=>{ const N=Math.round(exportN*rk); const d=dimsFor(DS,N); $('#exInfo').textContent=`${d.join(' × ')} voxels · ${fmLen(Math.max(...DS)/N)} each · ${((d[0]*d[1]*d[2]*2)/1048576).toFixed(1)} MB`; const c=$('#exRes'); c.innerHTML=''; for(const [n,lab] of LODS.map(L=>[L.exp,L.label])){ const b=document.createElement('button'); b.className='chip'; b.textContent=lab; b.title=n+' voxels along the fog'; b.setAttribute('aria-pressed',exportN===n); b.onclick=()=>{ exportN=n; draw(); }; c.appendChild(b); } };
   draw(); const py=houdiniPy(REC.name,{droplet_um:REC.den.drop}); $('#exPy').textContent=py;
   $('#exCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(py); $('#exCopy').textContent='Copied'; }catch(_){ const r=document.createRange(); r.selectNodeContents($('#exPy')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('#exCopy').textContent='Selected · Ctrl C'; } };
   $('#exGo').onclick=doExport; $('#modal').hidden=false; $('#mClose').focus(); }
 async function doExport(){ const st=$('#exStatus'); const go=$('#exGo'); go.disabled=true;
   try{ if(MAIN.sim.step<MAIN.sim.steps){ st.textContent='Finishing the simulation…'; while(MAIN.sim.step<MAIN.sim.steps){ simStep(MAIN,REC); if(MAIN.sim.step%10===0) await yieldUI(); } lightUpdate(MAIN,REC); }
-    const b=await bake(MAIN,REC,exportN,p=>{ st.textContent='Baking '+Math.round(p*100)+'%'; }); st.textContent='Packing…'; await yieldUI();
+    const b=await bake(MAIN,REC,Math.round(exportN*roomK(REC)),p=>{ st.textContent='Baking '+Math.round(p*100)+'%'; }); st.textContent='Packing…'; await yieldUI();
     const h=new Uint16Array(b.data.length); let mx=0; for(let i=0;i<b.data.length;i++){ h[i]=f32to16(b.data[i]); if(b.data[i]>mx) mx=b.data[i]; }
     const meta={format:'brume-designer-volume',version:1,name:REC.name,resolution:b.dims,order:'x fastest, then y, then z',dtype:'float16 little-endian',units:'metres',bbox_min:REC.dom[0],bbox_max:REC.dom[1],
       voxel_size_m:domSize(REC).map((v,i)=>v/b.dims[i]),density:'extinction per metre',max_density:mx,droplet_um:REC.den.drop,sits_on_ground:REC.floor};
@@ -1118,7 +1142,7 @@ function closeModal(){ $('#modal').hidden=true; }
 $('#exportBtn').onclick=openExport; $('#mClose').onclick=closeModal; $('#modal').addEventListener('click',ev=>{ if(ev.target.id==='modal') closeModal(); });
 
 /* ---------------- status ---------------- */
-function updateHud(vw,vh,fin,target){ const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
+let lastDomS=''; function updateHud(vw,vh,fin,target){ const ds=JSON.stringify(REC.dom); if(ds!==lastDomS){ lastDomS=ds; lodRefresh(); } const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
   const bar=$('#simBar'); bar.style.width=(simDone?Math.min(1,frames/target):p)*100+'%'; bar.classList.toggle('fin',fin);
   const st=brushing?'sculpting':!simDone?'simulating '+Math.round(p*100)+'%':UI.playing?'evolving':frames>=target?(fin?'final':'refined'):fin?'final '+frames+'/'+target:'refining';
   $('#hud').textContent=`${MAIN.dims?MAIN.dims.join('×'):''} voxels · ${fin?'final':'draft'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
