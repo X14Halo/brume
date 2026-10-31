@@ -1413,12 +1413,12 @@ function markAnim(){ dirty.anim=true; resetAccum(); }
 /* fog reached a wall of the animation box while it moved: give it room (resampled, not re-run from the start) */
 function animWallGrow(){ if(REC.fit!=='auto'||!REC.adom) return; const ar=ARec(REC); const w=wallCheck(MAIN); const sz=domSize(ar); const nd=[REC.adom[0].slice(),REC.adom[1].slice()]; let g=false;
   w.forEach((v,f)=>{ if(f===2&&floorIn(ar)) return; if(v>0.22){ const ax=f>>1, d=Math.max(sz[ax]*0.15,REC.size[ax]*0.1); if(f%2) nd[1][ax]+=d; else nd[0][ax]-=d; g=true; } });
-  if(g){ const old=[REC.adom[0].slice(),REC.adom[1].slice()]; REC.adom=nd.map(a=>a.map(v=>+v.toPrecision(5))); rebox(MAIN,ARec(REC),old); dirty.light=true; roomFlash=performance.now(); } }
+  if(g){ const old=[REC.adom[0].slice(),REC.adom[1].slice()]; REC.adom=nd.map(a=>a.map(v=>+v.toPrecision(5))); rebox(MAIN,ARec(REC),old); dirty.light=true; roomFlash=performance.now(); syncUndoTop(); } }
 const FACE_NAMES=['left','right','bottom','top','back','front'];
 /* after each simulation: if fog piled against a wall, give it room on that side and run again */
 function wallGrow(){ if(REC.fit!=='auto'||autoGrowN>=3) return; const w=wallCheck(MAIN); const sz=domSize(REC); const grown=[]; const nd=[REC.dom[0].slice(),REC.dom[1].slice()];
   w.forEach((v,f)=>{ if(f===2&&floorIn(REC)) return; if(v>0.22){   /* visible fog pressed against the wall */ const ax=f>>1, g=Math.max(sz[ax]*0.12,REC.size[ax]*0.08); REC.xpad[f]=+Math.min(REC.xpad[f]+g,REC.size[ax]*3).toPrecision(4); if(f%2) nd[1][ax]+=g; else nd[0][ax]-=g; grown.push(FACE_NAMES[f]); } });
-  if(grown.length){ const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=nd.map(a=>a.map(v=>+v.toPrecision(5))); autoGrowN++; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); } }
+  if(grown.length){ const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=nd.map(a=>a.map(v=>+v.toPrecision(5))); autoGrowN++; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); syncUndoTop(); } }
 /* ---------- fitting the room to the fog ----------
    A quick low-resolution run of the whole timeline (to Out) in a generous box measures where the fog
    actually goes; the box is then cut to that, plus a margin, so the voxels are spent on fog. */
@@ -1446,7 +1446,7 @@ function refineToMain(){ if(REC.fit!=='auto'||FIT.on||FIT.refined||!FIT.ext||Mat
   if(flatBase(REC)) lo[1]=0; else if(hasGround(REC)) lo[1]=Math.max(lo[1],terrRange(REC,lo[0],hi[0],lo[2],hi[2],8).min-(hi[1]-lo[1])*0.02);
   for(let i=0;i<3;i++){ lo[i]=Math.max(lo[i],cur[0][i]); hi[i]=Math.min(hi[i],cur[1][i]); }               // only ever shrinks here
   const shrink=[0,1,2].some(i=>(cur[1][i]-cur[0][i])-(hi[i]-lo[i])>(cur[1][i]-cur[0][i])*0.06); if(!shrink) return false;
-  const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); return true; }
+  const old=[REC.dom[0].slice(),REC.dom[1].slice()]; REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; rebox(MAIN,REC,old); dirty.light=true; resetAccum(); roomFlash=performance.now(); autosave(); syncUndoTop(); return true; }
 function applyFit(){ const e=FIT.ext; if(!e) return; const fd=FIT.rec.dom; const lo=[], hi=[];
   // the margin is a few of the final voxels (for the soft wall fade) plus the measuring run's own coarseness
   const ex0=[0,1,2].map(i=>Math.max(e.hi[i]-e.lo[i],Math.max(...REC.size)*0.04)+e.vox[i]*3), vx=Math.cbrt(ex0[0]*ex0[1]*ex0[2]/(Math.pow(simN(REC),3)*0.3));
@@ -1455,8 +1455,10 @@ function applyFit(){ const e=FIT.ext; if(!e) return; const fd=FIT.rec.dom; const
   if(flatBase(REC)) lo[1]=0; else if(hasGround(REC)) lo[1]=Math.max(lo[1],terrRange(REC,lo[0],hi[0],lo[2],hi[2],8).min-(hi[1]-lo[1])*0.02);
   const nd=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; const cur=REC.dom;
   const differs=!cur||[0,1,2].some(i=>{ const ce=cur[1][i]-cur[0][i]; return Math.abs(nd[0][i]-cur[0][i])>ce*0.04||Math.abs(nd[1][i]-cur[1][i])>ce*0.04; });
-  if(differs){ REC.dom=nd; dirty.mass=true; roomFlash=performance.now(); autosave(); } }
+  if(differs){ REC.dom=nd; dirty.mass=true; roomFlash=performance.now(); autosave(); syncUndoTop(); } }
 
+/* the box fitting itself is not a step of yours: it updates the current undo state instead of adding one */
+function syncUndoTop(){ if(typeof undoS!=='undefined'&&undoS.length) undoS[undoS.length-1]=JSON.stringify(REC); }
 function markLight(){ dirty.light=true; LIGHTVER++; resetAccum(); }
 function markView(){ resetAccum(); }
 function resize(){ const r=$('#view').getBoundingClientRect(); dpr=Math.min(devicePixelRatio||1,IS_MOBILE?1.5:2); cssW=Math.max(1,r.width); cssH=Math.max(1,r.height); cw=Math.max(2,Math.round(cssW*dpr)); ch=Math.max(2,Math.round(cssH*dpr)); glc.width=cw; glc.height=ch; ov.width=cw; ov.height=ch; if(ready) poke(); else resetAccum(); }
@@ -1600,7 +1602,7 @@ function stepAFit(budget){ const C=AFIT.ctx, S=C.sim, ar=ARec(AFIT.rec); const t
   const E=AFIT.ext; if(!E) return true; const vx=Math.cbrt(domSize(REC).reduce((a,b)=>a*b,1))/Math.max(simN(REC),8)*1.3; const lo=[], hi=[];
   for(let i=0;i<3;i++){ const m=vx*4.5+(E.hi[i]-E.lo[i])*0.03+E.vox[i]*1.2; lo[i]=Math.max(E.lo[i]-m,g[0][i]); hi[i]=Math.min(E.hi[i]+m,g[1][i]); }
   if(flatBase(REC)||floorIn(REC)) lo[1]=Math.min(lo[1],REC.dom[0][1]);
-  REC.adom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; roomFlash=performance.now(); return true; }
+  REC.adom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; roomFlash=performance.now(); syncUndoTop(); return true; }
 function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase==='anim'; const old=anim?REC.adom:REC.dom; const nd=d.nd.map(a=>a.map(v=>+v.toPrecision(5)));
   if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
@@ -2329,7 +2331,11 @@ const undoS=[], redoS=[];
 function pushUndo(){ const s=JSON.stringify(REC); if(undoS[undoS.length-1]===s) return; undoS.push(s); if(undoS.length>60) undoS.shift(); redoS.length=0; autosave(); }
 function restore(s){ const old=REC; REC=JSON.parse(s); if(UI.ws==='shot'){ SHOT.els[UI.layer]=REC; maskBuild(); } else $('#assetName').value=REC.name; const shapeSame=old.template===REC.template&&old.seed===REC.seed&&JSON.stringify(old.size)===JSON.stringify(REC.size)&&JSON.stringify(old.dom)===JSON.stringify(REC.dom)&&JSON.stringify([old.gnd,old.form])===JSON.stringify([REC.gnd,REC.form])&&old.strokes.length===REC.strokes.length&&MAIN.N===simN(REC);
   const fk=r=>JSON.stringify({...r,strokes:0,anim:0,time:0,name:0,den:0,det:0,looks:0,style:0,adom:0,lod:0});
-  const fkd=r=>fk({...r,dom:0,xpad:0}); if(fk(old)!==fk(REC)&&fkd(old)===fkd(REC)&&old.dom&&MAIN.phase!=='form') REC.dom=old.dom;   // a stroke grew the box: keep the bigger box, no need to form again
+  const J=JSON.stringify, sameStrokes=J(old.strokes)===J(REC.strokes);
+  const fkb=r=>fk({...r,dom:0,xpad:0,fit:0,budgetK:0,afix:0});
+  if(MAIN.dims&&MAIN.phase!=='form'&&J(old.adom)!==J(REC.adom)&&REC.adom&&old.adom&&MAIN.phase==='anim'&&fk(old)===fk(REC)){ rebox(MAIN,ARec(REC),old.adom); dirty.light=true; }   // the animation box changed back: resample, nothing re-runs
+  if(MAIN.dims&&MAIN.phase==='shape'&&fk(old)!==fk(REC)&&fkb(old)===fkb(REC)&&sameStrokes&&old.dom&&REC.dom&&MAIN.N===simN(REC)){ rebox(MAIN,REC,old.dom); dirty.light=true; buildPanels(); autosave(); return; }   // only the box changed: resample the fog into it, nothing re-forms
+  const fkd=r=>fk({...r,dom:0,xpad:0}); if(!sameStrokes&&fk(old)!==fk(REC)&&fkd(old)===fkd(REC)&&old.dom&&MAIN.phase!=='form') REC.dom=old.dom;   // a stroke grew the box: keep the bigger box, no need to form again
   if(fk(old)!==fk(REC)||MAIN.N!==simN(REC)){ if(shapeSame) markSim(); else markMass(); }          // the form itself changed: form again
   else { if(JSON.stringify(old.strokes)!==JSON.stringify(REC.strokes)) reShape();                  // strokes only: lay them again on the formed fog, no forming
     if(JSON.stringify([old.anim,old.time])!==JSON.stringify([REC.anim,REC.time])) markAnim(); markLight(); }
