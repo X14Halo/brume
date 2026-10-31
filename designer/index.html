@@ -1480,13 +1480,15 @@ function frame(now){
       if(!brushing&&!waitFit&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,REC); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
       if(S.step>=S.steps&&!waitFit){ if(!S.checked){ S.checked=true; if(!refineToMain()) wallGrow(); } MAIN.phase='shape'; dirty.light=true; }
     }
-    if(MAIN.phase==='shape'&&UI.mode==='anim'&&!brushing){ snapKeep(MAIN,REC); REC.adom=animDom(REC); animReset(MAIN,REC,viewTime(REC)); dirty.anim=false; dirty.light=true; S=MAIN.sim; }   // ANIMATE: the shape is frame 1
+    if(MAIN.phase==='shape'&&UI.mode==='anim'&&!brushing){ snapKeep(MAIN,REC); REC.adom=animDom(REC); dirty.anim=false; if(animAuto()){ startAFit(); MAIN.phase='afit'; } else { animReset(MAIN,REC,viewTime(REC)); dirty.light=true; } S=MAIN.sim; }   // ANIMATE: the shape is frame 1; first measure how far the fog goes between In and Out
+    else if(MAIN.phase==='afit'&&UI.mode==='shape'){ AFIT.on=false; MAIN.phase='shape'; }
+    if(AFIT.on){ if(stepAFit(IS_MOBILE?5:8)){ animReset(MAIN,REC,viewTime(REC)); dirty.light=true; S=MAIN.sim; resetAccum(); } }   // the box fits the shot's own range, then the fog plays in it
     else if(MAIN.phase==='anim'&&UI.mode==='shape'){ UI.playing&&togglePlay(); snapLoad(MAIN,REC); MAIN.sim={...SNAP.sim}; MAIN.phase='shape'; dirty.light=true; S=MAIN.sim; }      // back to the shape, exactly as it was
     if(MAIN.phase==='anim'){ const vt=viewTime(REC);
-      if(dirty.anim){ REC.adom=animDom(REC); animReset(MAIN,REC,vt); dirty.anim=false; dirty.light=true; S=MAIN.sim; }
+      if(dirty.anim){ dirty.anim=false; if(animAuto()){ startAFit(); } else { REC.adom=REC.adom||animDom(REC); animReset(MAIN,REC,vt); dirty.light=true; S=MAIN.sim; } }
       else if(vt<S.t-1e-6){ animReset(MAIN,REC,vt); dirty.light=true; S=MAIN.sim; } else if(vt>S.target+1e-6) simExtend(MAIN,vt);   // back to frame 1 is instant: it is the shape
       const ar=ARec(REC);
-      if(S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,ar); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
+      if(!AFIT.on&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,ar); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
       if(UI.playing&&S.step>=S.steps) playAdvance(now);
       if(S.step>=S.steps&&!S.checked&&!UI.playing){ S.checked=true; animWallGrow(); }
     }
@@ -1583,8 +1585,24 @@ function drawBoxHandles(B){ const F=boxFaces(B); F.forEach((p,f)=>{ const q=proj
 function pickBoxFace(mx,my){ if(!REC.dom||UI.clean) return -1; const B=MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; let best=-1, bd=11; boxFaces(B).forEach((p,f)=>{ const q=project(p); if(!q) return; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best=f; } }); return best; }
 /* where along the side's axis the cursor is: the closest point between the mouse ray and that axis */
 function axisAt(mx,my,o,a){ const {ro,rd}=mouseRay(mx,my); const e=[0,0,0]; e[a]=1; const w=sub(o,ro), b=dot(e,rd), d=dot(e,w), e2=dot(rd,w), den=1-b*b; if(den<1e-6) return null; return (b*e2-d)/den; }
+/* ---------- the animation box, measured: a quick low-resolution run of the animation from the shape, In to Out; the box holds what the shot actually uses ---------- */
+const AFIT={ctx:mkCtx(56),on:false};
+const animAuto=()=>REC.fit==='auto'&&!REC.afix&&!TEST_NOFIT;
+function startAFit(big,tries=0){ const tm=timing(REC); const g=big||(()=>{ const b=animDom(REC), sz=domSize({dom:b}); return [b[0].map((v,i)=>v-sz[i]*0.25),b[1].map((v,i)=>v+sz[i]*0.25)]; })();
+  if(flatBase(REC)) g[0][1]=REC.dom[0][1]; const r={...REC,adom:g}; AFIT.rec=r; AFIT.inT=tm.inT; AFIT.tries=tries; AFIT.ext=null; AFIT.touch=[0,0,0,0,0,0]; AFIT.k=0;
+  animReset(AFIT.ctx,r,tm.outT); AFIT.on=true; if(tm.inT<=1e-6) afitUnion(); }
+function afitUnion(){ const ar=ARec(AFIT.rec); const e=measureExtent(AFIT.ctx,ar); if(!e) return; const E=AFIT.ext; if(!E) AFIT.ext={lo:e.lo.slice(),hi:e.hi.slice(),vox:e.vox}; else for(let i=0;i<3;i++){ E.lo[i]=Math.min(E.lo[i],e.lo[i]); E.hi[i]=Math.max(E.hi[i],e.hi[i]); }
+  for(let i=0;i<3;i++){ if(e.idx[i][0]<=1) AFIT.touch[i*2]=1; if(e.idx[i][1]>=e.dims[i]-2) AFIT.touch[i*2+1]=1; } }
+function stepAFit(budget){ const C=AFIT.ctx, S=C.sim, ar=ARec(AFIT.rec); const t0=performance.now();
+  while(S.step<S.steps&&performance.now()-t0<budget){ simStep(C,ar); if(S.t>=AFIT.inT-1e-6&&(++AFIT.k%4===0)) afitUnion(); }
+  if(S.step<S.steps) return false; afitUnion(); AFIT.on=false;
+  const g=AFIT.rec.adom; if(AFIT.touch.some((v,f)=>v&&!(f===2&&floorIn(REC)))&&AFIT.tries<2){ const nd=[g[0].slice(),g[1].slice()]; for(let i=0;i<3;i++){ const ex=g[1][i]-g[0][i]; if(AFIT.touch[i*2]&&!(i===1&&floorIn(REC))) nd[0][i]-=ex*0.6; if(AFIT.touch[i*2+1]) nd[1][i]+=ex*0.6; } startAFit(nd,AFIT.tries+1); return false; }   // the fog reached the measuring box: measure again with more room
+  const E=AFIT.ext; if(!E) return true; const vx=Math.cbrt(domSize(REC).reduce((a,b)=>a*b,1))/Math.max(simN(REC),8)*1.3; const lo=[], hi=[];
+  for(let i=0;i<3;i++){ const m=vx*4.5+(E.hi[i]-E.lo[i])*0.03+E.vox[i]*1.2; lo[i]=Math.max(E.lo[i]-m,g[0][i]); hi[i]=Math.min(E.hi[i]+m,g[1][i]); }
+  if(flatBase(REC)||floorIn(REC)) lo[1]=Math.min(lo[1],REC.dom[0][1]);
+  REC.adom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; roomFlash=performance.now(); return true; }
 function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase==='anim'; const old=anim?REC.adom:REC.dom; const nd=d.nd.map(a=>a.map(v=>+v.toPrecision(5)));
-  if(anim){ REC.adom=nd; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
+  if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
 function drawOverlay(){
   octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); if(UI.clean) return;
@@ -2149,7 +2167,7 @@ function buildPanels(){ if(UI.ws==='shot') buildLayers();
   if(REC.gnd.t==='pool') refreshers.push(slider(zb,S_('Pool size',0.5,2000,()=>REC.gnd.w*2,v=>REC.gnd.w=+(v/2).toPrecision(3),fmLen,()=>markView(),true)));
   note(zb,'A stand-in to design against: fog rests on it, flows around and down it, and it casts shadows. In a shot, your real set takes its place.');
   subH(zb,'Room');
-  refreshers.push(chips(zb,'',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
+  refreshers.push(chips(zb,'',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.afix=false; if(UI.mode==='anim') dirty.anim=true; REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
   note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch. The dashed box is only the simulation\'s room: on Auto it makes space wherever you pull or the fog drifts.');
   buildFormation(); buildEmitter();
   // simulate
@@ -2446,7 +2464,7 @@ $('#exportBtn').onclick=openExport; $('#mClose').onclick=closeModal; $('#modal')
 /* ---------------- status ---------------- */
 let lastDomS=''; function updateHud(vw,vh,fin,target){ const ds=JSON.stringify(REC.dom); if(ds!==lastDomS){ lastDomS=ds; lodRefresh(); } const S=MAIN.sim; const simDone=S.step>=S.steps; const p=S.steps?S.step/S.steps:1;
   const bar=$('#simBar'); bar.style.width=(simDone?Math.min(1,frames/target):p)*100+'%'; bar.classList.toggle('fin',fin);
-  const st=brushing?'sculpting':FIT.on&&MAIN.phase!=='anim'?'forming: measuring the room':MAIN.phase==='form'&&!simDone?'forming '+Math.round(p*100)+'%':!simDone?'animating to this frame '+Math.round(p*100)+'%':UI.playing?'playing':frames>=target?'refined':'refining '+frames+'/'+target;
+  const st=brushing?'sculpting':AFIT.on?'fitting the box to frames '+timing(REC).start+'–'+(timing(REC).start+timing(REC).frames-1):FIT.on&&MAIN.phase!=='anim'?'forming: measuring the room':MAIN.phase==='form'&&!simDone?'forming '+Math.round(p*100)+'%':!simDone?'animating to this frame '+Math.round(p*100)+'%':UI.playing?'playing':frames>=target?'refined':'refining '+frames+'/'+target;
   const mb=$('#modeBadge'); const bt=MAIN.phase==='form'?'Forming the shape…':UI.mode==='anim'?(UI.playing?'Playing from your shape':'Animate · frame 1 is your shape'):'Shape · still, nothing moves'; if(mb.textContent!==bt) mb.textContent=bt;
   $('#hud').textContent=`${MAIN.dims?MAIN.dims.join('×'):''} voxels · ${fin?(UI.res/1024)+'K':'preview'} ${vw}×${vh} · ${ftAvg.toFixed(0)} ms · ${st}`; }
 function toast(msg){ const t=$('#toast'); t.innerHTML=''; t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2400); }
