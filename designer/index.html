@@ -225,6 +225,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <details class="sec" open id="lodSec"><summary>Detail level · voxels</summary><div class="body" id="lodBody"></div></details>
     <details class="sec" open id="brushSec" hidden><summary>Brush</summary><div class="body" id="brushBody"></div></details>
     <details class="sec shape-only ws-shot" open id="layerSec"><summary>Shot layers</summary><div class="body" id="layerBody"></div></details>
+    <details class="sec ws-shot" open id="setSec"><summary>Set &amp; colliders</summary><div class="body" id="setBody"></div></details>
     <details class="sec anim-only" open id="animSec"><summary>Animation</summary><div class="body" id="animBody"></div></details>
     <details class="sec shape-only ws-designer" open><summary>Start from</summary><div class="body" id="startBody"></div></details>
     <details class="sec shape-only ws-designer" open><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
@@ -438,6 +439,16 @@ const VEL_GLSL=`
 uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uLiftN, uStrat, uCalm, uSpread, uSpreadK, uTime, uDt, uFloor, uFloorIn, uSimT, uGust, uGustL; uniform vec3 uWind, uCurlOff;
 uniform int uEmit, uSrcShape; uniform vec3 uSrcC; uniform vec4 uSrcS; uniform float uRise, uRiseH, uPush, uPushH, uSpreadE, uSrcTh;
 uniform int uNF; uniform vec4 uFA[48], uFB[48]; uniform float uFK[48], uFT[48]; uniform float uFlowOnly;   // influencer segments; kind: 0 carry (path, lift), 1 calm, 2 thin/thicken, 3 swirl   // drawn wind paths: segment start + radius, segment end + speed
+uniform sampler3D uMov; uniform int uNMB; uniform float uMK, uMovK; uniform vec4 uMB0[16], uMB1[16];   // movers: each a 32-cubed block of the atlas (box corner + strength, box size)
+vec4 movAt(int i,vec3 q){ float h=0.5/32.; return textureLod(uMov,vec3(q.x,(float(i)+clamp(q.y,h,1.-h))/uMK,q.z),0.); }
+vec3 movVel(vec3 p,vec3 v){ for(int i=0;i<16;i++){ if(i>=uNMB) break; vec3 q=(p-uMB0[i].xyz)/uMB1[i].xyz; if(any(lessThan(q,vec3(0.)))||any(greaterThan(q,vec3(1.)))) continue;
+    float s=uMB0[i].w; if(s<=0.) continue; vec4 m=movAt(i,q); float o=m.r; if(o<0.004) continue; vec3 mv=m.gba/max(o,1e-3)*uMovK;
+    vec3 e=vec3(1.5/32.); vec3 g=vec3(movAt(i,q+vec3(e.x,0.,0.)).r-movAt(i,q-vec3(e.x,0.,0.)).r,movAt(i,q+vec3(0.,e.y,0.)).r-movAt(i,q-vec3(0.,e.y,0.)).r,movAt(i,q+vec3(0.,0.,e.z)).r-movAt(i,q-vec3(0.,0.,e.z)).r)/(2.*e*uMB1[i].xyz);
+    v=mix(v,mv,clamp(smoothstep(0.02,0.45,o)*min(s,1.),0.,1.));                                   // dragged along with it
+    float gl2=length(g); if(gl2>1e-4) v-=g/gl2*length(mv)*s*0.9*smoothstep(0.,0.25,o)*(1.-smoothstep(0.55,0.9,o)); }   // and shoved aside at its edges
+  return v; }
+float movClear(vec3 p){ float c=0.; for(int i=0;i<16;i++){ if(i>=uNMB) break; vec3 q=(p-uMB0[i].xyz)/uMB1[i].xyz; if(any(lessThan(q,vec3(0.)))||any(greaterThan(q,vec3(1.)))) continue;
+    float s=uMB0[i].w; c=max(c,smoothstep(0.5,0.9,movAt(i,q).r)*clamp(abs(s),0.,1.)*(s<0.?1.:0.85)); } return c; }   // nothing stays inside a solid thing
 float n1(float x){ float i=floor(x), f=fract(x); float a=fract(sin(i*127.1)*43758.5453), b=fract(sin((i+1.)*127.1)*43758.5453); f=f*f*(3.-2.*f); return mix(a,b,f)*2.-1.; }
 /* real wind: gusts and lulls that roll through with the wind and vary across it, a slow veer, and slower air near the ground */
 vec3 windAt(vec3 p,float hy){ float U=length(uWind); if(U<1e-5) return vec3(0.); vec2 dir=uWind.xz/U;
@@ -464,15 +475,17 @@ vec3 vel(vec3 p,vec3 u,sampler3D den){
   vec3 vc=v;
   v+=windAt(p,hy)+vec3(0.,uLift,0.);
   if(uNF>0){ vec3 acc=vec3(0.); float ws=0., damp=0.;              // influencers: wind paths and lift carry the air along them; calm holds it still
-    for(int i=0;i<48;i++){ if(i>=uNF) break; vec3 a=uFA[i].xyz, ab=uFB[i].xyz-a; float r=uFA[i].w; float hh=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-6),0.,1.); float dd=length(p-a-ab*hh);
+    for(int i=0;i<48;i++){ if(i>=uNF) break; vec3 a=uFA[i].xyz, ab=int(uFK[i]+0.5)==4?vec3(0.):uFB[i].xyz-a; float r=uFA[i].w; float hh=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-6),0.,1.); float dd=length(p-a-ab*hh);
       if(dd<r*1.8){ float w=exp(-dd*dd/(r*r)*1.6); int kk=int(uFK[i]+0.5);
         if(kk==1) damp=max(damp,abs(uFB[i].w)*w);
+        else if(kk==4){ vec3 dv=a-p; float dl=length(dv); if(dl>1e-4){ float near=smoothstep(0.,r*0.12,dl); acc+=dv/dl*uFB[i].w*w*near; if(uFT[i]!=0.) acc+=cross(vec3(0.,1.,0.),-dv/dl)*uFT[i]*w*near; ws+=w; } }   // attract: drawn in (or blown out), spinning like a drain
         else if(kk==3){ vec3 ax=normalize(ab), rv=p-a-ax*dot(p-a,ax); float rl=length(rv); if(rl>1e-4){ acc+=cross(ax,rv/rl)*uFB[i].w*w*smoothstep(0.,r*0.35,rl); ws+=w; } }   // swirl around the mark's axis
         else if(kk==0){ vec3 ax=normalize(ab); acc+=ax*uFB[i].w*w; ws+=w;
           if(uFT[i]!=0.){ vec3 rv=p-a-ax*dot(p-a,ax); float rl=length(rv); if(rl>1e-4) acc+=cross(ax,rv/rl)*uFT[i]*w*smoothstep(0.,r*0.35,rl); } } } }   // a path can also twist the fog around itself, like a corkscrew
     v+=acc/max(ws,1.); v*=1.-clamp(damp,0.,0.97);
     if(uFlowOnly>0.5) v=vc*clamp(ws*1.2,0.,1.)+acc/max(ws,1.); }   // the Blow brush: only the fog inside the brush moves, swirling a little as it goes
   else if(uFlowOnly>0.5) v=vec3(0.);
+  if(uNMB>0) v=movVel(p,v);
   if(uEmit==1){ v.y+=uRise*exp(-hs/uRiseH)*(0.35+0.65*smoothstep(0.,0.5,d));   // warm smoke rises, then levels off as it cools
     v.y+=uPush*exp(-hs/uPushH)*smoothstep(uSrcS.y*0.6+uSrcTh,-uSrcTh,srcSD(p.xz)); }  // jet out of the source
   if(uFloor>0.5){ float band=max(uHgt*0.12,uEddy*0.4); float k=1.-smoothstep(0.,band,hy);
@@ -499,8 +512,9 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   for(int k=0;k<8;k++){ vec3 c=i0+vec3(k&1,(k>>1)&1,(k>>2)&1); float s=texelFetch(uD,ivec3(clamp(c,vec3(0.),uDims-1.)),0).r; mn=min(mn,s); mx=max(mx,s); }
   d=clamp(d,mn,mx); d*=exp(-uDiss*uDt);
   vec3 em=min(u,1.-u), sw=3./uDims; float sp=smoothstep(0.,sw.x,em.x)*smoothstep(0.,sw.z,em.z)*smoothstep(0.,sw.y,1.-u.y)*(uFloorIn>0.5?1.:smoothstep(0.,sw.y,u.y)); d*=mix(1.,sp,clamp(uDt*uU/max(uEddy,1e-3)*0.8,0.,1.));  // soft sponge at the domain walls
-  if(uNF>0){ float th=0., tk=0.; for(int i=0;i<48;i++){ if(i>=uNF) break; if(int(uFK[i]+0.5)!=2) continue; vec3 a=uFA[i].xyz; float r=uFA[i].w, dd=length(p-a); if(dd<r*1.8){ float w=exp(-dd*dd/(r*r)*1.6); if(uFB[i].w>0.) th+=uFB[i].w*w; else tk-=uFB[i].w*w; } }
-    d*=exp(-th*uDt); d+=(1.-d)*clamp(tk*uDt,0.,1.)*smoothstep(0.02,0.25,d); }   // thin: the fog evaporates where painted · thicken: it condenses where there is some already
+  if(uNMB>0) d*=1.-movClear(p);
+  if(uNF>0){ float th=0., tk=0., ce=0.; for(int i=0;i<48;i++){ if(i>=uNF) break; int kq=int(uFK[i]+0.5); if(kq==4){ float dc=length(p-uFA[i].xyz), rc=uFA[i].w*0.35; ce+=uFB[i].x*exp(-dc*dc/(rc*rc)); continue; } if(kq!=2) continue; vec3 a=uFA[i].xyz; float r=uFA[i].w, dd=length(p-a); if(dd<r*1.8){ float w=exp(-dd*dd/(r*r)*1.6); if(uFB[i].w>0.) th+=uFB[i].w*w; else tk-=uFB[i].w*w; } }
+    d*=exp(-(th+ce)*uDt); d+=(1.-d)*clamp(tk*uDt,0.,1.)*smoothstep(0.02,0.25,d); }   // consumed at an attractor's core   // thin: the fog evaporates where painted · thicken: it condenses where there is some already
   vec4 rc=textureLod(uR,u,0.); float gh=uGround>0?terrH(p.xz):0.;
   if(uGround>0&&p.y<gh) d=0.;
   float age=rc.a/max(h,1e-4); rc.a=age*max(d,0.);                // keep age per unit of fog through the corrections above
@@ -899,7 +913,7 @@ const SCENE=(()=>{ const bumps=[
   const xs=houses.map(h=>h[0]), zs=houses.map(h=>h[2]); const vb=[Math.min(...xs)-22,Math.min(...zs)-22,Math.max(...xs)+22,Math.max(...zs)+22];
   const vy=[Math.min(...houses.map(h=>h[1]))-2,Math.max(...houses.map(h=>h[1]+h[6]+h[7]))+2];
   return {bumps,houses,vb,vy,sh,maskB:[-1400,-1800,2800,2700],cam:{pos:[-250,62,270],look:[60,75,-520]}}; })();
-const sceneHJ=(x,z)=>SCENE.sh(x,z);
+const sceneHJ=(x,z)=>HMAP.h?hmapAt(x,z):SCAN.src&&SCAN.src.ground?SCAN.src.ground(x,z):curScene()==='motion'?mGround(x,z):SCENE.sh(x,z);   // the shot's ground: what the fog meets (picked objects or the scanned ground) once the set is scanned
 const flatBase=rec=>hasGround(rec)&&['flat','street','pool','lake'].includes(rec.gnd.t);
 function waterOf(rec){ const g=rec.gnd; if(!g) return [0,0,0,0]; if(g.t==='pool') return [0,0,g.w,1]; if(g.t==='lake') return [0,0,g.L*0.45,1]; return [0,0,0,0]; }
 /* the fog that forms by a rule, in absolute metres */
@@ -1258,7 +1272,7 @@ function animDom(rec){ const A=rec.anim, b=rec.dom, sz=domSize(rec), tm=timing(r
   return [lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; }
 /* start the animation over: frame 1 is the shape, exactly, then simulate to the time asked for */
 function animReset(ctx,rec,target){ const ar=ARec(rec); snapLoad(ctx,ar); const sp=simParams(ctx,ar); const tg=Math.max(0,target||0);
-  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:riseOf(rec.anim)/Math.max(realTimeK(ar),1e-4),spreadK:sp.spreadK*0.3,emit:sp.emit,checked:false,holdT:rec.anim.hold?0:1e30,forming:false,shaped:true}; ctx.phase='anim'; }   // rise is real metres per second
+  ctx.sim={step:0,steps:tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:riseOf(rec.anim)/Math.max(realTimeK(ar),1e-4),spreadK:sp.spreadK*0.3,emit:sp.emit,checked:false,holdT:rec.anim.hold?0:1e30,forming:false,shaped:true}; ctx.phase='anim'; moverPreroll(ctx,ar); }   // rise is real metres per second
 /* the box changed around fog that is already simulated: resample it into the new box instead of simulating again */
 function rebox(ctx,rec,oldDom,noBase){ if(!ctx.dims) return; const od=oldDom, olo=od[0], osz=[0,1,2].map(i=>od[1][i]-od[0][i]); const d=recDims(rec,ctx.N);
   const mk=(f)=>f==='rc'?tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT):f==='den'?tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT):tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT);
@@ -1304,7 +1318,7 @@ function velUniforms(pr,ctx,rec){ const S=rec.sim; const held=!ctx.sim.emit&&ctx
   u1f(pr,'uTime',ctx.sim.t*(ctx.sim.U*CURL_RMS)/Math.max(S.eddy,1e-3)); /* in eddy turnovers */ u1f(pr,'uDt',ctx.sim.h); u1f(pr,'uFloor',hasGround(rec)?1:0); u1f(pr,'uFloorIn',floorIn(rec)?1:0); u3v(pr,'uWind',held?[0,0,0]:ctx.sim.wind);
   u1f(pr,'uLiftN',S.lift||0); u1f(pr,'uSimT',ctx.sim.t); u1f(pr,'uGust',S.gust||0); u1f(pr,'uGustL',Math.max(S.gustL||S.eddy*3,1e-3));
   const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); terrU(pr,rec);
-  flowU(pr,rec); u1f(pr,'uFlowOnly',rec.flowRaw?1:0);
+  if(MOVPRE){ u1i(pr,'uNF',0); u1f(pr,'uFlowOnly',1); } else { flowU(pr,rec); u1f(pr,'uFlowOnly',rec.flowRaw?1:0); } movU(pr,ctx,rec);
   const E=rec.emit, EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0);
   if(EP){ u1i(pr,'uSrcShape',['disc','rect','line','ring'].indexOf(E.shape)); u3v(pr,'uSrcC',[E.x,E.y,E.z]); u4v(pr,'uSrcS',[E.w,E.d,E.ang*D2R,E.edge]);
     u1f(pr,'uRise',EP.Vr); u1f(pr,'uRiseH',EP.riseH); u1f(pr,'uPush',EP.push); u1f(pr,'uPushH',EP.pushH); u1f(pr,'uSpreadE',E.spread); u1f(pr,'uSrcTh',EP.th); } }
@@ -1320,7 +1334,8 @@ function flowSegs(rec){ const out=[]; const k=emitOn(rec)||rec.flowRaw?1:1/Math.
         if(f.kind==='lift') out.push([p,f.tip&&f.dabs.length===1?f.tip:top,f.r,f.v*k,0]);   // carry the air along its arrow (up, down, or any way you turned it)
         else if(f.kind==='calm') out.push([p,top,f.r,clamp(f.v,0,1),1]);                    // hold it still
         else if(f.kind==='thin') out.push([p,top,f.r,(f.thick?-1:1)*f.v*0.6*k,2]);          // evaporate (or condense), per second
-        else if(f.kind==='swirl') out.push([p,top,f.r,(f.cw?-1:1)*f.v*k,3]); }             // spin around an upright axis
+        else if(f.kind==='swirl') out.push([p,top,f.r,(f.cw?-1:1)*f.v*k,3]);
+        else if(f.kind==='attract') out.push([p,[clamp(f.eat||0,0,1)*4*k,0,0],f.r,f.v*k,4,(f.spin||0)*k]); }   // pull in (or blow out), spin, consume at the core             // spin around an upright axis
       continue; }
     for(let i=0;i<f.pts.length-1&&out.length<48;i++) out.push([f.pts[i],f.pts[i+1],f.r,f.v*k,0,(f.tw||0)*f.v*k*1.5]); }
   return out; }
@@ -1329,6 +1344,7 @@ function flowU(pr,rec){ const S=flowSegs(rec); FLOW_A.fill(0); FLOW_B.fill(0); F
 function emitFadeU(pr,ctx,rec){ const EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0); u1f(pr,'uLife',EP?EP.life:1e9); u1f(pr,'uTailF',EP?clamp(rec.emit.tail,0.01,1):0.01); u1f(pr,'uSrcF',EP?rec.emit.srcF:0); }
 function simStep(ctx,rec,h){
   ctx.sim.h=h||Math.max(Math.min(ctx.sim.dt,ctx.sim.target-ctx.sim.t),ctx.sim.dt*1e-3);   // the last step lands exactly on the target
+  movStep(ctx,rec,ctx.sim.h);
   let pr=use('simA'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); u1f(pr,'uReseed',(0.15+2.2*Math.pow(1-(rec.det.curl??0.5),2))*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));   /* high curl: let the flow stretch the detail into threads before refreshing it */
   volPass(pr,[ctx.den[1],ctx.rc[1]],ctx.dims);
   pr=use('simB'); velUniforms(pr,ctx,rec); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uH',ctx.den[1]); bind3(pr,2,'uR',ctx.rc[1]); bind3(pr,3,'uNT',T.noise); u1f(pr,'uDiss',rec.sim.diss*0.6*ctx.sim.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3));
@@ -1544,11 +1560,11 @@ function niceLen(x){ const e=Math.pow(10,Math.floor(Math.log10(x))); const m=x/e
 const fmLen=v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+' km':v>=10?v.toFixed(0)+' m':v>=1?v.toFixed(1)+' m':(v*100).toFixed(0)+' cm';
 let hover=null;
 /* ---------- influencers: drawing, with a shadow on the ground so you can read height ---------- */
-const INFL_TOOLS=['flow','lift','calm','thin','swirl','edit'];
-const INFL_COL={path:'166,203,221',lift:'239,178,77',calm:'150,210,170',thin:'236,120,150',swirl:'190,160,255'};
+const INFL_TOOLS=['flow','lift','calm','thin','swirl','attract','edit'];
+const INFL_COL={path:'166,203,221',lift:'239,178,77',calm:'150,210,170',thin:'236,120,150',swirl:'190,160,255',attract:'255,128,96'};
 function groundY(p){ if(hasGround(REC)) return terrHJ(REC,p[0],p[2]); const b=(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom); return REC.floor?0:b[0][1]; }
 function inflPts(f){ if(f.kind==='swirl'&&f.dabs&&f.dabs.length){ const {A,B}=vortexABM(f); return [A,B,...(f.mid?[f.mid]:[])]; } if(f.kind==='lift'&&f.tip&&f.dabs.length===1) return [f.dabs[0],f.tip]; return f.pts||f.dabs||[]; }
-const isMark=f=>['lift','calm','thin'].includes(f.kind)&&f.dabs&&f.dabs.length===1;
+const isMark=f=>['lift','calm','thin','attract'].includes(f.kind)&&f.dabs&&f.dabs.length===1;
 /* a point beside a centre, at a distance r, on the side facing the camera's right: where a size dot sits */
 function sideDot(c,r,axis){ const B=camBasis(CAM); let s=axis?cross(axis,B.f):B.r; if(len(s)<1e-4) s=B.r; return add(c,mul(norm(s),r)); }
 function vortexRim(f){ const {M}=vortexABM(f); return sideDot(M,f.r,vortexAt(f,0.5).d); }
@@ -1574,7 +1590,8 @@ function drawInfluencers(){ const FL=REC.anim.flows||[]; const B=camBasis(CAM); 
       octx.lineCap='butt'; octx.fillStyle=`rgba(${c},${al})`;
       for(let i=1;i<P.length;i++){ const a=project(P[i-1]), b=project(P[i]); if(!a||!b) continue; const an=Math.atan2(b[1]-a[1],b[0]-a[0]); octx.beginPath(); octx.moveTo(b[0]+Math.cos(an)*7,b[1]+Math.sin(an)*7); octx.lineTo(b[0]+Math.cos(an+2.5)*7,b[1]+Math.sin(an+2.5)*7); octx.lineTo(b[0]+Math.cos(an-2.5)*7,b[1]+Math.sin(an-2.5)*7); octx.fill(); } }
     else for(const p of P){ const q=project(p); if(!q) continue; const rp=px(f.r,q); octx.lineWidth=sel?2.4:1.6; octx.strokeStyle=`rgba(${c},${0.9*al})`; octx.fillStyle=octx.strokeStyle;
-      if(f.kind==='calm'||f.kind==='thin'){ octx.setLineDash([3,4]); octx.beginPath(); octx.arc(q[0],q[1],rp,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.font='600 14px "IBM Plex Mono", monospace'; octx.textAlign='center'; octx.fillText(f.kind==='calm'?'=':f.thick?'+':'−',q[0],q[1]+5); octx.textAlign='left'; }
+      if(f.kind==='attract'){ octx.setLineDash([3,4]); octx.beginPath(); octx.arc(q[0],q[1],rp,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); const inw=f.v>=0; for(let k=0;k<6;k++){ const an=k/6*Math.PI*2+(f.spin||0)*0.4, r0=rp*(inw?0.85:0.35), r1=rp*(inw?0.4:0.8), x0=q[0]+Math.cos(an)*r0, y0=q[1]+Math.sin(an)*r0, x1=q[0]+Math.cos(an+(f.spin||0)*0.35)*r1, y1=q[1]+Math.sin(an+(f.spin||0)*0.35)*r1; octx.beginPath(); octx.moveTo(x0,y0); octx.lineTo(x1,y1); octx.stroke(); const a2=Math.atan2(y1-y0,x1-x0); octx.beginPath(); octx.moveTo(x1,y1); octx.lineTo(x1-Math.cos(a2-0.5)*6,y1-Math.sin(a2-0.5)*6); octx.lineTo(x1-Math.cos(a2+0.5)*6,y1-Math.sin(a2+0.5)*6); octx.fill(); } octx.beginPath(); octx.arc(q[0],q[1],3,0,Math.PI*2); octx.fill(); }   // arrows in (or out), bent by the spin
+      else if(f.kind==='calm'||f.kind==='thin'){ octx.setLineDash([3,4]); octx.beginPath(); octx.arc(q[0],q[1],rp,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.font='600 14px "IBM Plex Mono", monospace'; octx.textAlign='center'; octx.fillText(f.kind==='calm'?'=':f.thick?'+':'−',q[0],q[1]+5); octx.textAlign='left'; }
       else if(f.kind==='swirl'){ if(p!==P[0]) continue; const turns=3, N=90, sg=f.cw?-1:1; let pr=null; const pts=[];   // a spiral along the vortex's curve, turning the way the fog will
         for(let i=0;i<=N;i++){ const t=i/N, c=vortexAt(f,t); let u=cross(c.d,[0,1,0]); if(len(u)<1e-3) u=cross(c.d,[1,0,0]); u=norm(u); const w=cross(c.d,u); const a=sg*t*turns*Math.PI*2, rr=f.r*(0.55+0.45*Math.sin(t*Math.PI));
           pts.push(project(add(c.p,add(mul(u,Math.cos(a)*rr),mul(w,Math.sin(a)*rr))))); }
@@ -1657,7 +1674,7 @@ function drawOverlay(){
       octx.strokeStyle=op===1||op===5?'rgba(224,111,94,.95)':op===2?'rgba(166,203,221,.95)':'rgba(239,178,77,.95)'; octx.lineWidth=1.5; octx.setLineDash(op===1?[4,3]:[]);
       octx.beginPath(); octx.arc(c[0],c[1],rpx,0,Math.PI*2); octx.stroke(); octx.setLineDash([]); octx.globalAlpha=0.5; octx.beginPath(); octx.arc(c[0],c[1],rpx*0.5,0,Math.PI*2); octx.stroke(); octx.globalAlpha=1; } }
   if(UI.mode==='anim') drawInfluencers();
-  if(UI.ws==='shot') drawPlaceRing();
+  if(UI.ws==='shot'){ drawPlaceRing(); drawCollideHover(); drawScanCams(); drawSpheres(); drawGhosts(); }
   // emitter source, drawn on the ground
   if(emitOn(REC)){ const E=REC.emit, a=E.ang*D2R, ca=Math.cos(a), sa=Math.sin(a); const loops=[];
     const circ=(rx,rz)=>{ const L=[]; for(let i=0;i<=64;i++){ const t=i/64*Math.PI*2; L.push([rx*Math.cos(t),rz*Math.sin(t)]); } return L; };
@@ -1739,8 +1756,11 @@ ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
   if(pointers.size===2){ const [a,b]=[...pointers.values()]; if(drag&&drag.mode==='brush') endStroke(); drag={mode:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; return; }
+  if(!ev.altKey&&ev.button===0){ const g=pickGhost(mx,my); if(g){ drag={mode:'ghost',...g,vert:ev.shiftKey,lx:mx,ly:my}; return; } }   // a mover's ghost before frame 1
   if(!ev.altKey&&ev.button===0&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f>=0){ const B=MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; drag={mode:'boxface',f,b0:B.map(a=>a.slice()),nd:B.map(a=>a.slice()),o:boxFaces(B)[f],lx:mx,ly:my}; return; } }   // grab a side of the box
   if(ev.altKey||UI.tool==='orbit'||UI.tool==='box'||ev.button!==0){ ev.preventDefault(); const m=ev.button===1?'track':ev.button===2?'dolly':((ev.buttons&4)?'dolly':'tumble'); drag={mode:m,x:mx,y:my}; return; }
+  if(UI.tool==='collide'){ collideClick(mx,my,ev); return; }
+  if(UI.tool==='sphere'){ const d=sphereDown(mx,my,ev); if(d) drag=d; return; }   // the shot: pick what the fog meets
   if(UI.ws==='shot'&&REC&&REC.blank){ toast('Add a fog layer first: pick a type under Layers'); return; }   // the empty shot: nothing to shape yet
   if(BRUSHES[UI.tool]!=null){ startStroke(mx,my,ev); return; }
   if(UI.tool==='wind'){ drag={mode:'wind',x0:mx,y0:my,lx:mx,ly:my}; return; }
@@ -1750,7 +1770,7 @@ ov.addEventListener('pointerdown',ev=>{
     const {ro,rd}=mouseRay(mx,my); const pk=pickRay(MAIN,MAIN.phase==='anim'?ARec(REC):REC,ro,rd); let p; if(pk.t>0) p=add(ro,mul(rd,pk.t)); else { const g=rayGround(ro,rd); p=g?add(g,[0,UI.brushR*0.5,0]):planePt(mx,my,brushPlaneC(),false); }
     if(UI.tool==='flow'){ drag={mode:'flow',y0:p[1],o:p,level:ev.shiftKey,pts:[p],lx:mx,ly:my}; return; }
     if(UI.tool==='swirl'){ drag={mode:'vortex',A:p,B:[p[0],p[1]+UI.brushR*2,p[2]],cw:ctrl,sx:mx,sy:my,lx:mx,ly:my}; return; }   // press at the base, drag out its direction and length
-    if(['lift','calm','thin'].includes(UI.tool)){ drag={mode:'mark',kind:UI.tool,A:p,r:UI.brushR,down:UI.tool==='lift'&&ctrl,thick:UI.tool==='thin'&&ctrl,sx:mx,sy:my,lx:mx,ly:my}; return; }   // one mark where you press: drag out to size it
+    if(['lift','calm','thin','attract'].includes(UI.tool)){ drag={mode:'mark',kind:UI.tool,A:p,r:UI.brushR,down:(UI.tool==='lift'||UI.tool==='attract')&&ctrl,thick:UI.tool==='thin'&&ctrl,sx:mx,sy:my,lx:mx,ly:my}; return; }   // one mark where you press: drag out to size it
     drag={mode:'infl',kind:UI.tool,down:UI.tool==='lift'&&ctrl,thick:UI.tool==='thin'&&ctrl,cw:UI.tool==='swirl'&&ctrl,y0:p[1],pts:[p],lx:mx,ly:my}; return; }
   if(UI.tool==='place'){ const d=placeStart(mx,my,ev); if(d) drag=d; return; }
   if(UI.tool==='source'){ if(!emitOn(REC)){ toast('This asset has no emitter. Turn one on in the Emitter section.'); return; } const a=sourcePoint(mx,my); if(!a){ toast('Point at the ground to draw the source'); return; } drag={mode:'source',a,lx:mx,ly:my}; return; }
@@ -1760,16 +1780,19 @@ ov.addEventListener('pointermove',ev=>{
   const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
   if(!drag&&ready&&UI.mode==='anim'&&INFL_TOOLS.includes(UI.tool)){ const h=pickHandle(mx,my); if(JSON.stringify(h)!==JSON.stringify(hoverH)){ hoverH=h; ov.style.cursor=h?'move':UI.tool==='edit'?'default':'crosshair'; } }
   if(!drag&&ready&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f!==hoverBox){ hoverBox=f; ov.style.cursor=f>=0?'ns-resize':UI.tool==='orbit'?'grab':'default'; } }
-  if(!drag&&ready&&UI.tool==='place'){ const {ro,rd}=mouseRay(mx,my); hoverG=rayGround(ro,rd); }
+  if(!drag&&ready&&UI.tool==='place'){ hoverG=shotGround(mx,my); }
+  if(!drag&&ready&&UI.tool==='collide') collideHover(mx,my);
   if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }
   if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); track(cx-drag.cx,cy-drag.cy); drag.d=d; drag.cx=cx; drag.cy=cy; return; }
   if(drag.mode==='tumble'){ tumble(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
+  if(drag.mode==='sphere'){ sphereMove(mx,my); return; }
+  if(drag.mode==='ghost'){ ghostMove(mx,my); return; }
   if(drag.mode==='track'){ track(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='dolly'){ dolly(Math.exp(-((mx-drag.x)+(my-drag.y))*0.005)); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='brush'){ drag.lx=mx; drag.ly=my; moveStroke(mx,my); return; }
   if(drag.mode==='boxface'){ drag.lx=mx; drag.ly=my; const a=drag.f>>1, hi=drag.f&1; const t=axisAt(mx,my,drag.o,a); if(t==null) return; const B=drag.b0, mn=Math.max((B[1][a]-B[0][a])*0.04,0.05); const nd=B.map(x=>x.slice());
     if(hi) nd[1][a]=Math.max(drag.o[a]+t,B[0][a]+mn); else nd[0][a]=Math.min(drag.o[a]+t,B[1][a]-mn); drag.nd=nd; drag.moved=true; poke(); return; }
-  if(drag.mode==='mark'){ drag.lx=mx; drag.ly=my; if(Math.hypot(mx-drag.sx,my-drag.sy)>6) drag.r=Math.max(len(sub(planePt(mx,my,drag.A,2),drag.A)),0.1); drag.label=`${{lift:drag.down?'sink':'lift',calm:'calm',thin:drag.thick?'thicken':'thin'}[drag.kind]} · ${fmLen(drag.r*2)} across`; return; }
+  if(drag.mode==='mark'){ drag.lx=mx; drag.ly=my; if(Math.hypot(mx-drag.sx,my-drag.sy)>6) drag.r=Math.max(len(sub(planePt(mx,my,drag.A,2),drag.A)),0.1); drag.label=`${{lift:drag.down?'sink':'lift',calm:'calm',thin:drag.thick?'thicken':'thin',attract:drag.down?'blast':'attract'}[drag.kind]} · ${fmLen(drag.r*2)} across`; return; }
   if(drag.mode==='vortex'){ drag.lx=mx; drag.ly=my; if(Math.hypot(mx-drag.sx,my-drag.sy)>8){ drag.B=planePt(mx,my,drag.A,ev.shiftKey?true:2); drag.dragged=true; } drag.label=`vortex ${fmLen(len(sub(drag.B,drag.A)))} long · Shift keeps it upright`; return; }
   if(drag.mode==='place'){ drag.lx=mx; drag.ly=my; placeMove(mx,my); return; }
   if(drag.mode==='handle'){ drag.lx=mx; drag.ly=my; const f=REC.anim.flows[drag.fi]; if(!f) return; const q=v=>+v.toPrecision(5), O=drag.snap, role=drag.role, i=drag.hi;
@@ -1792,10 +1815,10 @@ ov.addEventListener('pointermove',ev=>{
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
 function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
-  if(drag.mode==='brush') endStroke(); else if(drag.mode==='wind'){ pushUndo(); markAnim(); } else if(drag.mode==='source'){ pushUndo(); markSimU(); refreshPanels(); }
+  if(drag.mode==='brush') endStroke(); else if(drag.mode==='sphere'){ buildPanels(); } else if(drag.mode==='ghost'){ autosave(); markAnim(); buildPanels(); } else if(drag.mode==='wind'){ pushUndo(); markAnim(); } else if(drag.mode==='source'){ pushUndo(); markSimU(); refreshPanels(); }
   else if(drag.mode==='mark'){ const q=v=>+v.toPrecision(5); const FL=REC.anim.flows=REC.anim.flows||[]; const k=drag.kind, A=drag.A.map(q), r=+drag.r.toPrecision(3); UI.brushR=r;
-    FL.push({kind:k,down:!!drag.down,thick:!!drag.thick,r,v:k==='calm'?0.85:k==='thin'?0.5:UI.flowV,dabs:[A],...(k==='lift'?{tip:[A[0],q(A[1]+r*(drag.down?-0.8:0.8)),A[2]]}:{})}); while(FL.length>12) FL.shift(); UI.selInfl=FL.length-1;
-    pushUndo(); markAnim(); buildPanels(); buildHint(); toast({lift:drag.down?'Sink placed':'Lift placed',calm:'Calm placed',thin:drag.thick?'Thicken placed':'Thin placed'}[k]+': drag its dots to move it, '+(k==='lift'?'point it, ':'')+'or resize it. Press Play'); }
+    FL.push({kind:k,down:!!drag.down,thick:!!drag.thick,r,v:k==='calm'?0.85:k==='thin'?0.5:k==='attract'?(drag.down?-1:1)*Math.max(UI.flowV,2):UI.flowV,...(k==='attract'?{spin:0,eat:0.3}:{}),dabs:[A],...(k==='lift'?{tip:[A[0],q(A[1]+r*(drag.down?-0.8:0.8)),A[2]]}:{})}); while(FL.length>12) FL.shift(); UI.selInfl=FL.length-1;
+    pushUndo(); markAnim(); buildPanels(); buildHint(); toast({lift:drag.down?'Sink placed':'Lift placed',calm:'Calm placed',thin:drag.thick?'Thicken placed':'Thin placed',attract:drag.down?'Blast placed':'Attractor placed'}[k]+': drag its dots to move it, '+(k==='lift'?'point it, ':'')+'or resize it. Press Play'); }
   else if(drag.mode==='vortex'){ const q=v=>+v.toPrecision(5); const FL=REC.anim.flows=REC.anim.flows||[]; FL.push({kind:'swirl',cw:!!drag.cw,r:+UI.brushR.toPrecision(3),v:UI.flowV,dabs:[drag.A.map(q)],tip:drag.B.map(q)}); while(FL.length>12) FL.shift(); UI.selInfl=FL.length-1;
     pushUndo(); markAnim(); buildPanels(); toast('Vortex placed. Drag its ends anywhere, the middle dot to bend it, the side dot to make it wider. Press Play'); }
   else if(drag.mode==='place') placeEnd();
@@ -1816,7 +1839,7 @@ addEventListener('keydown',ev=>{
   if(k==='Escape'){ if(!$('#modal').hidden) closeModal(); if(!$('#libModal').hidden) closeLibrary(); return; }
   if((ev.ctrlKey||ev.metaKey)&&k.toLowerCase()==='z'){ ev.preventDefault(); ev.shiftKey?redo():undo(); return; }
   if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
-  const t=TOOLS.find(x=>x.key===k.toLowerCase()); if(t){ setTool(t.id); return; }
+  const t=TOOLS.find(x=>x.key===k.toLowerCase()&&(!x.ws||x.ws===UI.ws)); if(t){ setTool(t.id); return; }
   if(k===' '){ ev.preventDefault(); togglePlay(); return; }
   if(k==='['){ setBrushR(UI.brushR/1.15); return; } if(k===']'){ setBrushR(UI.brushR*1.15); return; }
   if(k==='h'||k==='H'){ setClean(!UI.clean); return; }
@@ -1923,11 +1946,11 @@ function activate(k,force){ if(!SHOT) return; const tgt=SHOT.els[k]||(SHOT.els.l
 const shotEls=()=>SHOT?SHOT.els:[];
 function styleInto(r,id){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; const {sz,...dt}=st.det; Object.assign(r.det,dt); if(sz) r.det.size=+(r.sim.eddy*sz).toPrecision(3); if(st.ext) r.den.extD=+(Math.min(...r.size)*st.ext*(r.layer?STYPE(r.layer.type).extK||1:1)).toPrecision(3); if(st.ecc!=null) r.den.ecc=st.ecc; if(st.sim) Object.assign(r.sim,st.sim); r.style=id; }
 function makeShotEl(type,el){ const T=STYPE(type), r=makeRecipe('shot','mid',Math.floor(Math.random()*9999)); r.name=T.label; r.sim.eddy={ground:12,valley:16,hang:16,cloud:30,cap:30,haze:45}[type]||16; r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(r.sim.eddy*1.8).toPrecision(3);
-  r.layer={type,p:{}}; r.el=el; r.eid='e'+Math.random().toString(36).slice(2,9); r.place=[]; r.looks=[]; styleInto(r,T.look); r.name=T.label; r.anim=animDefaults(r); r.anim.wind=1.5;
-  r.lod='custom'; r.voxM={ground:1.2,valley:1.6,hang:2,cloud:3.5,cap:3.5,haze:8}[type]||2; r.voxCap=7e6; return r; }   // voxels as fine as the Designer's, held to about 7M per layer
+  r.layer={type,p:Object.fromEntries(T.params.map(([id,,,,df])=>[id,+(df*SK()).toPrecision(3)]))}; r.el=el; { const k=SK(); if(k!==1){ r.size=r.size.map(v=>+(v*k).toPrecision(3)); r.sim.eddy=+(r.sim.eddy*k*1.6).toPrecision(3); r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(r.sim.eddy*1.8).toPrecision(3); } } r.eid='e'+Math.random().toString(36).slice(2,9); r.place=[]; r.looks=[]; styleInto(r,T.look); r.name=T.label; r.anim=animDefaults(r); r.anim.wind=1.5;
+  r.lod='custom'; r.voxM=+(({ground:1.2,valley:1.6,hang:2,cloud:3.5,cap:3.5,haze:8}[type]||2)*SK()*(SK()<1?1.4:1)).toPrecision(3); r.voxCap=7e6; return r; }   // voxels as fine as the Designer's, held to about 7M per layer
 /* ---------- the painted mask: one channel per layer, on a top-down grid over the scene ---------- */
 const MASK={N:256,a:new Float32Array(256*256*4),tex:null,ver:0,info:null};
-const mB=()=>SCENE.maskB;   // x0, z0, width, depth
+const mB=()=>SCAN.src&&SCAN.src.maskB||(curScene()==='motion'?[-60,-60,120,120]:SCENE.maskB);   // x0, z0, width, depth
 function maskDab(L,x,z,r,s,erase){ const N=MASK.N, B=mB(), tx=(x-B[0])/B[2]*N, tz=(z-B[1])/B[3]*N, rt=r/B[2]*N;
   for(let j=Math.max(0,Math.floor(tz-rt));j<=Math.min(N-1,Math.ceil(tz+rt));j++) for(let i=Math.max(0,Math.floor(tx-rt));i<=Math.min(N-1,Math.ceil(tx+rt));i++){
     const d2=((i+0.5-tx)**2+(j+0.5-tz)**2)/(rt*rt); if(d2>=1) continue; const f=(1-d2)*(1-d2)*s, k=(j*N+i)*4+L, v=MASK.a[k]; MASK.a[k]=erase?v*(1-f):v+(1-v)*f; }
@@ -1951,7 +1974,7 @@ function layerRule(rec){ const ly=rec.layer||{type:'valley'}, T=STYPE(ly.type), 
   if(T.kind===5) return [3,(I.n?I.hi:300)-g('below'),g('thick'),0];
   return [4,g('height'),0,0]; }
 /* the space this layer's fog will fill */
-function shotBounds(rec){ const o=maskInfo()[rec.el||0]; if(!o||!o.n) return null; const R=layerRule(rec); const pad=20; const x0=o.x0-pad, x1=o.x1+pad, z0=o.z0-pad, z1=o.z1+pad, y0=o.lo-2;
+function shotBounds(rec){ const o=maskInfo()[rec.el||0]; if(!o||!o.n) return null; const R=layerRule(rec); const pad=20*SK(); const x0=o.x0-pad, x1=o.x1+pad, z0=o.z0-pad, z1=o.z1+pad, y0=o.lo-2*SK();
   const y1=R[0]===0?o.hi+R[1]*1.6:R[0]===1?R[1]+R[2]*2:R[0]===2?o.hi+R[1]+R[2]*2.2:R[0]===3?R[1]+R[2]*2:o.hi+R[1];
   return {c:[(x0+x1)/2,(y0+y1)/2,(z0+z1)/2],e:[(x1-x0)/2,Math.max((y1-y0)/2,2),(z1-z0)/2]}; }
 function shotGenU(pr,rec){ if(!MASK.tex) maskBuild(); bindTex(7,gl.TEXTURE_2D,MASK.tex); u1i(pr,'uMask',7); u4v(pr,'uMaskB',mB()); u1i(pr,'uNL',4);
@@ -1974,10 +1997,10 @@ function shotRender(vw,vh,moving,fin,target,steps){ const act=REC; const list=[]
   const pr=use('comp'); bindTex(0,gl.TEXTURE_2D,SET.col); u1i(pr,'uB',0); list.slice(0,4).forEach((e,i)=>{ bindTex(1+i,gl.TEXTURE_2D,e.acc.tex[e.acc.cur]); u1i(pr,'uE'+i,1+i); }); u1i(pr,'uNE',Math.min(list.length,4)); u2f(pr,'uRes',vw,vh); fullscreen();
   gl.bindFramebuffer(gl.FRAMEBUFFER,null); COMPACC.cur=0; return Math.min(target,...fogs.map(f=>f.rt.frames)); }
 /* ---------- the shot recipe ---------- */
-function newShot(){ return {v:3,name:'Village shot',els:[]}; }   // an empty set: you place the fog
+function newShot(scene){ scene=scene||'village'; return {v:3,scene,name:scene==='village'?'Village shot':(SCENES[scene]||{label:scene}).label+' shot',els:[],movers:[]}; }   // an empty set: you place the fog
 function blankEl(){ if(!SHOT.blank){ const b=makeShotEl('ground',-1); b.blank=true; b.lod=0; delete b.voxCap; b.name='No layer yet'; SHOT.blank=b; } return SHOT.blank; }   // stands in while the shot has no layers, so the tools have something to point at
-function loadShot(){ const s=store.get('brume.shot.current'); if(s&&s.v===3&&Array.isArray(s.els)){ delete s.blank; s.els=s.els.map(r=>{ const b=makeRecipe('shot','mid',r.seed); return migrateRecipe({...b,...r,sim:{...b.sim,...r.sim},det:{...b.det,...r.det},den:{...b.den,...r.den}}); }); return s; } return newShot(); }
-function setShotCam(){ const c=SCENE.cam, off=sub(c.pos,c.look), d=len(off); CAM.tgt=c.look.slice(); CAM.dist=d; CAM.yaw=Math.atan2(off[0],off[2]); CAM.pitch=Math.asin(off[1]/d); CAM.tanY=Math.tan(21*D2R); poke(); }
+function loadShot(scene){ scene=scene||curScene(); const s=store.get(shotKey(scene)); if(s&&s.v===3&&Array.isArray(s.els)){ delete s.blank; s.scene=scene; s.els=s.els.map(r=>{ const b=makeRecipe('shot','mid',r.seed); return migrateRecipe({...b,...r,sim:{...b.sim,...r.sim},det:{...b.det,...r.det},den:{...b.den,...r.den}}); }); return s; } return newShot(scene); }
+function setShotCam(){ const c=SCAN.src&&SCAN.src.shotCam?SCAN.src.shotCam:(SCENES[curScene()]||SCENES.village).cam(), off=sub(c.pos,c.look), d=len(off); CAM.tgt=c.look.slice(); CAM.dist=d; CAM.yaw=Math.atan2(off[0],off[2]); CAM.pitch=Math.asin(off[1]/d); CAM.tanY=c.tanY||Math.tan(21*D2R); poke(); }
 /* ---------- layers ---------- */
 function addLayer(type){ if(shotEls().length>=4){ toast('Up to four layers in this shot'); return; } const e=makeShotEl(type,shotEls().length); SHOT.els.push(e); activate(SHOT.els.length-1,true); autosave(); setTool('place'); buildPanels(); toast(STYPE(type).label+': paint where it goes'); }
 function removeLayer(k){
@@ -1993,16 +2016,16 @@ function buildLayers(){ const el=$('#layerBody'); if(!el||!SHOT) return; el.inne
     row.querySelector('select').onchange=e=>{ activate(k); applyStyle(e.target.value); buildPanels(); };
     row.querySelector('.chip').onclick=()=>removeLayer(k); el.appendChild(row);
     if(sel){ const box=document.createElement('div'); box.style.cssText='border-left:2px solid '+T.col+';padding-left:8px;margin:2px 0 8px'; note(box,T.tip);
-      for(const [id,lbl,mn,mx,df] of T.params) refreshers.push(slider(box,S_(lbl,mn,mx,()=>(r.layer.p||{})[id]??df,v=>{ r.layer.p=r.layer.p||{}; r.layer.p[id]=+v.toPrecision(3); },fmLen,()=>{ REC.dom=null; markMass(); },mx/mn>50)));
+      for(const [id,lbl,mn0,mx0,df0] of T.params){ const k=SK(), mn=+(mn0*k).toPrecision(2), mx=+(mx0*k).toPrecision(3), df=+(df0*k).toPrecision(3); refreshers.push(slider(box,S_(lbl,mn,mx,()=>(r.layer.p||{})[id]??df,v=>{ r.layer.p=r.layer.p||{}; r.layer.p[id]=+v.toPrecision(3); },fmLen,()=>{ REC.dom=null; markMass(); },mx/mn>50))); }
       el.appendChild(box); } });
   subH(el,'Add a layer'); const g=document.createElement('div'); g.className='chips'; for(const T of SHOT_TYPES){ const b=document.createElement('button'); b.className='chip'; b.innerHTML=`<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${T.col};margin-right:5px"></i>${T.label}`; b.title=T.tip; b.disabled=shotEls().length>=4; b.onclick=()=>addLayer(T.id); g.appendChild(b); } el.appendChild(g);
   const row=document.createElement('div'); row.className='row wide'; row.style.marginTop='8px'; const sh=document.createElement('button'); sh.className='chip'; sh.textContent='Show painted areas'; sh.title='Tint the ground where each layer is painted, even when the Place brush is not active'; sh.setAttribute('aria-pressed',!!UI.showPaint); sh.onclick=()=>{ UI.showPaint=!UI.showPaint; resetAccum(); buildPanels(); }; row.appendChild(sh);
   const cb=document.createElement('button'); cb.className='chip'; cb.textContent='Shot camera'; cb.onclick=setShotCam; row.appendChild(cb); el.appendChild(row); }
 /* ---------- painting layers onto the set ---------- */
-function placeStart(mx,my,ev){ if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const {ro,rd}=mouseRay(mx,my); const p=rayGround(ro,rd); if(!p){ toast('Point at the ground to paint'); return null; }
+function placeStart(mx,my,ev){ if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
   const st={e:!!(ev.ctrlKey||ev.metaKey),r:+UI.brushR.toPrecision(3),s:+UI.brushStr.toFixed(2),pts:[[+p[0].toFixed(1),+p[2].toFixed(1)]]};
   maskDab(REC.el,p[0],p[2],st.r,st.s,st.e); maskUpload(); resetAccum(); return {mode:'place',st,last:p,lx:mx,ly:my}; }
-function placeMove(mx,my){ const {ro,rd}=mouseRay(mx,my); const p=rayGround(ro,rd); if(!p) return; drag.cur=p; const st=drag.st;
+function placeMove(mx,my){ const p=shotGround(mx,my); if(!p) return; drag.cur=p; const st=drag.st;
   if(Math.hypot(p[0]-drag.last[0],p[2]-drag.last[2])>st.r*0.25){ st.pts.push([+p[0].toFixed(1),+p[2].toFixed(1)]); maskDab(REC.el,p[0],p[2],st.r,st.s,st.e); maskUpload(); drag.last=p; resetAccum(); }
   drag.label=(st.e?'erasing ':'painting ')+STYPE(REC.layer.type).label.toLowerCase(); }
 function placeEnd(){ const st=drag.st; (REC.place=REC.place||[]).push(st); REC.dom=null; pushUndo(); markMass(); buildPanels(); toast(STYPE(REC.layer.type).label+(st.e?' erased there':' forming where you painted')); }
@@ -2011,112 +2034,654 @@ function drawPlaceRing(){ if(UI.tool!=='place'||!hoverG) return; const c=STYPE((
   for(let i=0;i<=48;i++){ const a=i/48*Math.PI*2, x=hoverG[0]+Math.cos(a)*UI.brushR, z=hoverG[2]+Math.sin(a)*UI.brushR, q=project([x,sceneHJ(x,z)+1,z]); if(!q){ f=true; continue; } if(f){ octx.moveTo(q[0],q[1]); f=false; } else octx.lineTo(q[0],q[1]); } octx.stroke(); }
 let hoverG=null;
 /* ---------- switching between the Designer and the Shot ---------- */
-const wsKey=()=>UI.ws==='shot'?'brume.shot.current':'brume.designer.current';
+const wsKey=()=>UI.ws==='shot'?shotKey(curScene()):'brume.designer.current';
 function setWorkspace(ws){ if(UI.ws===ws) return; if(UI.playing) togglePlay(); if(UI.mode!=='shape') setMode('shape');
-  if(UI.ws==='shot'){ stash(); store.set('brume.shot.current',SHOT); } else { store.set('brume.designer.current',REC); DESRT={ctx:MAIN,snap:SNAP,base:BASE,rec:REC,dirty:{...dirty},undo:[...undoS]}; }
+  if(UI.ws==='shot'){ stash(); store.set(shotKey(curScene()),SHOT); } else { store.set('brume.designer.current',REC); DESRT={ctx:MAIN,snap:SNAP,base:BASE,rec:REC,dirty:{...dirty},undo:[...undoS]}; }
   store.set(wsKey()+'.cam',{...CAM});
   UI.ws=ws; document.body.dataset.ws=ws; try{ localStorage.setItem('brume.ws',ws); }catch(e){} document.querySelectorAll('#wsSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.ws===ws));
   UI.viewT=null; FIT.on=false;
-  if(ws==='shot'){ if(!SHOT) SHOT=loadShot(); maskBuild(); UI.brushR=Math.max(UI.brushR,60); REC=null; activate(0,true); $('#assetName').value=SHOT.name; }
+  if(ws==='shot'){ if(!SHOT) SHOT=loadShot(); maskBuild(); UI.brushR=60*SK(); REC=null; activate(0,true); $('#assetName').value=SHOT.name; }
   else { const d=DESRT; if(d){ MAIN=d.ctx; SNAP=d.snap; BASE=d.base; REC=d.rec; Object.assign(dirty,d.dirty); undoS.length=0; undoS.push(...d.undo); } else { REC=makeRecipe('bank','mid'); MAIN=mkCtx(128); MAIN.phase='form'; SNAP=newSnap(); BASE=newBase(); dirty.mass=true; changeN++; } redoS.length=0; $('#assetName').value=REC.name; }
   const cam=store.get(wsKey()+'.cam'); if(cam&&cam.dist) Object.assign(CAM,cam); else if(ws==='shot') setShotCam(); else frameAll();
   buildRail(); buildPanels(); drawTimeline(); setTool(ws==='shot'?'place':'orbit'); resetAccum(); toast(ws==='shot'?'Shot: paint fog into the set with the Place brush':'Designer: one volume in the void'); }
 /* =====================================================================
-   THE SET, LIGHT: the scene as an ordinary low-poly mesh (terrain grid + simple houses), drawn by the GPU rasteriser
-   with a sun shadow map. It gives the shot its picture and, per pixel, how far away the set is, which the fog passes
-   use instead of tracing the ground. In a real pipeline this is the proxy geometry exported from the USD set.
+   THE SET, AS A SCAN. The shot's set is never loaded whole: a bake fires rays from the shot camera and from a ring of
+   temporary cameras around what it sees, keeps every first hit as a point (position, normal, colour, which object),
+   merges the overlaps, and stores each object's path once plus a simple proxy shape for collisions. Brume draws the
+   points as lit splats; the fog reads their depth. Nothing collides unless the artist picks it, in the viewport or
+   in the scene tree. In Houdini the bake is an HDA; here the test village is baked the same way, in the browser.
    ===================================================================== */
-const SET={ready:false,prog:null,sprog:null,vao:null,svao:null,n:0,fb:null,col:null,dist:null,depth:null,w:0,h:0,key:'',sm:{fb:null,tex:null,N:2048,key:'',vp:null}};
-const SET_VS=`#version 300 es
-layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in float aK;
-uniform mat4 uVP; out vec3 vP; out vec3 vN; out float vK;
-void main(){ vP=aP; vN=aN; vK=aK; gl_Position=uVP*vec4(aP,1.); }`;
-const SET_FS=`#version 300 es
-precision highp float; precision highp sampler2DShadow; precision highp sampler3D;
-in vec3 vP; in vec3 vN; in float vK; layout(location=0) out vec4 oC; layout(location=1) out vec4 oD;
-uniform vec3 uCam, uL, uSunC, uSkyC; uniform mat4 uSVP0, uSVP1; uniform sampler2DShadow uSM0, uSM1; uniform sampler2D uMaskR; uniform vec4 uMaskBR; uniform int uShowMask; uniform vec3 uMaskC[4];
-uniform sampler3D uLV0, uLV1, uLV2, uLV3; uniform vec3 uLB[4], uLS[4], uLE[4]; uniform vec4 uLP[4]; uniform int uNL;   // each fog layer's light cache: it shades the set under it
+const SET={fb:null,col:null,dist:null,depth:null,w:0,h:0,key:'',sm:{c:[],key:''},prog:null,sprog:null,sky:null};
+const SCAN={src:null,n:0,vao:null,svao:null,vb:null,ver:0,cams:[],reach:0,region:null,bake:null,
+  col:new Set(),hover:-1,sel:new Set(),st:null,stTex:null,stVer:0,colTimer:0,colVer:0,open:new Set([0]),ptMax:64,shot:null};
+const D2R_=Math.PI/180;
+function glProg(vs,fs){ const p=gl.createProgram(); for(const [t,src] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error('set shader: '+gl.getShaderInfoLog(s)); gl.attachShader(p,s); }
+  gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error('set program: '+gl.getProgramInfoLog(p)); return p; }
+/* matrices, column-major */
+function m4mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s; } return o; }
+function m4view(pos,r,u,f){ return new Float32Array([r[0],u[0],-f[0],0, r[1],u[1],-f[1],0, r[2],u[2],-f[2],0, -dot(r,pos),-dot(u,pos),dot(f,pos),1]); }
+function m4inv(m){ const a=m, o=new Float32Array(16); const [a00,a01,a02,a03,a10,a11,a12,a13,a20,a21,a22,a23,a30,a31,a32,a33]=a;
+  const b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32;
+  const d=1/(b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06);
+  o[0]=(a11*b11-a12*b10+a13*b09)*d; o[1]=(a02*b10-a01*b11-a03*b09)*d; o[2]=(a31*b05-a32*b04+a33*b03)*d; o[3]=(a22*b04-a21*b05-a23*b03)*d; o[4]=(a12*b08-a10*b11-a13*b07)*d; o[5]=(a00*b11-a02*b08+a03*b07)*d; o[6]=(a32*b02-a30*b05-a33*b01)*d; o[7]=(a20*b05-a22*b02+a23*b01)*d;
+  o[8]=(a10*b10-a11*b08+a13*b06)*d; o[9]=(a01*b08-a00*b10-a03*b06)*d; o[10]=(a30*b04-a31*b02+a33*b00)*d; o[11]=(a21*b02-a20*b04-a23*b00)*d; o[12]=(a11*b07-a10*b09-a12*b06)*d; o[13]=(a00*b09-a01*b07+a02*b06)*d; o[14]=(a31*b01-a30*b03-a32*b00)*d; o[15]=(a20*b03-a21*b01+a22*b00)*d; return o; }
+function m4persp(tanY,a,n,fa){ return new Float32Array([1/(tanY*a),0,0,0, 0,1/tanY,0,0, 0,0,-(fa+n)/(fa-n),-1, 0,0,-2*fa*n/(fa-n),0]); }
+function camLook(pos,look,up){ const f=norm(sub(look,pos)); let r=cross(f,up||[0,1,0]); if(len(r)<1e-4) r=cross(f,[0,0,-1]); r=norm(r); return {pos,f,r,u:cross(r,f)}; }
+function setCamVP(w,h){ const B=camBasis(CAM), n=Math.max(CAM.dist*0.002,0.3); return m4mul(m4persp(B.tanY,w/h,n,30000),m4view(B.pos,B.r,B.u,B.f)); }
+function setSunVP(c,R){ const L=sunDir(); const K=camLook(add(c,mul(L,R*1.5)),c,Math.abs(L[1])>0.95?[1,0,0]:[0,1,0]);
+  const P=new Float32Array([1/R,0,0,0, 0,1/R,0,0, 0,0,-2/(R*3),0, 0,0,-1,1]); return m4mul(P,m4view(K.pos,K.r,K.u,K.f)); }
+
+/* ---------------------------------------------------------------------
+   THE TEST SET, as a scene graph: /set/terrain, /set/lake, /set/village/<house>/{walls,roof}, /set/forest/<tree>/{trunk,canopy}.
+   Every leaf has its own mesh, which doubles as its collision proxy (a real bake decimates them to the fog's voxel size).
+   --------------------------------------------------------------------- */
+function testSetSource(){ const S=SCENE, R=mulberry(9171), prims=[];
+  const P=(path,kind,parent)=>{ const id=prims.length; prims.push({id,path,name:path.slice(path.lastIndexOf('/')+1),kind,parent,kids:[],V:null,I:null,mat:0}); if(parent>=0) prims[parent].kids.push(id); return id; };
+  const leaf=(id,V,I,mat)=>{ prims[id].V=new Float32Array(V); prims[id].I=new Uint32Array(I); prims[id].mat=mat; };
+  const road=x=>30*Math.sin(x/130)+12*Math.sin(x/47);
+  /* a lake on the flattest low ground across the river from the village */
+  let L=null; for(let x=-460;x<=300;x+=20) for(let z=-330;z<=-200;z+=15){ let lo=1e9,hi=-1e9; for(let k=0;k<16;k++){ const a=k/16*Math.PI*2, h=S.sh(x+Math.cos(a)*80,z+Math.sin(a)*80); lo=Math.min(lo,h); hi=Math.max(hi,h); }
+    const c=S.sh(x,z), sc=(hi-lo)+Math.max(0,c-lo)*0.5+c*0.04; if(!L||sc<L.sc) L={x,z,sc,lvl:lo-0.6}; }
+  const LR=80, th=(x,z)=>{ const h=S.sh(x,z), d=Math.hypot(x-L.x,z-L.z); if(d>=LR) return h; const t=L.lvl-7*(1-(d/LR)**2); return Math.min(h,t+(h-t)*sstep(0.72*LR,LR,d)); };
+  const root=P('/set','assembly',-1);
+  { const g=P('/set/terrain','component',root), id=P('/set/terrain/ground_geo','mesh',g), B=HMAP.B, NX=360, NZ=300, H=new Float32Array((NX+1)*(NZ+1));
+    for(let j=0;j<=NZ;j++) for(let i=0;i<=NX;i++) H[j*(NX+1)+i]=th(B[0]+i/NX*B[2],B[1]+j/NZ*B[3]);
+    const dx=B[2]/NX, dz=B[3]/NZ, h=(i,j)=>H[clamp(j,0,NZ)*(NX+1)+clamp(i,0,NX)], V=[], I=[];
+    for(let j=0;j<=NZ;j++) for(let i=0;i<=NX;i++){ const n=norm([-(h(i+1,j)-h(i-1,j))/(2*dx),1,-(h(i,j+1)-h(i,j-1))/(2*dz)]); V.push(B[0]+i*dx,h(i,j),B[1]+j*dz,n[0],n[1],n[2]); }
+    for(let j=0;j<NZ;j++) for(let i=0;i<NX;i++){ const a=j*(NX+1)+i, b=a+1, c=a+NX+1, d=c+1; I.push(a,c,b,b,c,d); } leaf(id,V,I,0); }
+  { const g=P('/set/lake','component',root), id=P('/set/lake/water_geo','mesh',g), V=[L.x,L.lvl,L.z,0,1,0], I=[]; for(let k=0;k<64;k++){ const a=k/64*Math.PI*2; V.push(L.x+Math.cos(a)*LR,L.lvl,L.z+Math.sin(a)*LR,0,1,0); I.push(0,1+k,1+(k+1)%64); } leaf(id,V,I,3); }
+  const vil=P('/set/village','assembly',root);
+  S.houses.forEach((hs,k)=>{ const [x,y,z,ang,hw,hd,wh,rh]=hs, c=Math.cos(ang), s=Math.sin(ang); const W=(px,py,pz)=>[x+c*px-s*pz,y+py,z+s*px+c*pz], Nw=(nx,ny,nz)=>[c*nx-s*nz,ny,s*nx+c*nz];
+    const nm=k===0?'church':k===1?'church_tower':'house_'+String(k-1).padStart(2,'0'); const g=P('/set/village/'+nm,'component',vil);
+    const mk=()=>({V:[],I:[]}), wl=mk(), rf=mk();
+    const quad=(m,p,n)=>{ const o=m.V.length/6; for(const q of p) m.V.push(...W(...q),...Nw(...n)); m.I.push(o,o+1,o+2,o,o+2,o+3); }, tri=(m,p,n)=>{ const o=m.V.length/6; for(const q of p) m.V.push(...W(...q),...Nw(...n)); m.I.push(o,o+1,o+2); };
+    quad(wl,[[-hw,0,hd],[hw,0,hd],[hw,wh,hd],[-hw,wh,hd]],[0,0,1]); quad(wl,[[hw,0,-hd],[-hw,0,-hd],[-hw,wh,-hd],[hw,wh,-hd]],[0,0,-1]);
+    quad(wl,[[hw,0,hd],[hw,0,-hd],[hw,wh,-hd],[hw,wh,hd]],[1,0,0]); quad(wl,[[-hw,0,-hd],[-hw,0,hd],[-hw,wh,hd],[-hw,wh,-hd]],[-1,0,0]);
+    tri(wl,[[hw,wh,hd],[hw,wh,-hd],[hw,wh+rh,0]],[1,0,0]); tri(wl,[[-hw,wh,-hd],[-hw,wh,hd],[-hw,wh+rh,0]],[-1,0,0]);
+    const e=0.6, ox=0.5, Lr=Math.hypot(hd+e,rh); quad(rf,[[-hw-ox,wh,hd+e],[hw+ox,wh,hd+e],[hw+ox,wh+rh,0],[-hw-ox,wh+rh,0]],[0,(hd+e)/Lr,rh/Lr]); quad(rf,[[hw+ox,wh,-hd-e],[-hw-ox,wh,-hd-e],[-hw-ox,wh+rh,0],[hw+ox,wh+rh,0]],[0,(hd+e)/Lr,-rh/Lr]);
+    leaf(P(`/set/village/${nm}/walls`,'mesh',g),wl.V,wl.I,1000+k); leaf(P(`/set/village/${nm}/roof`,'mesh',g),rf.V,rf.I,2000+k); });
+  /* stands of conifers on the slopes across the valley */
+  const forest=P('/set/forest','assembly',root), clumps=[[-300,-430,120,24],[190,-480,120,26],[-660,-270,110,18],[600,-340,110,20],[-60,-600,120,22],[390,-190,70,10],[-470,-110,60,8]];
+  const okAt=(x,z,r)=>Math.hypot(x-L.x,z-L.z)>LR+r+4&&Math.abs(z-road(x))>r+8&&S.houses.every(h=>Math.hypot(h[0]-x,h[2]-z)>Math.max(h[4],h[5])+r+3);
+  let tn_=0; for(const [cx,cz,cr,cnt] of clumps) for(let t=0,tries=0;t<cnt&&tries<cnt*8;tries++){ const a=R()*Math.PI*2, d=Math.sqrt(R())*cr, x=cx+Math.cos(a)*d, z=cz+Math.sin(a)*d, rr=2.4+R()*1.8; if(!okAt(x,z,rr)) continue; t++;
+    const y=th(x,z)-0.3, trH=2.5+R()*2, y0=y+trH*0.7, top=y0+7+R()*8, nm='tree_'+String(++tn_).padStart(3,'0'), g=P('/set/forest/'+nm,'component',forest);
+    const tk={V:[],I:[]}, cn={V:[],I:[]}, sg=6;
+    for(let i=0;i<sg;i++){ const a0=i/sg*Math.PI*2, a1=(i+1)/sg*Math.PI*2, am=(a0+a1)/2, o=tk.V.length/6, n=[Math.cos(am),0,Math.sin(am)];
+      for(const [a,yy] of [[a0,y],[a1,y],[a1,y0+0.5],[a0,y0+0.5]]) tk.V.push(x+Math.cos(a)*0.35,yy,z+Math.sin(a)*0.35,...n); tk.I.push(o,o+2,o+1,o,o+3,o+2); }
+    const cs=9, sl=rr/(top-y0); for(let i=0;i<cs;i++){ const a0=i/cs*Math.PI*2, a1=(i+1)/cs*Math.PI*2, am=(a0+a1)/2, o=cn.V.length/6, n=norm([Math.cos(am),sl,Math.sin(am)]);
+      cn.V.push(x+Math.cos(a0)*rr,y0,z+Math.sin(a0)*rr,...n, x+Math.cos(a1)*rr,y0,z+Math.sin(a1)*rr,...n, x,top,z,...n); cn.I.push(o,o+2,o+1); }
+    const cb=cn.V.length/6; cn.V.push(x,y0,z,0,-1,0); for(let i=0;i<cs;i++){ const a=i/cs*Math.PI*2; cn.V.push(x+Math.cos(a)*rr,y0,z+Math.sin(a)*rr,0,-1,0); cn.I.push(cb,cb+1+i,cb+1+(i+1)%cs); }
+    leaf(P(`/set/forest/${nm}/trunk`,'mesh',g),tk.V,tk.I,4000+tn_); leaf(P(`/set/forest/${nm}/canopy`,'mesh',g),cn.V,cn.I,5000+tn_); }
+  return {name:'Test village',prims,shotCam:{pos:S.cam.pos.slice(),look:S.cam.look.slice(),tanY:Math.tan(21*D2R_),aspect:16/9},hmapB:HMAP.B.slice(),ground:th}; }
+
+/* ---------------------------------------------------------------------
+   THE BAKE: the shot camera first, then temporary cameras around what it sees. The GPU's rasteriser stands in for
+   Houdini's ray casting here (the same first hits). Each camera adds only surface nobody has seen yet.
+   --------------------------------------------------------------------- */
+const BAKE_VS=`#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec2 aM; uniform mat4 uVP; out vec3 vP; out vec3 vN; flat out vec2 vM;
+void main(){ vP=aP; vN=aN; vM=aM; gl_Position=uVP*vec4(aP,1.); }`;
+const BAKE_FS=`#version 300 es
+precision highp float; in vec3 vP; in vec3 vN; flat in vec2 vM; layout(location=0) out vec4 o0; layout(location=1) out vec4 o1;
 float tn(vec2 p){ return sin(p.x*1.7+sin(p.y*1.3))*0.5+sin(p.y*2.1+sin(p.x*0.9)*1.4)*0.35+sin((p.x+p.y)*3.7)*0.15; }
 ${SCENE_ALB_GLSL}
-vec3 skyCol(vec3 rd){ return mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,rd.y))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.); }
+void main(){ vec3 N=normalize(vN); float mat=floor(vM.x/1000.), v=vM.x-mat*1000.; float hh=fract(sin(v*91.7)*4375.85); vec3 a; float gls=0.;
+  if(mat<0.5) a=sceneAlb(vP,N); else if(mat<1.5) a=mix(vec3(0.42,0.38,0.32),vec3(0.5,0.48,0.44),hh); else if(mat<2.5) a=mix(vec3(0.16,0.045,0.03),vec3(0.06,0.06,0.07),step(0.6,hh));
+  else if(mat<3.5){ a=vec3(0.02,0.028,0.03); gls=1.; } else if(mat<4.5) a=vec3(0.07,0.05,0.035); else if(mat<5.5) a=mix(vec3(0.022,0.04,0.018),vec3(0.035,0.055,0.022),hh);
+  else if(mat<6.5){ a=mix(vec3(0.055,0.095,0.03),vec3(0.1,0.115,0.045),smoothstep(-0.6,0.6,tn(vP.xz/6.)+0.4*tn(vP.xz/1.7))); float rz=-18.+3.*sin(vP.x/17.); a=mix(a,vec3(0.15,0.12,0.085)*(0.85+0.3*tn(vP.xz*2.)),1.-smoothstep(2.2,2.9,abs(vP.z-rz))); }   // meadow, with the dirt road
+  else a=v<0.5?vec3(0.32,0.07,0.05):v<1.5?vec3(0.08,0.08,0.09):v<2.5?vec3(0.25,0.18,0.11):v<3.5?vec3(0.6,0.58,0.55):vec3(0.2,0.19,0.17);   // barn red, roof, wood, white paint, rock
+  vec3 s=floor(sqrt(clamp(a,0.,1.))*255.+0.5); o0=vec4(vP,vM.y); o1=vec4(N,(s.r*65536.+s.g*256.+s.b+1.)*(gls>0.5?-1.:1.)); }`;
+function bakeMesh(src){ let nv=0, ni=0; const lv=src.prims.filter(p=>p.V); for(const p of lv){ nv+=p.V.length/6; ni+=p.I.length; }
+  const V=new Float32Array(nv*8), I=new Uint32Array(ni); let ov=0, oi=0;
+  for(const p of lv){ const n=p.V.length/6, base=ov; for(let k=0;k<n;k++){ V.set(p.V.subarray(k*6,k*6+6),(ov+k)*8); V[(ov+k)*8+6]=p.mat; V[(ov+k)*8+7]=p.id; } for(let k=0;k<p.I.length;k++) I[oi+k]=p.I[k]+base; ov+=n; oi+=p.I.length; }
+  const vao=gl.createVertexArray(), vb=gl.createBuffer(), ib=gl.createBuffer(); gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,V,gl.STATIC_DRAW); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,I,gl.STATIC_DRAW);
+  for(const [l,n,o] of [[0,3,0],[1,3,12],[2,2,24]]){ gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,n,gl.FLOAT,false,32,o); } gl.bindVertexArray(null); return {vao,vb,ib,n:ni}; }
+/* the cameras: the shot, then a ring at two heights around what it sees, one far beyond looking back, one overhead */
+function bakeCams(src,region,reach){ const sc=src.shotCam, C=region.c, E=region.e, gH=src.ground||((x,z)=>0);
+  const rs=Math.max(Math.hypot(E[0],E[2]),60), Rr=Math.max(rs*1.15,reach*0.45), cams=[], az0=Math.atan2(sc.pos[0]-C[0],sc.pos[2]-C[2]);
+  const fit=(pos,look,w,h)=>{ const d=len(sub(look,pos)); return {pos,look,tanY:clamp(rs*0.95/d,Math.tan(14*D2R_),Math.tan(40*D2R_)),aspect:w/h,w,h}; };
+  for(const tier of [0,1]) for(let k=0;k<8;k++){ if(tier===0&&k===0) continue; const a=az0+k*Math.PI/4+(tier?Math.PI/8:0), x=C[0]+Math.sin(a)*Rr, z=C[2]+Math.cos(a)*Rr;
+    const y=tier?C[1]+Rr*0.55:Math.max(gH(x,z)+14,C[1]+E[1]*0.3); cams.push({name:(tier?'high_':'side_')+k,...fit([x,y,z],[C[0],C[1]-E[1]*0.2,C[2]],640,360)}); }
+  const f=norm(sub(sc.look,sc.pos)), fh=norm([f[0],0,f[2]]), bp=add(sc.pos,mul(fh,reach*1.15)); bp[1]=Math.max(gH(bp[0],bp[2]),C[1])+reach*0.18;
+  cams.push({name:'back',...fit(bp,mix3(sc.pos,C,0.5),640,360)});
+  cams.push({name:'top',...fit([C[0],C[1]+Math.max(Rr*1.4,300),C[2]+0.01],C,512,512),up:[0,0,-1]});
+  return cams; }
+const mix3=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+function bakeStart(src){ if(SCAN.bake) return; const shot={name:'shot',pos:src.shotCam.pos,look:src.shotCam.look,tanY:src.shotCam.tanY,aspect:src.shotCam.aspect,w:960,h:540};
+  const mesh=bakeMesh(src), prog=SCAN.bprog||(SCAN.bprog=glProg(BAKE_VS,BAKE_FS)); const cap=960*540+19*640*360;
+  SCAN.bake={src,mesh,prog,cams:[shot],k:0,cap,n:0,P:new Float32Array(cap*3),N:new Int8Array(cap*4),C:new Uint8Array(cap*4),ID:new Uint32Array(cap),R:new Float32Array(cap),band:new Uint8Array(cap),
+    tab:new Int32Array(1<<23),shot,fb:null,t0:performance.now()};
+  SCAN.n=0; SCAN.cams=[]; toast('Scanning the set from the shot camera…'); }
+function bakeTargets(B,w,h){ if(B.fb&&B.w===w&&B.h===h) return; if(B.fb){ gl.deleteFramebuffer(B.fb); gl.deleteTexture(B.t0); gl.deleteTexture(B.t1); gl.deleteRenderbuffer(B.d); }
+  B.t0=tex2D(w,h,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); B.t1=tex2D(w,h,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); B.d=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,B.d); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
+  B.fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,B.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,B.t0,0); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,B.t1,0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,B.d); B.w=w; B.h=h; }
+/* one camera per frame, so the set appears as it is scanned */
+function bakeStep(){ const B=SCAN.bake; if(!B) return; const cam=B.cams[B.k], w=cam.w, h=cam.h; bakeTargets(B,w,h);
+  const K=camLook(cam.pos,cam.look,cam.up), VP=m4mul(m4persp(cam.tanY,cam.aspect,0.5,30000),m4view(K.pos,K.r,K.u,K.f));
+  gl.bindFramebuffer(gl.FRAMEBUFFER,B.fb); gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]); gl.viewport(0,0,w,h); gl.clearBufferfv(gl.COLOR,0,[0,0,0,0]); gl.clearBufferfv(gl.COLOR,1,[0,0,0,0]); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(B.prog); gl.uniformMatrix4fv(gl.getUniformLocation(B.prog,'uVP'),false,VP); gl.bindVertexArray(B.mesh.vao); gl.drawElements(gl.TRIANGLES,B.mesh.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
+  const a0=new Float32Array(w*h*4), a1=new Float32Array(w*h*4); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a0); gl.readBuffer(gl.COLOR_ATTACHMENT1); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a1); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  const sp=B.shot.pos, kS=2*B.shot.tanY/B.shot.h, kC=2*cam.tanY/h;
+  if(B.k===0){ const ds=[]; for(let i=0;i<w*h;i++) if(a0[i*4+3]>0.5) ds.push(Math.hypot(a0[i*4]-sp[0],a0[i*4+1]-sp[1],a0[i*4+2]-sp[2])); ds.sort((x,y)=>x-y); const reach=Math.min(ds.length?ds[Math.floor(ds.length*0.95)]:1000,6000);
+    const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9]; for(let i=0;i<w*h;i++){ if(a0[i*4+3]<0.5) continue; const p=[a0[i*4],a0[i*4+1],a0[i*4+2]]; if(Math.hypot(p[0]-sp[0],p[1]-sp[1],p[2]-sp[2])>reach) continue; for(let c=0;c<3;c++){ lo[c]=Math.min(lo[c],p[c]); hi[c]=Math.max(hi[c],p[c]); } }
+    SCAN.reach=reach; SCAN.region={c:lo.map((v,i)=>(v+hi[i])/2),e:lo.map((v,i)=>(hi[i]-v)/2)}; B.cams.push(...bakeCams(B.src,SCAN.region,reach)); }
+  const T=B.tab, TM=T.length-1; let added=0;
+  for(let i=0;i<w*h;i++){ const id=a0[i*4+3]; if(id<0.5) continue; const x=a0[i*4], y=a0[i*4+1], z=a0[i*4+2]; const dS=Math.hypot(x-sp[0],y-sp[1],z-sp[2]), dC=Math.hypot(x-cam.pos[0],y-cam.pos[1],z-cam.pos[2]);
+    const cs0=Math.max(0.15,dS*kS), band=clamp(Math.ceil(Math.log2(cs0/0.125)),0,20), cs=0.125*Math.pow(2,band), ix=Math.floor(x/cs), iy=Math.floor(y/cs), iz=Math.floor(z/cs);
+    let hsh=(Math.imul(ix,73856093)^Math.imul(iy,19349663)^Math.imul(iz,83492791)^Math.imul(band,2654435761))&TM, hit=false;
+    while(T[hsh]){ const j=T[hsh]-1; if(B.band[j]===band&&Math.floor(B.P[j*3]/cs)===ix&&Math.floor(B.P[j*3+1]/cs)===iy&&Math.floor(B.P[j*3+2]/cs)===iz){ hit=true; break; } hsh=(hsh+1)&TM; }
+    if(hit||B.n>=B.cap) continue; const n=B.n++; T[hsh]=n+1; B.band[n]=band; B.P[n*3]=x; B.P[n*3+1]=y; B.P[n*3+2]=z; B.ID[n]=Math.round(id); { const cosT=Math.abs((a1[i*4]*(x-cam.pos[0])+a1[i*4+1]*(y-cam.pos[1])+a1[i*4+2]*(z-cam.pos[2]))/Math.max(dC,1e-3)); B.R[n]=clamp(dC*kC/Math.max(cosT,0.2),cs,cs*4)*1.05; }
+    B.N[n*4]=Math.round(a1[i*4]*127); B.N[n*4+1]=Math.round(a1[i*4+1]*127); B.N[n*4+2]=Math.round(a1[i*4+2]*127); let pk=a1[i*4+3], g=0; if(pk<0){ pk=-pk; g=255; } pk=Math.round(pk)-1;
+    B.C[n*4]=(pk>>16)&255; B.C[n*4+1]=(pk>>8)&255; B.C[n*4+2]=pk&255; B.C[n*4+3]=g; added++; }
+  SCAN.cams.push({name:cam.name,pos:cam.pos,look:cam.look,tanY:cam.tanY,aspect:cam.aspect,res:[w,h],added});
+  B.k++; scanUpload(B.n,B.P,B.N,B.C,B.ID,B.R,true);
+  if(B.k<B.cams.length){ toast(`Scanning the set: camera ${B.k+1} of ${B.cams.length} · ${(B.n/1e6).toFixed(2)}M points`,1500); return; }
+  gl.deleteVertexArray(B.mesh.vao); gl.deleteBuffer(B.mesh.vb); gl.deleteBuffer(B.mesh.ib); gl.deleteFramebuffer(B.fb); gl.deleteTexture(B.t0); gl.deleteTexture(B.t1); gl.deleteRenderbuffer(B.d);
+  const n=B.n; SCAN.pts={n,P:B.P.slice(0,n*3),N:B.N.slice(0,n*4),C:B.C.slice(0,n*4),ID:B.ID.slice(0,n),R:B.R.slice(0,n)}; SCAN.bake=null; scanUpload(n,SCAN.pts.P,SCAN.pts.N,SCAN.pts.C,SCAN.pts.ID,SCAN.pts.R,false);
+  toast(`Set scanned: ${(n/1e6).toFixed(2)}M points from ${SCAN.cams.length} cameras in ${((performance.now()-B.t0)/1000).toFixed(1)} s`); scanReady(); }
+/* the points on the GPU: position, normal, colour (and gloss), object id, splat radius */
+function scanUpload(n,P,N,C,ID,R,partial){ const st=28, buf=new ArrayBuffer(n*st), f=new Float32Array(buf), b=new Int8Array(buf), u=new Uint8Array(buf), ui=new Uint32Array(buf);
+  for(let i=0;i<n;i++){ const o=i*7; f[o]=P[i*3]; f[o+1]=P[i*3+1]; f[o+2]=P[i*3+2]; b[o*4+12]=N[i*4]; b[o*4+13]=N[i*4+1]; b[o*4+14]=N[i*4+2]; u[o*4+16]=C[i*4]; u[o*4+17]=C[i*4+1]; u[o*4+18]=C[i*4+2]; u[o*4+19]=C[i*4+3]; ui[o+5]=ID[i]; f[o+6]=R[i]; }
+  if(!SCAN.vb){ SCAN.vb=gl.createBuffer(); const mk=sh=>{ const vao=gl.createVertexArray(); gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER,SCAN.vb);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,st,0); gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4,1,gl.FLOAT,false,st,24);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,4,gl.BYTE,true,st,12); if(!sh){ gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,4,gl.UNSIGNED_BYTE,true,st,16); gl.enableVertexAttribArray(3); gl.vertexAttribIPointer(3,1,gl.UNSIGNED_INT,st,20); }
+      gl.bindVertexArray(null); return vao; }; SCAN.vao=mk(false); SCAN.svao=mk(true); }
+  gl.bindBuffer(gl.ARRAY_BUFFER,SCAN.vb); gl.bufferData(gl.ARRAY_BUFFER,buf,gl.STATIC_DRAW); SCAN.n=n; SCAN.ver++; SET.sm.key=''; }
+/* after a bake or a load: object state, the collision ground, the shadow cascades */
+function scanReady(){ const src=SCAN.src; SCAN.pathIx=new Map(src.prims.map(p=>[p.path,p.id])); SCAN.col=new Set(((SHOT&&SHOT.collide)||[]).map(p=>SCAN.pathIx.get(p)).filter(i=>i!=null)); SCAN.sel.clear(); SCAN.hover=-1;
+  SCAN.st=new Uint8Array(1024*Math.max(1,Math.ceil(src.prims.length/1024))); stateSync(); colBuild(true); if(UI.ws==='shot') buildPanels(); }
+function scanEnsure(){ if(!SCAN.src&&!SCAN.bake){ const S=SCENES[curScene()]||SCENES.village; SCAN.src=S.make(); HMAP.B=SCAN.src.hmapB.slice(); HMAP.h=null; if(HMAP.tex){ gl.deleteTexture(HMAP.tex); HMAP.tex=null; } bakeStart(SCAN.src); } }
+
+/* ---------------------------------------------------------------------
+   DRAWING THE SCAN: round splats sized by their radius, lit by the sun (with shadow cascades), the sky and the fog
+   over them; a second target keeps distance and object id per pixel, for the fog and for picking.
+   --------------------------------------------------------------------- */
+const SPL_VS=`#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec4 aN; layout(location=2) in vec4 aC; layout(location=3) in uint aId; layout(location=4) in float aR;
+uniform mat4 uVP; uniform float uPx, uMaxPt; uniform highp usampler2D uSt; out vec3 vP; out vec3 vN; out vec4 vA; flat out uint vId; flat out uint vS; flat out float vR;
+void main(){ vP=aP; vN=aN.xyz; vR=aR; vA=vec4(aC.rgb*aC.rgb,aC.a); vId=aId; vS=texelFetch(uSt,ivec2(int(aId%1024u),int(aId/1024u)),0).r;
+  gl_Position=uVP*vec4(aP,1.); gl_PointSize=clamp(2.*aR*uPx/max(gl_Position.w,0.05),1.,uMaxPt); }`;
+const SPL_FS=`#version 300 es
+precision highp float; precision highp sampler2DShadow; precision highp sampler3D;
+in vec3 vP; in vec3 vN; in vec4 vA; flat in uint vId; flat in uint vS; flat in float vR; layout(location=0) out vec4 oC; layout(location=1) out vec4 oD;
+uniform mat4 uVP, uIVP; uniform vec2 uRes;
+uniform vec3 uCam, uL, uSunC, uSkyC; uniform mat4 uSVP0, uSVP1; uniform sampler2DShadow uSM0, uSM1; uniform sampler2D uMaskR; uniform vec4 uMaskBR; uniform int uShowMask, uShowCol; uniform vec3 uMaskC[4];
+uniform sampler3D uLV0, uLV1, uLV2, uLV3; uniform vec3 uLB[4], uLS[4], uLE[4]; uniform vec4 uLP[4]; uniform int uNL;
+vec3 skyCol(vec3 rd){ return mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,abs(rd.y)))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.); }
 float pcf(sampler2DShadow sm,mat4 m,vec3 p,out bool inside){ vec4 sp=m*vec4(p,1.); vec3 sc=sp.xyz/sp.w*0.5+0.5; inside=all(greaterThan(sc.xy,vec2(0.002)))&&all(lessThan(sc.xy,vec2(0.998)))&&sc.z<1.;
-  if(!inside) return 1.; vec2 ts=1./vec2(textureSize(sm,0)); float s=0.; for(int i=-1;i<=1;i++) for(int j=-1;j<=1;j++) s+=texture(sm,vec3(sc.xy+vec2(i,j)*ts,sc.z-0.0008)); return s/9.; }
+  if(!inside) return 1.; vec2 ts=1./vec2(textureSize(sm,0)); float s=0.; for(int i=-1;i<=1;i++) for(int j=-1;j<=1;j++) s+=texture(sm,vec3(sc.xy+vec2(i,j)*ts,sc.z-0.0006)); return s/9.; }
 void fogAt(sampler3D lv,int i,vec3 p,inout vec3 shD,inout float ao){ vec3 u=(p-uLB[i])/uLS[i]; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return;
   vec4 l=textureLod(lv,u,0.); float sg=uLP[i].x, al=uLP[i].y, g=uLP[i].z; vec3 sh=exp(-sg*l.r*uLE[i]); shD*=sh+(1.-sh)*al*0.8/(1.+0.35*sg*l.r*(1.-abs(g)*0.6)); ao*=mix(exp(-sg*l.g*0.6),1.,0.55*al); }
-void main(){ vec3 N=normalize(vN); float k=vK; vec3 alb;
-  if(k<0.5) alb=sceneAlb(vP,N);
-  else { float id=k>=100.?k-100.:k-1.; float hh=fract(sin(id*91.7)*4375.85); alb=k>=100.?mix(vec3(0.16,0.045,0.03),vec3(0.06,0.06,0.07),step(0.6,hh)):mix(vec3(0.42,0.38,0.32),vec3(0.5,0.48,0.44),hh); }
-  if(uShowMask==1&&k<0.5){ vec2 mu=(vP.xz-uMaskBR.xy)/uMaskBR.zw; if(all(greaterThanEqual(mu,vec2(0.)))&&all(lessThanEqual(mu,vec2(1.)))){ vec4 mk=textureLod(uMaskR,mu,0.); vec3 tc=uMaskC[0]*mk.x+uMaskC[1]*mk.y+uMaskC[2]*mk.z+uMaskC[3]*mk.w; float ws=min(mk.x+mk.y+mk.z+mk.w,1.); alb=mix(alb,tc*0.6,ws*0.7); } }   // where each layer is painted
-  bool in0; float sh=pcf(uSM0,uSVP0,vP+N*0.25,in0); if(!in0){ bool in1; sh=pcf(uSM1,uSVP1,vP+N*1.5,in1); }   // sun shadow: a tight map over the village, a wide one for the hills
+/* each point is a small disc lying on its surface: cut the sprite to the disc and give each pixel its true depth */
+bool surfel(mat4 vp,mat4 ivp,vec3 P,vec3 N,float r,out vec3 hit){ vec2 ndc=gl_FragCoord.xy/uRes*2.-1.; vec4 a=ivp*vec4(ndc,-1.,1.), b=ivp*vec4(ndc,1.,1.); vec3 ro=a.xyz/a.w, rd=normalize(b.xyz/b.w-ro);
+  float dn=dot(rd,N); if(abs(dn)<0.12){ vec2 c=gl_PointCoord*2.-1.; hit=P; return dot(c,c)<=1.; } hit=ro+rd*(dot(P-ro,N)/dn); return length(hit-P)<=r; }
+void main(){ vec3 N=normalize(vN), hp; if(!surfel(uVP,uIVP,vP,N,vR,hp)) discard; vec4 cp=uVP*vec4(hp,1.); gl_FragDepth=cp.z/cp.w*0.5+0.5;
+  float d=length(hp-uCam); vec3 rd=(hp-uCam)/max(d,1e-3); if(dot(N,rd)>0.) N=-N;   // single-sided surfaces light from whichever side you see
+  vec3 alb=vA.rgb;
+  if(uShowMask==1&&N.y>0.3){ vec2 mu=(vP.xz-uMaskBR.xy)/uMaskBR.zw; if(all(greaterThanEqual(mu,vec2(0.)))&&all(lessThanEqual(mu,vec2(1.)))){ vec4 mk=textureLod(uMaskR,mu,0.); vec3 tc=uMaskC[0]*mk.x+uMaskC[1]*mk.y+uMaskC[2]*mk.z+uMaskC[3]*mk.w; float ws=min(mk.x+mk.y+mk.z+mk.w,1.); alb=mix(alb,tc*0.6,ws*0.7); } }
+  bool in0; float sh=pcf(uSM0,uSVP0,vP+N*0.6,in0); if(!in0){ bool in1; sh=pcf(uSM1,uSVP1,vP+N*2.5,in1); }
   sh*=smoothstep(-0.02,0.08,dot(N,uL));
   vec3 shD=vec3(1.); float ao=1.; vec3 q=vP+N*0.1;
-  if(uNL>0) fogAt(uLV0,0,q,shD,ao); if(uNL>1) fogAt(uLV1,1,q,shD,ao); if(uNL>2) fogAt(uLV2,2,q,shD,ao); if(uNL>3) fogAt(uLV3,3,q,shD,ao);   // fog shadows the ground and scatters light down to it
-  vec3 c=alb*(uSunC*max(dot(N,uL),0.)*shD*sh+uSkyC*ao*3.14159*0.6*(0.55+0.45*N.y))/3.14159;
-  float d=length(vP-uCam); vec3 rd=(vP-uCam)/max(d,1e-3); c=mix(c,skyCol(rd)*0.9,1.-exp(-d/5000.));   // distance fades into the sky a little
-  oC=vec4(c,1.); oD=vec4(d,0.,0.,1.); }`;
+  if(uNL>0) fogAt(uLV0,0,q,shD,ao); if(uNL>1) fogAt(uLV1,1,q,shD,ao); if(uNL>2) fogAt(uLV2,2,q,shD,ao); if(uNL>3) fogAt(uLV3,3,q,shD,ao);
+  vec3 col=alb*(uSunC*max(dot(N,uL),0.)*shD*sh+uSkyC*ao*3.14159*0.6*(0.55+0.45*N.y))/3.14159;
+  if(vA.a>0.5){ vec3 Rr=reflect(rd,N); float fr=0.02+0.98*pow(1.-max(dot(-rd,N),0.),5.); col=mix(col,skyCol(Rr)*ao,fr)+uSunC*shD*sh*pow(max(dot(Rr,uL),0.),300.)*6.; }   // glossy (water): the sky and the sun's glint
+  if(uShowCol==1){ if((vS&1u)!=0u) col=mix(col,vec3(0.05,0.55,0.75)*(0.25+dot(uSunC,vec3(0.06))),0.55); if((vS&4u)!=0u) col=mix(col,vec3(0.95,0.75,0.2)*(0.25+dot(uSunC,vec3(0.06))),0.5); if((vS&8u)!=0u) col=mix(col,vec3(0.6,0.4,1.0)*(0.25+dot(uSunC,vec3(0.06))),0.5); if((vS&2u)!=0u) col=col*1.6+vec3(0.02,0.03,0.03); }   // colliders, tree selection, hover
+  col=mix(col,skyCol(rd)*0.9,1.-exp(-d/5000.));
+  oC=vec4(col,1.); oD=vec4(d,float(vId),0.,1.); }`;
+const SPL_SVS=`#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec4 aN; layout(location=4) in float aR; uniform mat4 uVP; uniform float uPx, uMaxPt; out vec3 vP; out vec3 vN; flat out float vR; void main(){ vP=aP; vN=aN.xyz; vR=aR; gl_Position=uVP*vec4(aP,1.); gl_PointSize=clamp(2.*aR*uPx*1.2,1.,uMaxPt); }`;
+const SPL_SFS=`#version 300 es
+precision highp float; in vec3 vP; in vec3 vN; flat in float vR; uniform mat4 uVP, uIVP; uniform vec2 uRes; out vec4 o;
+bool surfel(mat4 vp,mat4 ivp,vec3 P,vec3 N,float r,out vec3 hit){ vec2 ndc=gl_FragCoord.xy/uRes*2.-1.; vec4 a=ivp*vec4(ndc,-1.,1.), b=ivp*vec4(ndc,1.,1.); vec3 ro=a.xyz/a.w, rd=normalize(b.xyz/b.w-ro);
+  float dn=dot(rd,N); if(abs(dn)<0.12){ vec2 c=gl_PointCoord*2.-1.; hit=P; return dot(c,c)<=1.; } hit=ro+rd*(dot(P-ro,N)/dn); return length(hit-P)<=r; }
+void main(){ vec3 hp; if(!surfel(uVP,uIVP,vP,normalize(vN),vR,hp)) discard; vec4 cp=uVP*vec4(hp,1.); gl_FragDepth=cp.z/cp.w*0.5+0.5; o=vec4(1.); }`;
 const SET_SKYV=`#version 300 es
 void main(){ vec2 p=vec2(gl_VertexID==1?3.:-1.,gl_VertexID==2?3.:-1.); gl_Position=vec4(p,0.9999,1.); }`;
 const SET_SKYF=`#version 300 es
 precision highp float; layout(location=0) out vec4 oC; layout(location=1) out vec4 oD;
 uniform vec3 uCR,uCU,uCF,uL,uSunC,uSkyC; uniform float uTanY; uniform vec2 uRes;
 void main(){ vec2 ndc=gl_FragCoord.xy/uRes*2.-1.; vec3 rd=normalize(uCF+uCR*ndc.x*uTanY*uRes.x/uRes.y+uCU*ndc.y*uTanY);
-  oC=vec4(mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,rd.y))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.),1.); oD=vec4(1e9,0.,0.,1.); }`;   // the sky behind the set, as the Designer draws it
-const SET_SVS=`#version 300 es
-layout(location=0) in vec3 aP; uniform mat4 uVP; void main(){ gl_Position=uVP*vec4(aP,1.); }`;
-const SET_SFS=`#version 300 es
-precision highp float; out vec4 o; void main(){ o=vec4(1.); }`;
-function glProg(vs,fs){ const p=gl.createProgram(); for(const [t,src] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error('set shader: '+gl.getShaderInfoLog(s)); gl.attachShader(p,s); }
-  gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error('set program: '+gl.getProgramInfoLog(p)); return p; }
-/* the mesh: a terrain grid over the whole valley and range, and each house as a box with a gable roof */
-function setBuild(){ const B=HMAP.B, NX=360, NZ=300, V=[], I=[];
-  const H=new Float32Array((NX+1)*(NZ+1)); for(let j=0;j<=NZ;j++) for(let i=0;i<=NX;i++) H[j*(NX+1)+i]=sceneHJ(B[0]+i/NX*B[2],B[1]+j/NZ*B[3]);
-  const dx=B[2]/NX, dz=B[3]/NZ, h=(i,j)=>H[clamp(j,0,NZ)*(NX+1)+clamp(i,0,NX)];
-  for(let j=0;j<=NZ;j++) for(let i=0;i<=NX;i++){ const n=norm([-(h(i+1,j)-h(i-1,j))/(2*dx),1,-(h(i,j+1)-h(i,j-1))/(2*dz)]); V.push(B[0]+i*dx,h(i,j),B[1]+j*dz,n[0],n[1],n[2],0); }
-  for(let j=0;j<NZ;j++) for(let i=0;i<NX;i++){ const a=j*(NX+1)+i, b=a+1, c=a+NX+1, d=c+1; I.push(a,c,b,b,c,d); }
-  SCENE.houses.forEach((hs,id)=>{ const [x,y,z,ang,hw,hd,wh,rh]=hs, c=Math.cos(ang), s=Math.sin(ang); const W=(px,py,pz)=>[x+c*px-s*pz,y+py,z+s*px+c*pz], Nw=(nx,ny,nz)=>[c*nx-s*nz,ny,s*nx+c*nz];
-    const quad=(p,n,k)=>{ const o=V.length/7; for(const q of p){ const w=W(...q), nn=Nw(...n); V.push(...w,...nn,k); } I.push(o,o+1,o+2,o,o+2,o+3); }, tri=(p,n,k)=>{ const o=V.length/7; for(const q of p){ const w=W(...q), nn=Nw(...n); V.push(...w,...nn,k); } I.push(o,o+1,o+2); };
-    const kw=1+id, kr=100+id;
-    quad([[-hw,0,hd],[hw,0,hd],[hw,wh,hd],[-hw,wh,hd]],[0,0,1],kw); quad([[hw,0,-hd],[-hw,0,-hd],[-hw,wh,-hd],[hw,wh,-hd]],[0,0,-1],kw);
-    quad([[hw,0,hd],[hw,0,-hd],[hw,wh,-hd],[hw,wh,hd]],[1,0,0],kw); quad([[-hw,0,-hd],[-hw,0,hd],[-hw,wh,hd],[-hw,wh,-hd]],[-1,0,0],kw);
-    tri([[hw,wh,hd],[hw,wh,-hd],[hw,wh+rh,0]],[1,0,0],kw); tri([[-hw,wh,-hd],[-hw,wh,hd],[-hw,wh+rh,0]],[-1,0,0],kw);   // gable ends
-    const e=0.6, ox=0.5, L=Math.hypot(hd+e,rh); quad([[-hw-ox,wh,hd+e],[hw+ox,wh,hd+e],[hw+ox,wh+rh,0],[-hw-ox,wh+rh,0]],[0,(hd+e)/L,rh/L],kr); quad([[hw+ox,wh,-hd-e],[-hw-ox,wh,-hd-e],[-hw-ox,wh+rh,0],[hw+ox,wh+rh,0]],[0,(hd+e)/L,-rh/L],kr); });
-  const vb=gl.createBuffer(), ib=gl.createBuffer(); const mk=(posOnly)=>{ const vao=gl.createVertexArray(); gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);
-      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,28,0); if(!posOnly){ gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,28,12); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,1,gl.FLOAT,false,28,24); } gl.bindVertexArray(null); return vao; };
-  gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(V),gl.STATIC_DRAW); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(I),gl.STATIC_DRAW);
-  SET.vao=mk(false); SET.svao=mk(true); SET.n=I.length; SET.prog=glProg(SET_VS,SET_FS); SET.sky=glProg(SET_SKYV,SET_SKYF); SET.sprog=glProg(SET_SVS,SET_SFS); SET.ready=true; }
-/* matrices, column-major */
-function m4mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s; } return o; }
-function m4view(pos,r,u,f){ return new Float32Array([r[0],u[0],-f[0],0, r[1],u[1],-f[1],0, r[2],u[2],-f[2],0, -dot(r,pos),-dot(u,pos),dot(f,pos),1]); }
-function setCamVP(w,h){ const B=camBasis(CAM), n=Math.max(CAM.dist*0.002,0.3), fa=30000, a=w/h, t=B.tanY; const P=new Float32Array([1/(t*a),0,0,0, 0,1/t,0,0, 0,0,-(fa+n)/(fa-n),-1, 0,0,-2*fa*n/(fa-n),0]); return m4mul(P,m4view(B.pos,B.r,B.u,B.f)); }
-function setSunVP(c,R){ const L=sunDir(); let up=Math.abs(L[1])>0.95?[1,0,0]:[0,1,0]; const f=mul(L,-1), r=norm(cross(f,up)), u=cross(r,f), pos=add(c,mul(L,R*1.5));
-  const P=new Float32Array([1/R,0,0,0, 0,1/R,0,0, 0,0,-2/(R*3),0, 0,0,-1,1]); return m4mul(P,m4view(pos,r,u,f)); }
+  oC=vec4(mix(uSkyC*0.55,uSkyC*1.15,smoothstep(-0.1,0.6,rd.y))+uSunC*0.4*pow(max(dot(rd,uL),0.),400.),1.); oD=vec4(1e9,0.,0.,1.); }`;
+function setProgs(){ if(SET.prog) return; SET.prog=glProg(SPL_VS,SPL_FS); SET.sprog=glProg(SPL_SVS,SPL_SFS); SET.sky=glProg(SET_SKYV,SET_SKYF); const r=gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE); SCAN.ptMax=Math.min(r?r[1]:64,256); }
 function setTargets(w,h){ if(SET.w===w&&SET.h===h&&SET.fb) return; for(const t of [SET.col,SET.dist]) if(t) gl.deleteTexture(t); if(SET.depth) gl.deleteRenderbuffer(SET.depth); if(SET.fb) gl.deleteFramebuffer(SET.fb);
-  SET.col=tex2D(w,h,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR); SET.dist=tex2D(w,h,gl.R32F,gl.RED,gl.FLOAT,gl.NEAREST); SET.depth=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,SET.depth); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
+  SET.col=tex2D(w,h,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.LINEAR); SET.dist=tex2D(w,h,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); SET.depth=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,SET.depth); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
   SET.fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,SET.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,SET.col,0); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,SET.dist,0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,SET.depth);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null); SET.w=w; SET.h=h; SET.key=''; }
-function setShadow(){ const L=sunDir(), key=L.map(v=>v.toFixed(4)).join(); if(SET.sm.key===key) return;
-  const vb=SCENE.vb, vc=[(vb[0]+vb[2])/2,(SCENE.vy[0]+SCENE.vy[1])/2,(vb[1]+vb[3])/2], vr=Math.hypot(vb[2]-vb[0],vb[3]-vb[1])/2+40;
-  const cas=[[vc,vr,2048],[[0,150,-700],2900,2048]]; SET.sm.c=SET.sm.c||[];
-  cas.forEach(([c,R,N],i)=>{ let m=SET.sm.c[i]; if(!m){ const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,N,N,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+function setShadow(){ const L=sunDir(), key=L.map(v=>v.toFixed(4)).join()+'|'+SCAN.ver; if(SET.sm.key===key||!SCAN.n) return;
+  const rg=SCAN.region||{c:[0,100,-500],e:[1500,200,1500]}, near=[rg.c,clamp(SCAN.reach*0.35,25,900)], wide=[[(HMAP.B[0]+HMAP.B[2]/2),rg.c[1],(HMAP.B[1]+HMAP.B[3]/2)],Math.hypot(HMAP.B[2],HMAP.B[3])*0.55];
+  [near,wide].forEach(([c,R],i)=>{ const N=2048; let m=SET.sm.c[i]; if(!m){ const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,N,N,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
       for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE],[gl.TEXTURE_COMPARE_MODE,gl.COMPARE_REF_TO_TEXTURE],[gl.TEXTURE_COMPARE_FUNC,gl.LEQUAL]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
       const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,tex,0); m=SET.sm.c[i]={tex,fb,N}; }
-    m.vp=setSunVP(c,R); gl.bindFramebuffer(gl.FRAMEBUFFER,m.fb); gl.drawBuffers([gl.NONE]); gl.viewport(0,0,m.N,m.N); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    gl.useProgram(SET.sprog); gl.uniformMatrix4fv(gl.getUniformLocation(SET.sprog,'uVP'),false,m.vp); gl.bindVertexArray(SET.svao); gl.drawElements(gl.TRIANGLES,SET.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); });
+    m.vp=setSunVP(c,R); gl.bindFramebuffer(gl.FRAMEBUFFER,m.fb); gl.drawBuffers([gl.NONE]); gl.viewport(0,0,N,N); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    const p=SET.sprog; gl.useProgram(p); gl.uniformMatrix4fv(gl.getUniformLocation(p,'uVP'),false,m.vp); gl.uniformMatrix4fv(gl.getUniformLocation(p,'uIVP'),false,m4inv(m.vp)); gl.uniform2f(gl.getUniformLocation(p,'uRes'),N,N); gl.uniform1f(gl.getUniformLocation(p,'uPx'),N/(2*R)); gl.uniform1f(gl.getUniformLocation(p,'uMaxPt'),SCAN.ptMax);
+    gl.bindVertexArray(SCAN.svao); gl.drawArrays(gl.POINTS,0,SCAN.n); gl.bindVertexArray(null); });
   gl.disable(gl.DEPTH_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null); SET.sm.key=key; }
-/* draw the set when the view, the light or the painted tint changed; returns whether it was redrawn */
-function setRender(w,h,fogs){ if(!SET.ready) setBuild(); setTargets(w,h); setShadow(); const L=sunDir(), showM=(UI.tool==='place'||UI.showPaint)&&!UI.clean&&UI.mode==='shape'?1:0;
-  const key=[w,h,CAM.yaw,CAM.pitch,CAM.dist,...CAM.tgt,CAM.tanY,...L,LOOK.sunI,LOOK.sunK,LOOK.sky,LOOK.skyK,showM,MASK.ver,LIGHTN,...fogs.map(f=>f.ctx.lightN||0)].join('|'); if(key===SET.key) return false;
+function stateSync(){ if(!SCAN.st) return; const st=SCAN.st; st.fill(0); if(SCAN.src&&!SCAN.bake){ for(const i of SCAN.col) st[i]|=1; if(SCAN.hover>=0) for(const i of leavesOf(SCAN.hover)) st[i]|=2; for(const s of SCAN.sel) for(const i of leavesOf(s)) st[i]|=4; for(const i of moverLeafSet()) st[i]|=8; }
+  if(!SCAN.stTex){ SCAN.stTex=gl.createTexture(); } gl.bindTexture(gl.TEXTURE_2D,SCAN.stTex); gl.texImage2D(gl.TEXTURE_2D,0,gl.R8UI,1024,st.length/1024,0,gl.RED_INTEGER,gl.UNSIGNED_BYTE,st);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST); SCAN.stVer++; }
+/* draw the set when the view, the light, the painting, the picks or the fog changed */
+function setRender(w,h,fogs){ setProgs(); scanEnsure(); if(!SCAN.stTex){ SCAN.st=SCAN.st||new Uint8Array(1024); stateSync(); } if(SCAN.bake) bakeStep(); setTargets(w,h); setShadow();
+  const L=sunDir(), showM=(UI.tool==='place'||UI.showPaint)&&!UI.clean&&UI.mode==='shape'?1:0, showC=(UI.tool==='collide'||UI.showCol)&&!UI.clean?1:0, actors=!!(SCAN.src&&(SCAN.src.movers||movList().some(m=>m.src==='sphere'))), tS=actors?sceneTime():0;
+  const key=[w,h,CAM.yaw,CAM.pitch,CAM.dist,...CAM.tgt,CAM.tanY,...L,LOOK.sunI,LOOK.sunK,LOOK.sky,LOOK.skyK,showM,showC,MASK.ver,SCAN.ver,SCAN.stVer,tS.toFixed(4),MOV.ver,...fogs.map(f=>f.ctx.lightN||0)].join('|'); if(key===SET.key) return false;
+  let sm0=SET.sm.c[0]&&SET.sm.c[0].tex; if(actors&&SCAN.n&&!SCAN.bake){ const ak=tS.toFixed(4)+'|'+MOV.ver+'|'+SCAN.ver+'|'+SET.sm.key; if(ACT.key!==ak){ actorsMesh(tS); ACT.key=ak; ACT.shadow=actShadow(tS); } if(ACT.shadow) sm0=ACT.shadow; } else ACT.n=0;
   gl.bindFramebuffer(gl.FRAMEBUFFER,SET.fb); gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]); gl.viewport(0,0,w,h); gl.clearBufferfv(gl.COLOR,0,[0,0,0,0]); gl.clearBufferfv(gl.COLOR,1,[1e9,0,0,0]); gl.clear(gl.DEPTH_BUFFER_BIT);
   const B=camBasis(CAM), DLs=daylight(), sunI=LOOK.sunI*5.6*(LOOK.daylight==='physical'?DLs.sun:clamp(L[1]*4+0.25,0,1)), sunC=kelvin(LOOK.sunK).map(v=>v*sunI), skyC=kelvin(LOOK.skyK).map(v=>v*LOOK.sky*0.56*DLs.sky);
   { const q=SET.sky, Uq=n=>gl.getUniformLocation(q,n); gl.useProgram(q); gl.uniform3fv(Uq('uCR'),B.r); gl.uniform3fv(Uq('uCU'),B.u); gl.uniform3fv(Uq('uCF'),B.f); gl.uniform1f(Uq('uTanY'),B.tanY); gl.uniform2f(Uq('uRes'),w,h); gl.uniform3fv(Uq('uL'),L); gl.uniform3fv(Uq('uSunC'),sunC); gl.uniform3fv(Uq('uSkyC'),skyC); gl.bindVertexArray(null); gl.drawArrays(gl.TRIANGLES,0,3); }
-  gl.enable(gl.DEPTH_TEST);
-  const p=SET.prog, Ul=n=>gl.getUniformLocation(p,n); gl.useProgram(p); gl.uniformMatrix4fv(Ul('uVP'),false,setCamVP(w,h)); gl.uniformMatrix4fv(Ul('uSVP0'),false,SET.sm.c[0].vp); gl.uniformMatrix4fv(Ul('uSVP1'),false,SET.sm.c[1].vp);
-  gl.uniform3fv(Ul('uCam'),B.pos); gl.uniform3fv(Ul('uL'),L); gl.uniform3fv(Ul('uSunC'),sunC); gl.uniform3fv(Ul('uSkyC'),skyC);
-  bindTex(0,gl.TEXTURE_2D,SET.sm.c[0].tex); gl.uniform1i(Ul('uSM0'),0); bindTex(2,gl.TEXTURE_2D,SET.sm.c[1].tex); gl.uniform1i(Ul('uSM1'),2);
-  const LB=new Float32Array(12), LS=new Float32Array(12), LE=new Float32Array(12), LP=new Float32Array(16); fogs.forEach((f,i)=>{ LB.set(domLo(f.rec),i*3); LS.set(domSize(f.rec),i*3); LE.set(hexLin(f.rec.den.extC||'#ffffff'),i*3); LP.set([sigmaOf(f.rec),f.rec.den.alb??0.9,f.rec.den.ecc??0.85,1],i*4); });
-  for(let i=0;i<4;i++){ bindTex(3+i,gl.TEXTURE_3D,fogs[i]?fogs[i].ctx.light:T.noise); gl.uniform1i(Ul('uLV'+i),3+i); } gl.uniform1i(Ul('uNL'),fogs.length); gl.uniform3fv(Ul('uLB[0]'),LB); gl.uniform3fv(Ul('uLS[0]'),LS); gl.uniform3fv(Ul('uLE[0]'),LE); gl.uniform4fv(Ul('uLP[0]'),LP); if(!MASK.tex) maskBuild(); bindTex(1,gl.TEXTURE_2D,MASK.tex); gl.uniform1i(Ul('uMaskR'),1); gl.uniform4fv(Ul('uMaskBR'),mB()); gl.uniform1i(Ul('uShowMask'),showM);
-  const c=new Float32Array(12); shotEls().slice(0,4).forEach((r,k)=>c.set(hexLin(STYPE(r.layer.type).col),k*3)); gl.uniform3fv(Ul('uMaskC[0]'),c);
-  gl.bindVertexArray(SET.vao); gl.drawElements(gl.TRIANGLES,SET.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null); SET.key=key; return true; }
+  if(SCAN.n&&SET.sm.c[1]){ gl.enable(gl.DEPTH_TEST); const VP=setCamVP(w,h), IVP=m4inv(VP);
+    const LB=new Float32Array(12), LS=new Float32Array(12), LE=new Float32Array(12), LP=new Float32Array(16); fogs.forEach((f,i)=>{ LB.set(domLo(f.rec),i*3); LS.set(domSize(f.rec),i*3); LE.set(hexLin(f.rec.den.extC||'#ffffff'),i*3); LP.set([sigmaOf(f.rec),f.rec.den.alb??0.9,f.rec.den.ecc??0.85,1],i*4); });
+    const mc=new Float32Array(12); shotEls().slice(0,4).forEach((r,k)=>mc.set(hexLin(STYPE(r.layer.type).col),k*3));
+    const setU=p=>{ const Ul=n=>gl.getUniformLocation(p,n); gl.uniformMatrix4fv(Ul('uVP'),false,VP); gl.uniformMatrix4fv(Ul('uIVP'),false,IVP); gl.uniform2f(Ul('uRes'),w,h); gl.uniform1f(Ul('uPx'),(h/2)/B.tanY); gl.uniform1f(Ul('uMaxPt'),SCAN.ptMax);
+      gl.uniformMatrix4fv(Ul('uSVP0'),false,SET.sm.c[0].vp); gl.uniformMatrix4fv(Ul('uSVP1'),false,SET.sm.c[1].vp); gl.uniform3fv(Ul('uCam'),B.pos); gl.uniform3fv(Ul('uL'),L); gl.uniform3fv(Ul('uSunC'),sunC); gl.uniform3fv(Ul('uSkyC'),skyC);
+      bindTex(0,gl.TEXTURE_2D,sm0); gl.uniform1i(Ul('uSM0'),0); bindTex(2,gl.TEXTURE_2D,SET.sm.c[1].tex); gl.uniform1i(Ul('uSM1'),2);
+      for(let i=0;i<4;i++){ bindTex(3+i,gl.TEXTURE_3D,fogs[i]?fogs[i].ctx.light:T.noise); gl.uniform1i(Ul('uLV'+i),3+i); } gl.uniform1i(Ul('uNL'),fogs.length); gl.uniform3fv(Ul('uLB[0]'),LB); gl.uniform3fv(Ul('uLS[0]'),LS); gl.uniform3fv(Ul('uLE[0]'),LE); gl.uniform4fv(Ul('uLP[0]'),LP);
+      bindTex(1,gl.TEXTURE_2D,MASK.tex); gl.uniform1i(Ul('uMaskR'),1); gl.uniform4fv(Ul('uMaskBR'),mB()); gl.uniform1i(Ul('uShowMask'),showM); gl.uniform1i(Ul('uShowCol'),showC); gl.uniform3fv(Ul('uMaskC[0]'),mc);
+      bindTex(7,gl.TEXTURE_2D,SCAN.stTex); gl.uniform1i(Ul('uSt'),7); };
+    gl.useProgram(SET.prog); setU(SET.prog); gl.bindVertexArray(SCAN.vao); gl.drawArrays(gl.POINTS,0,SCAN.n); gl.bindVertexArray(null);
+    if(ACT.n) actDraw(w,h,setU); gl.disable(gl.DEPTH_TEST); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); SET.key=SCAN.bake?'':key; return true; }
+
+/* ---------------------------------------------------------------------
+   PICKING: one pixel of the distance/id target under the cursor
+   --------------------------------------------------------------------- */
+const PK=new Float32Array(4);
+function scanPick(mx,my){ if(!SET.fb||!SET.w) return null; const x=clamp(Math.floor(mx/cssW*SET.w),0,SET.w-1), y=clamp(Math.floor((1-my/cssH)*SET.h),0,SET.h-1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,SET.fb); gl.readBuffer(gl.COLOR_ATTACHMENT1); gl.readPixels(x,y,1,1,gl.RGBA,gl.FLOAT,PK); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  if(!(PK[0]<1e8)) return null; const {ro,rd}=mouseRay(mx,my); return {p:add(ro,mul(rd,PK[0])),d:PK[0],id:Math.round(PK[1])}; }
+function shotGround(mx,my){ const k=scanPick(mx,my); if(k) return k.p; const {ro,rd}=mouseRay(mx,my); return rayGround(ro,rd); }
+const prim=i=>SCAN.src.prims[i];
+const isLeaf=p=>!!(p.V||p.kind==='mesh');
+function leavesOf(i){ const p=prim(i); if(!p) return []; if(isLeaf(p)) return [i]; const o=[]; const st=[i]; while(st.length){ const q=prim(st.pop()); if(isLeaf(q)) o.push(q.id); else st.push(...q.kids); } return o; }
+function elementOf(i){ let p=prim(i); while(p&&p.kind!=='component'&&p.parent>=0) p=prim(p.parent); return p&&p.kind==='component'?p.id:i; }
+const atLevel=i=>UI.pickLvl==='leaf'?i:elementOf(i);
+function colState(i){ const L=leavesOf(i), M=moverLeafSet(); let n=0; for(const l of L) if(SCAN.col.has(l)||M.has(l)) n++; return n===0?0:n===L.length?2:1; }
+function setCollide(ids,on){ for(const i of ids){ if(leavesOf(i).some(isAnimPrim)&&ids.length<50&&i!==0) toggleMover(i,on); for(const l of leavesOf(i)) if(!isAnimPrim(l)) on?SCAN.col.add(l):SCAN.col.delete(l); } SHOT.collide=[...SCAN.col].map(i=>prim(i).path); stateSync(); autosave(); colSchedule(); buildSetPanel(); }
+let pickT=0;
+function collideHover(mx,my){ const now=performance.now(); if(now-pickT<40) return; pickT=now; const k=scanPick(mx,my); const h=k&&k.id>0?atLevel(k.id):-1; if(h!==SCAN.hover){ SCAN.hover=h; stateSync(); } SCAN.hoverXY=[mx,my]; }
+function collideClick(mx,my,ev){ const k=scanPick(mx,my); if(!k||!(k.id>0)){ SCAN.sel.clear(); stateSync(); buildSetPanel(); return; } const t=atLevel(k.id); if(leavesOf(t).some(isAnimPrim)){ toggleMover(t,ev.ctrlKey||ev.metaKey?false:undefined); revealInTree(t); return; } const on=ev.ctrlKey||ev.metaKey?false:colState(t)!==2;
+  setCollide([t],on); revealInTree(t); toast((on?'Collides: ':'No longer collides: ')+prim(t).path); }
+function drawCollideHover(){ if(UI.tool!=='collide'||SCAN.hover<0||!SCAN.hoverXY||!SCAN.src) return; const p=prim(SCAN.hover), [x,y]=SCAN.hoverXY, s=colState(SCAN.hover);
+  const an=leavesOf(SCAN.hover).some(isAnimPrim), t=p.path+(s===2?(an?'  · pushes the fog':'  · collides'):s===1?'  · partly':an?'  · moves: click to make it push the fog':''); octx.font=`${11*dpr}px ui-monospace,monospace`; const w=octx.measureText(t).width+12*dpr;
+  octx.fillStyle='rgba(12,14,18,0.82)'; octx.fillRect(x*dpr+14*dpr,y*dpr+10*dpr,w,20*dpr); octx.fillStyle=s?'#7fd8ff':'#e8e8e8'; octx.fillText(t,x*dpr+20*dpr,y*dpr+24*dpr); }
+function drawScanCams(){ if(!UI.showScanCams||!SCAN.cams.length) return; octx.lineWidth=1.5*dpr;
+  for(const c of SCAN.cams){ const a=project(c.pos), b=project(add(c.pos,mul(norm(sub(c.look,c.pos)),Math.max(20,len(sub(c.look,c.pos))*0.12)))); if(!a) continue; const sh=c.name==='shot';
+    octx.strokeStyle=octx.fillStyle=sh?'#ffcf6f':'rgba(160,220,255,0.85)'; octx.beginPath(); octx.arc(a[0]*dpr,a[1]*dpr,(sh?5:3.5)*dpr,0,Math.PI*2); octx.fill(); if(b){ octx.beginPath(); octx.moveTo(a[0]*dpr,a[1]*dpr); octx.lineTo(b[0]*dpr,b[1]*dpr); octx.stroke(); } } }
+
+/* ---------------------------------------------------------------------
+   COLLISION GROUND: the picked objects' proxies, seen from straight above (the highest surface wins), and where
+   nothing is picked, the ground found in the scan (its lowest upward-facing points, small things opened away).
+   The fog's forming rules and the simulation read this one height map.
+   --------------------------------------------------------------------- */
+const COL_VS=`#version 300 es
+layout(location=0) in vec3 aP; uniform vec4 uB; uniform vec2 uY; out float vY;
+void main(){ vY=aP.y; gl_Position=vec4((aP.x-uB.x)/uB.z*2.-1.,(aP.z-uB.y)/uB.w*2.-1.,clamp(1.-(aP.y-uY.x)/(uY.y-uY.x)*2.,-1.,1.),1.); }`;
+const COL_FS=`#version 300 es
+precision highp float; in float vY; out vec4 o; void main(){ o=vec4(vY,1.,0.,1.); }`;
+function colSchedule(){ clearTimeout(SCAN.colTimer); SCAN.colTimer=setTimeout(()=>colBuild(false),450); }
+function scanFloor(N,B){ const pts=SCAN.pts; if(!pts) return null; const M=512, lo=new Float32Array(M*M).fill(1e9);
+  for(let i=0;i<pts.n;i++){ if(pts.N[i*4+1]<45) continue; const x=pts.P[i*3], z=pts.P[i*3+2], u=Math.floor((x-B[0])/B[2]*M), v=Math.floor((z-B[1])/B[3]*M); if(u<0||v<0||u>=M||v>=M) continue; const k=v*M+u; if(pts.P[i*3+1]<lo[k]) lo[k]=pts.P[i*3+1]; }
+  const filt=(a,fmin)=>{ const o=new Float32Array(M*M); for(let v=0;v<M;v++) for(let u=0;u<M;u++){ let r=fmin?1e9:-1e9, any=false; for(let dv=-1;dv<=1;dv++) for(let du=-1;du<=1;du++){ const uu=u+du, vv=v+dv; if(uu<0||vv<0||uu>=M||vv>=M) continue; const q=a[vv*M+uu]; if(q>=1e8) continue; any=true; r=fmin?Math.min(r,q):Math.max(r,q); } o[v*M+u]=any&&a[v*M+u]<1e8?r:1e9; } return o; };
+  let g=filt(filt(lo,true),false);   // opening: houses, trees and small stuff drop out where ground shows around them
+  /* fill what no camera saw (push-pull) */
+  const lv=[{a:g,m:M}]; while(lv[lv.length-1].m>4){ const {a,m}=lv[lv.length-1], h=m/2, o=new Float32Array(h*h); for(let v=0;v<h;v++) for(let u=0;u<h;u++){ let s=0,n=0; for(const [du,dv] of [[0,0],[1,0],[0,1],[1,1]]){ const q=a[(v*2+dv)*m+u*2+du]; if(q<1e8){ s+=q; n++; } } o[v*h+u]=n?s/n:1e9; } lv.push({a:o,m:h}); }
+  for(let l=lv.length-2;l>=0;l--){ const {a,m}=lv[l], c=lv[l+1]; for(let v=0;v<m;v++) for(let u=0;u<m;u++){ const k=v*m+u; if(a[k]<1e8) continue; a[k]=c.a[Math.min(v>>1,c.m-1)*c.m+Math.min(u>>1,c.m-1)]; } }
+  g=lv[0].a; const out=new Float32Array(N*N); for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const u=(i+0.5)/N*M-0.5, v=(j+0.5)/N*M-0.5, u0=clamp(Math.floor(u),0,M-1), v0=clamp(Math.floor(v),0,M-1), u1=Math.min(u0+1,M-1), v1=Math.min(v0+1,M-1), fu=clamp(u-u0,0,1), fv=clamp(v-v0,0,1);
+    out[j*N+i]=(g[v0*M+u0]*(1-fu)+g[v0*M+u1]*fu)*(1-fv)+(g[v1*M+u0]*(1-fu)+g[v1*M+u1]*fu)*fv; } return out; }
+function colBuild(first){ const src=SCAN.src; if(!src||!SCAN.pts) return; const N=HMAP.N, B=HMAP.B, picked=[...SCAN.col];
+  let H=null; if(picked.length){ const C=SCAN.colGL||(SCAN.colGL={prog:glProg(COL_VS,COL_FS)});
+    if(!C.fb){ C.tex=tex2D(N,N,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); C.d=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,C.d); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,N,N); C.fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,C.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,C.tex,0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,C.d); }
+    if(!C.vao){ let nv=0, ni=0; const lv=src.prims.filter(p=>p.V); for(const p of lv){ nv+=p.V.length/6; ni+=p.I.length; } const V=new Float32Array(nv*3), I=new Uint32Array(ni); let ov=0, oi=0; C.rng=new Map();
+      for(const p of lv){ const n=p.V.length/6; for(let k=0;k<n;k++){ V[(ov+k)*3]=p.V[k*6]; V[(ov+k)*3+1]=p.V[k*6+1]; V[(ov+k)*3+2]=p.V[k*6+2]; } for(let k=0;k<p.I.length;k++) I[oi+k]=p.I[k]+ov; C.rng.set(p.id,[oi,p.I.length]); ov+=n; oi+=p.I.length; }
+      C.vao=gl.createVertexArray(); gl.bindVertexArray(C.vao); const vb=gl.createBuffer(), ib=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,V,gl.STATIC_DRAW); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,I,gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,12,0); gl.bindVertexArray(null); }
+    gl.bindFramebuffer(gl.FRAMEBUFFER,C.fb); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,N,N); gl.clearBufferfv(gl.COLOR,0,[-1e5,0,0,0]); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(C.prog); gl.uniform4fv(gl.getUniformLocation(C.prog,'uB'),B); gl.uniform2f(gl.getUniformLocation(C.prog,'uY'),-2000,8000); gl.bindVertexArray(C.vao);
+    for(const id of picked){ const r=C.rng.get(id); if(r) gl.drawElements(gl.TRIANGLES,r[1],gl.UNSIGNED_INT,r[0]*4); } gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
+    const a=new Float32Array(N*N*4); gl.readPixels(0,0,N,N,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); H=new Float32Array(N*N); for(let i=0;i<N*N;i++) H[i]=a[i*4+1]>0.5?a[i*4]:NaN; }
+  const F=SHOT.fallback===false?null:(SCAN.floor||(SCAN.floor=scanFloor(N,B))); let low=1e9; if(!F) for(let i=0;i<SCAN.pts.n;i++) low=Math.min(low,SCAN.pts.P[i*3+1]);
+  const h=new Float32Array(N*N); for(let i=0;i<N*N;i++) h[i]=H&&!isNaN(H[i])?H[i]:F?F[i]:low-20;
+  HMAP.h=h; if(!HMAP.tex){ HMAP.tex=gl.createTexture(); } gl.bindTexture(gl.TEXTURE_2D,HMAP.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.R16F,N,N,0,gl.RED,gl.FLOAT,h);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+  SCAN.colVer++; MASK.info=null; if(first&&!shotEls().length) return;
+  for(const r of shotEls()){ if(!(r.place||[]).length) continue; const rt=RTM.get(r.eid); if(r===REC){ REC.dom=null; markMass(); } else { r.dom=null; if(rt){ rt.dirty.mass=true; rt.fresh=true; } } }
+  if(!first) toast(picked.length?`Collision updated: ${picked.length} object${picked.length>1?'s':''}`+(SHOT.fallback===false?'':' + scanned ground'):'Collision: the scanned ground'); }
+const hmapAt=(x,z)=>{ const N=HMAP.N, B=HMAP.B, h=HMAP.h, u=clamp((x-B[0])/B[2]*N-0.5,0,N-1), v=clamp((z-B[1])/B[3]*N-0.5,0,N-1), u0=Math.floor(u), v0=Math.floor(v), u1=Math.min(u0+1,N-1), v1=Math.min(v0+1,N-1), fu=u-u0, fv=v-v0;
+  return (h[v0*N+u0]*(1-fu)+h[v0*N+u1]*fu)*(1-fv)+(h[v1*N+u0]*(1-fu)+h[v1*N+u1]*fu)*fv; };
+
+/* ---------------------------------------------------------------------
+   THE SET PANEL: the scan, how the fog meets the set, and the scene tree
+   --------------------------------------------------------------------- */
+function buildSetPanel(){ const el=$('#setBody'); if(!el||UI.ws!=='shot') return; const st=el.querySelector('.tree'); const sc=st?st.scrollTop:0; el.innerHTML='';
+  chips(el,'Scene',Object.entries(SCENES).map(([k,v])=>[k,v.label]),()=>curScene(),v=>switchScene(v));
+  if(!SCAN.src||SCAN.bake){ note(el,SCAN.bake?`Scanning the set… camera ${SCAN.bake.k+1} of ${SCAN.bake.cams.length}`:'The set is scanned when the shot opens.'); return; }
+  note(el,`<b>${SCAN.src.name}</b> · ${(SCAN.n/1e6).toFixed(2)}M points from ${SCAN.cams.length} cameras · the shot sees about ${fmLen(SCAN.reach)}. Fog only meets what you pick here: everything else is just to look at.`);
+  const r1=document.createElement('div'); r1.className='chips';
+  const ch=(label,on,tip,fn)=>{ const b=document.createElement('button'); b.className='chip'; b.textContent=label; b.title=tip; b.setAttribute('aria-pressed',!!on); b.onclick=fn; r1.appendChild(b); return b; };
+  ch('Pick colliders',UI.tool==='collide','Click objects in the viewport to make the fog meet them (K)',()=>setTool(UI.tool==='collide'?'place':'collide'));
+  ch('Show colliders',UI.showCol,'Tint the objects the fog meets, with any tool',()=>{ UI.showCol=!UI.showCol; buildSetPanel(); });
+  ch('Scan cameras',UI.showScanCams,'Show where the temporary scan cameras were',()=>{ UI.showScanCams=!UI.showScanCams; buildSetPanel(); });
+  el.appendChild(r1);
+  subH(el,'Pick by'); const r2=document.createElement('div'); r2.className='chips';
+  for(const [v,l,t] of [['element','Element','A whole asset: a house, a tree'],['leaf','Leaf','One piece of it: just the roof, just the canopy']]){ const b=document.createElement('button'); b.className='chip'; b.textContent=l; b.title=t; b.setAttribute('aria-pressed',(UI.pickLvl||'element')===v); b.onclick=()=>{ UI.pickLvl=v; buildSetPanel(); }; r2.appendChild(b); } el.appendChild(r2);
+  const fb=document.createElement('label'); fb.className='row wide'; fb.style.cssText='display:flex;gap:8px;align-items:center;margin:6px 0'; fb.innerHTML=`<input type="checkbox" ${SHOT.fallback===false?'':'checked'}><span class="note" style="margin:0">Where nothing is picked, the fog sits on the ground found in the scan</span>`;
+  fb.querySelector('input').onchange=e=>{ SHOT.fallback=e.target.checked; autosave(); colSchedule(); }; el.appendChild(fb);
+  subH(el,`Scene · ${SCAN.col.size} collid${SCAN.col.size===1?'es':'e'}`);
+  const tr=document.createElement('div'); tr.className='tree'; tr.style.cssText='max-height:300px;overflow:auto;border:1px solid var(--line,#2a2f38);border-radius:6px;padding:4px 0;font-size:12px';
+  const row=(i,dep)=>{ const p=prim(i), s=colState(i), open=SCAN.open.has(i), d=document.createElement('div'); d.dataset.id=i;
+    d.style.cssText=`display:flex;align-items:center;gap:4px;padding:2px 6px 2px ${6+dep*14}px;cursor:pointer;${SCAN.sel.has(i)?'background:rgba(255,200,80,0.16)':''}`;
+    d.innerHTML=`<span style="width:12px;opacity:.7">${p.kids.length?(open?'▾':'▸'):''}</span><input type="checkbox" title="Collides" style="margin:0" ${s===2?'checked':''}><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span><span style="opacity:.45;font-size:10px">${p.kids.length?p.kids.length:p.kind}</span>`;
+    const cb=d.querySelector('input'); cb.indeterminate=s===1; cb.onclick=e=>{ e.stopPropagation(); setCollide([i],s!==2); };
+    d.querySelector('span').onclick=e=>{ e.stopPropagation(); open?SCAN.open.delete(i):SCAN.open.add(i); buildSetPanel(); };
+    d.onclick=e=>{ if(e.ctrlKey||e.metaKey) SCAN.sel.has(i)?SCAN.sel.delete(i):SCAN.sel.add(i); else { SCAN.sel.clear(); SCAN.sel.add(i); } stateSync(); buildSetPanel(); };
+    d.onmouseenter=()=>{ SCAN.hover=i; stateSync(); }; d.onmouseleave=()=>{ SCAN.hover=-1; stateSync(); };
+    tr.appendChild(d); if(open) for(const k of p.kids.slice(0,400)) row(k,dep+1); if(open&&p.kids.length>400){ const m=document.createElement('div'); m.className='note'; m.style.paddingLeft=(20+dep*14)+'px'; m.textContent=`… ${p.kids.length-400} more`; tr.appendChild(m); } };
+  row(0,0); el.appendChild(tr); tr.scrollTop=sc;
+  const r3=document.createElement('div'); r3.className='chips'; r3.style.marginTop='6px';
+  const b1=document.createElement('button'); b1.className='chip'; b1.textContent=`Add selected (${SCAN.sel.size})`; b1.disabled=!SCAN.sel.size; b1.title='The fog meets the objects selected in the tree (Ctrl-click to select several)'; b1.onclick=()=>setCollide([...SCAN.sel],true); r3.appendChild(b1);
+  const b2=document.createElement('button'); b2.className='chip'; b2.textContent='Remove selected'; b2.disabled=!SCAN.sel.size; b2.onclick=()=>setCollide([...SCAN.sel],false); r3.appendChild(b2);
+  const b3=document.createElement('button'); b3.className='chip'; b3.textContent='Clear all'; b3.disabled=!SCAN.col.size; b3.onclick=()=>setCollide([0],false); r3.appendChild(b3);
+  el.appendChild(r3); buildMoverPanel(el);
+  subH(el,'Scan file');
+  const r4=document.createElement('div'); r4.className='chips'; r4.style.marginTop='6px';
+  const sv=document.createElement('button'); sv.className='chip'; sv.textContent='Save scan file'; sv.title='The scan as a .bset file: the format a Houdini bake writes'; sv.onclick=scanSave; r4.appendChild(sv);
+  const ld=document.createElement('button'); ld.className='chip'; ld.textContent='Load scan file…'; ld.title='Open a .bset scan baked from a set'; ld.onclick=scanLoadPick; r4.appendChild(ld);
+  const rs=document.createElement('button'); rs.className='chip'; rs.textContent='Rescan'; rs.onclick=()=>{ scanReset(); scanEnsure(); buildSetPanel(); }; r4.appendChild(rs);
+  el.appendChild(r4); }
+function revealInTree(i){ let p=prim(i); while(p&&p.parent>=0){ SCAN.open.add(p.parent); p=prim(p.parent); } SCAN.sel.clear(); SCAN.sel.add(i); stateSync(); buildSetPanel(); const r=$('#setBody .tree [data-id="'+i+'"]'); if(r) r.scrollIntoView({block:'nearest'}); }
+
+/* ---------------------------------------------------------------------
+   THE SCAN FILE (.bset): "BSET" · u32 header length · JSON header · binary blocks (4-byte aligned).
+   Header: name, units, up, shot camera, scan cameras, reach, region, height-map bounds, prims (path, kind, proxy
+   ranges), blocks. Points: P f32×3, N i8×4, C u8×4 (sqrt albedo, gloss), ID u32, R f32. Proxies: V f32×3, I u32.
+   --------------------------------------------------------------------- */
+function scanSave(){ const src=SCAN.src, pts=SCAN.pts; if(!src||!pts) return; const lv=src.prims.filter(p=>p.V); let nv=0, ni=0; for(const p of lv){ nv+=p.V.length/6; ni+=p.I.length; }
+  const PV=new Float32Array(nv*3), PI=new Uint32Array(ni); let ov=0, oi=0; const rng={};
+  for(const p of lv){ const n=p.V.length/6; for(let k=0;k<n;k++){ PV[(ov+k)*3]=p.V[k*6]; PV[(ov+k)*3+1]=p.V[k*6+1]; PV[(ov+k)*3+2]=p.V[k*6+2]; } PI.set(p.I,oi); rng[p.id]=[ov,n,oi,p.I.length]; ov+=n; oi+=p.I.length; }
+  const arrs=[['P',pts.P],['N',pts.N],['C',pts.C],['ID',pts.ID],['R',pts.R],['proxyV',PV],['proxyI',PI]]; let off=0; const blocks=arrs.map(([name,a])=>{ const b={name,type:a.constructor.name,offset:off,length:a.length}; off+=Math.ceil(a.byteLength/4)*4; return b; });
+  const head={format:'brume-set',version:1,name:src.name,units:'m',up:'y',shotCam:src.shotCam,cams:SCAN.cams,reach:SCAN.reach,region:SCAN.region,hmapB:HMAP.B,points:pts.n,
+    prims:src.prims.map(p=>({path:p.path,kind:p.kind,...(rng[p.id]?{proxy:rng[p.id]}:{})})),blocks};
+  const hj=new TextEncoder().encode(JSON.stringify(head)), hl=Math.ceil(hj.length/4)*4, out=new Uint8Array(8+hl+off); out.set([66,83,69,84]); new DataView(out.buffer).setUint32(4,hl,true); out.set(hj,8); out.fill(32,8+hj.length,8+hl);
+  for(let k=0;k<arrs.length;k++) out.set(new Uint8Array(arrs[k][1].buffer,arrs[k][1].byteOffset,arrs[k][1].byteLength),8+hl+blocks[k].offset);
+  saveBytes((src.name||'set').toLowerCase().replace(/\W+/g,'_')+'.bset',out); }
+async function saveBytes(name,data){ try{ const dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null; if(dl){ await dl.save({filename:name,data}); return; } }catch(e){ if(e&&e.code==='declined') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data])); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+function scanLoadPick(){ const i=document.createElement('input'); i.type='file'; i.accept='.bset'; i.onchange=async()=>{ const f=i.files[0]; if(!f) return; try{ scanLoad(new Uint8Array(await f.arrayBuffer())); }catch(e){ console.error(e); toast('Could not read that scan: '+e.message); } }; i.click(); }
+function scanLoad(u8){ if(String.fromCharCode(...u8.subarray(0,4))!=='BSET') throw new Error('not a .bset scan'); const hl=new DataView(u8.buffer,u8.byteOffset).getUint32(4,true);
+  const head=JSON.parse(new TextDecoder().decode(u8.subarray(8,8+hl))), base=u8.byteOffset+8+hl, T={Float32Array,Int8Array,Uint8Array,Uint32Array}, A={};
+  for(const b of head.blocks){ const C=T[b.type]; const bytes=u8.slice(8+hl+b.offset,8+hl+b.offset+b.length*C.BYTES_PER_ELEMENT); A[b.name]=new C(bytes.buffer); }
+  const prims=head.prims.map((p,id)=>({id,path:p.path,name:p.path.slice(p.path.lastIndexOf('/')+1)||'/',kind:p.kind||'',parent:-1,kids:[],V:null,I:null,mat:0}));
+  const ix=new Map(prims.map(p=>[p.path,p.id])); for(const p of prims){ const q=p.path.slice(0,p.path.lastIndexOf('/')); if(ix.has(q)){ p.parent=ix.get(q); prims[p.parent].kids.push(p.id); } }
+  head.prims.forEach((h,id)=>{ if(!h.proxy) return; const [v0,nv,i0,ni]=h.proxy, V=new Float32Array(nv*6); for(let k=0;k<nv;k++){ V[k*6]=A.proxyV[(v0+k)*3]; V[k*6+1]=A.proxyV[(v0+k)*3+1]; V[k*6+2]=A.proxyV[(v0+k)*3+2]; V[k*6+4]=1; }
+    const I=new Uint32Array(ni); for(let k=0;k<ni;k++) I[k]=A.proxyI[i0+k]-v0; prims[id].V=V; prims[id].I=I; });
+  if(prims[0]&&prims[0].parent>=0) throw new Error('the first prim must be the root');
+  SCAN.bake=null; SCAN.src={name:head.name||'Scanned set',prims,shotCam:head.shotCam,hmapB:head.hmapB}; SCAN.cams=head.cams||[]; SCAN.reach=head.reach||1000; SCAN.region=head.region||null; SCAN.floor=null; if(SCAN.colGL){ SCAN.colGL.vao=null; }
+  if(head.hmapB) HMAP.B=head.hmapB.slice(); SCAN.pts={n:head.points,P:A.P,N:A.N,C:A.C,ID:A.ID,R:A.R}; scanUpload(head.points,A.P,A.N,A.C,A.ID,A.R,false); SCAN.open=new Set([0]);
+  if(SHOT) SHOT.collide=[]; scanReady(); setShotCam(); toast(`Loaded ${head.name||'the scan'}: ${(head.points/1e6).toFixed(2)}M points, ${prims.length} prims`); }
+/* =====================================================================
+   SCENES AND MOVERS. The shot can be the village or a motion test: a meadow with a walker, a galloping horse,
+   a car on the road, tumbling planks and a windmill. What moves is baked as it would be from Houdini: a named
+   prim per part, animated. The artist picks which movers push the fog (viewport or scene tree); each becomes a
+   small soft volume per frame (how much of it is here, and how fast it is moving), blurred by Simplify. The sim
+   drags fog along inside it, shoves it aside at its edges and clears its core. Spheres can be keyed by hand too.
+   ===================================================================== */
+const VILLAGE_B=[-2400,-2800,4800,4000];
+const SCENES={
+  village:{label:'Village',k:1,cam:()=>({pos:SCENE.cam.pos,look:SCENE.cam.look,tanY:Math.tan(21*D2R_)}),make:()=>{ HMAP.B=VILLAGE_B.slice(); const s=testSetSource(); s.k=1; s.hmapB=VILLAGE_B.slice(); return s; }},
+  motion:{label:'Motion test',k:0.12,cam:()=>MOTION_CAM,make:()=>motionSetSource()}};
+const MOTION_CAM={pos:[0,3.4,31],look:[0,1.3,-8],tanY:Math.tan(23*D2R_),aspect:16/9};
+const curScene=()=>SHOT&&SHOT.scene||(()=>{ try{ return localStorage.getItem('brume.shot.scene')||'village'; }catch(e){ return 'village'; } })();
+const SK=()=>(SCENES[curScene()]||SCENES.village).k;
+const shotKey=s=>s==='village'?'brume.shot.current':'brume.shot.'+s;
+
+/* ---------------------------------------------------------------------
+   THE MOTION TEST SET
+   --------------------------------------------------------------------- */
+const mGround=(x,z)=>0.45*Math.sin(x/13)*Math.cos(z/17)+0.25*Math.sin(x/7+z/9)+Math.max(0,-z-38)*0.12+Math.max(0,Math.abs(x)-45)*0.08;
+const mRoadZ=x=>-18+3*Math.sin(x/17);
+function capsuleMesh(a,b,ra,rb,V,I,seg=10){ const ax=sub(b,a), L=len(ax), d=L>1e-5?mul(ax,1/L):[0,1,0]; let u=cross(d,[0,1,0]); if(len(u)<1e-3) u=cross(d,[1,0,0]); u=norm(u); const w=cross(d,u);
+  const rings=[]; const cap=(c,r,s)=>{ for(let k=s>0?1:3;s>0?k<=3:k>=1;k+=s>0?1:-1){ const ph=k/3*Math.PI/2; rings.push([add(c,mul(d,s*Math.sin(ph)*r)),Math.cos(ph)*r,mul(d,s*Math.sin(ph))]); } };
+  const r0=[]; for(let k=3;k>=1;k--){ const ph=k/3*Math.PI/2; r0.push([add(a,mul(d,-Math.sin(ph)*ra)),Math.cos(ph)*ra,mul(d,-Math.sin(ph))]); } rings.push(...r0); rings.push([a,ra,[0,0,0]],[b,rb,[0,0,0]]); cap(b,rb,1);
+  const o=V.length/6; rings.forEach(([c,r,dn])=>{ for(let i=0;i<seg;i++){ const t=i/seg*Math.PI*2, n=add(mul(u,Math.cos(t)),mul(w,Math.sin(t))); const N=norm(add(mul(n,Math.max(r,1e-4)>0?1:0),dn)); V.push(...add(c,mul(n,r)),...(len(dn)>0?norm(add(mul(n,r/Math.max(ra,rb,1e-4)),dn)):n)); } });
+  for(let k=0;k<rings.length-1;k++) for(let i=0;i<seg;i++){ const a0=o+k*seg+i, a1=o+k*seg+(i+1)%seg, b0=a0+seg, b1=a1+seg; I.push(a0,b0,a1,a1,b0,b1); } }
+function boxMesh(c,h,yaw,V,I){ const cy=Math.cos(yaw), sy=Math.sin(yaw), W=(x,y,z)=>[c[0]+cy*x-sy*z,c[1]+y,c[2]+sy*x+cy*z], Nw=(x,y,z)=>[cy*x-sy*z,y,sy*x+cy*z];
+  const F=[[[1,0,0],[0,1,0],[0,0,1]],[[-1,0,0],[0,0,1],[0,1,0]],[[0,1,0],[0,0,1],[1,0,0]],[[0,-1,0],[1,0,0],[0,0,1]],[[0,0,1],[1,0,0],[0,1,0]],[[0,0,-1],[0,1,0],[1,0,0]]];
+  for(const [n,s,t] of F){ const o=V.length/6, ctr=n.map((v,i)=>v*h[i]); for(const [a,b] of [[-1,-1],[1,-1],[1,1],[-1,1]]){ const p=[0,1,2].map(i=>ctr[i]+s[i]*a*h[i]+t[i]*b*h[i]); V.push(...W(...p),...Nw(...n)); } I.push(o,o+1,o+2,o,o+2,o+3,o,o+2,o+1,o,o+3,o+2); } }
+/* the actors: each returns its primitives at scene time t (seconds from frame 1): capsules [a,b,ra,rb] and boxes [centre, half size, yaw] */
+function motionActors(){ const A=[];
+  const g=(x,z)=>mGround(x,z);
+  /* a walker, crossing in front of the camera */
+  A.push({path:'/set/actors/walker',leaves:[['torso','#4f5d7a'],['head','#d9b38c'],['arm_L','#4f5d7a'],['arm_R','#4f5d7a'],['leg_L','#2f3442'],['leg_R','#2f3442']],
+    prims:t=>{ const d=norm([1,0,-0.22]), s=[d[2],0,-d[0]], P0=[-6,0,2.4], dist=1.35*t, base=add(P0,mul(d,dist)); base[1]=g(base[0],base[2]); const ph=dist/1.5*Math.PI*2;
+      const bob=0.035*Math.cos(2*ph), hip=add(base,[0,0.94+bob,0]), chest=add(hip,[0,0.5,0]), out=[];
+      out.push({l:0,a:hip,b:chest,ra:0.15,rb:0.17}); out.push({l:1,a:add(chest,[0,0.2,0]),b:add(chest,[0,0.24,0]),ra:0.11,rb:0.11});
+      const limb=(root,sw,bend,l1,l2,r1,r2,leaf,fwdBend)=>{ const k1=add(root,add(mul(d,Math.sin(sw)*l1),[0,-Math.cos(sw)*l1,0])), a2=sw+bend*fwdBend, k2=add(k1,add(mul(d,Math.sin(a2)*l2),[0,-Math.cos(a2)*l2,0])); out.push({l:leaf,a:root,b:k1,ra:r1,rb:r1*0.85},{l:leaf,a:k1,b:k2,ra:r2,rb:r2*0.8}); return k2; };
+      for(const sd of [-1,1]){ const sw=0.42*Math.sin(ph+(sd<0?0:Math.PI)), kn=0.75*Math.max(0,Math.sin(ph+(sd<0?0:Math.PI)-1.2)); const ft=limb(add(hip,mul(s,0.1*sd)),sw,kn,0.46,0.46,0.075,0.06,sd<0?4:5,-1);
+        out.push({l:sd<0?4:5,a:ft,b:add(ft,mul(d,0.18)),ra:0.05,rb:0.05}); const as=-0.38*Math.sin(ph+(sd<0?0:Math.PI)); limb(add(chest,mul(s,0.22*sd)),as,0.35+0.2*Math.max(0,as),0.3,0.28,0.05,0.045,sd<0?2:3,1); }
+      return out; }});
+  /* a horse at a canter, right to left behind the walker */
+  A.push({path:'/set/actors/horse',leaves:[['body','#5b3a22'],['neck','#5b3a22'],['head','#4a2e1b'],['tail','#2a1a10'],['leg_FL','#3d2616'],['leg_FR','#3d2616'],['leg_HL','#3d2616'],['leg_HR','#3d2616']],
+    prims:t=>{ const d=[-1,0,0], s=[0,0,-1], x=14-6.6*t, base=[x,g(x,-8.5),-8.5], f=2.3, ph=t*f*Math.PI*2, bob=0.07*Math.sin(2*ph), pit=0.07*Math.sin(ph); const out=[];
+      const B=(fw,up)=>add(base,add(mul(d,fw),[0,up+bob+fw*pit,0]));
+      out.push({l:0,a:B(-0.75,1.38),b:B(0.72,1.42),ra:0.38,rb:0.4}); out.push({l:1,a:B(0.75,1.55),b:B(1.15,2.05),ra:0.22,rb:0.15}); out.push({l:2,a:B(1.15,2.08),b:B(1.5,1.78),ra:0.13,rb:0.09});
+      out.push({l:3,a:B(-0.85,1.5),b:add(B(-1.25,0.95),[0,0,0.15*Math.sin(ph*0.5)]),ra:0.07,rb:0.04});
+      [[0.62,-1,0,4],[0.62,1,0.12,5],[-0.62,-1,0.5,6],[-0.62,1,0.62,7]].forEach(([fw,sd,po,leaf])=>{ const hp=add(B(fw,1.18),mul(s,0.2*sd)), a=0.62*Math.sin(ph+po*Math.PI*2), kn=1.0*Math.max(0,Math.sin(ph+po*Math.PI*2+1.3))*(fw>0?1:-1);
+        const k1=add(hp,add(mul(d,Math.sin(a)*0.55),[0,-Math.cos(a)*0.55,0])), a2=a+kn, k2=add(k1,add(mul(d,Math.sin(a2)*0.6),[0,-Math.cos(a2)*0.6,0])); out.push({l:leaf,a:hp,b:k1,ra:0.09,rb:0.065},{l:leaf,a:k1,b:k2,ra:0.055,rb:0.05}); });
+      return out; }});
+  /* a car on the road */
+  A.push({path:'/set/actors/car',leaves:[['body','#9c1f1a'],['cabin','#1a2026'],['wheel_FL','#111111'],['wheel_FR','#111111'],['wheel_RL','#111111'],['wheel_RR','#111111']],gloss:[1,1,0,0,0,0],
+    prims:t=>{ const x=-34+9*t, z=mRoadZ(x), yaw=Math.atan2(mRoadZ(x+1)-mRoadZ(x-1),2), d=[Math.cos(yaw),0,Math.sin(yaw)], s=[-Math.sin(yaw),0,Math.cos(yaw)], gy=g(x,z), c=[x,gy,z], out=[];
+      out.push({l:0,box:true,a:add(c,[0,0.72,0]),b:[2.2,0.42,0.9],yaw:-yaw}); out.push({l:1,box:true,a:add(add(c,mul(d,-0.25)),[0,1.38,0]),b:[1.15,0.3,0.78],yaw:-yaw});
+      [[1.35,1,2],[1.35,-1,3],[-1.35,1,4],[-1.35,-1,5]].forEach(([fw,sd,l])=>{ const w=add(add(c,mul(d,fw)),add(mul(s,0.86*sd),[0,0.36,0])); out.push({l,a:add(w,mul(s,-0.12)),b:add(w,mul(s,0.12)),ra:0.34,rb:0.34}); }); return out; }});
+  /* planks tumbling across in a gust: lots of odd little shapes */
+  const R=mulberry(808); for(let k=0;k<12;k++){ const L=0.8+R()*0.9, rr=0.05+R()*0.04, z=-4+R()*9, x0=-34-R()*14, sp=4.6+R()*1.6, w1=2+R()*3, w2=1.5+R()*2.5, ph=R()*6, bh=0.6+R()*1.2, bf=1.5+R()*1.2;
+    A.push({path:'/set/actors/debris/plank_'+String(k+1).padStart(2,'0'),leaves:[['geo','#8a6a45']],prims:t=>{ const x=x0+sp*t, y=g(x,z)+0.2+Math.abs(Math.sin(bf*t+ph))*bh, c=[x,y,z], a=w1*t+ph, b=w2*t, dir=[Math.cos(a)*Math.cos(b),Math.sin(b),Math.sin(a)*Math.cos(b)];
+      return [{l:0,a:add(c,mul(dir,-L/2)),b:add(c,mul(dir,L/2)),ra:rr,rb:rr}]; }}); }
+  /* the windmill's rotor */
+  A.push({path:'/set/actors/windmill_rotor',leaves:[['hub','#d8d4cc'],['blade_1','#e8e4dc'],['blade_2','#e8e4dc'],['blade_3','#e8e4dc'],['blade_4','#e8e4dc']],
+    prims:t=>{ const h=[24,g(24,-36)+9.6,-35.3], out=[{l:0,a:add(h,[0,0,-0.3]),b:add(h,[0,0,0.35]),ra:0.32,rb:0.25}]; for(let k=0;k<4;k++){ const a=1.15*t+k*Math.PI/2, dr=[Math.cos(a),Math.sin(a),0]; out.push({l:1+k,a:add(h,mul(dr,0.4)),b:add(h,mul(dr,5.2)),ra:0.22,rb:0.1}); } return out; }});
+  return A; }
+function motionSetSource(){ const prims=[], P=(path,kind,parent)=>{ const id=prims.length; prims.push({id,path,name:path.slice(path.lastIndexOf('/')+1),kind,parent,kids:[],V:null,I:null,mat:0}); if(parent>=0) prims[parent].kids.push(id); return id; };
+  const leaf=(id,V,I,mat)=>{ prims[id].V=new Float32Array(V); prims[id].I=new Uint32Array(I); prims[id].mat=mat; };
+  const root=P('/set','assembly',-1), B=[-70,-70,140,140];
+  { const gc=P('/set/ground','component',root), id=P('/set/ground/ground_geo','mesh',gc), N=280, V=[], I=[]; const h=(i,j)=>mGround(B[0]+i/N*B[2],B[1]+j/N*B[3]);
+    for(let j=0;j<=N;j++) for(let i=0;i<=N;i++){ const e=B[2]/N, n=norm([-(h(i+1,j)-h(i-1,j))/(2*e),1,-(h(i,j+1)-h(i,j-1))/(2*e)]); V.push(B[0]+i*e,h(i,j),B[1]+j*e,...n); }
+    for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const a=j*(N+1)+i, b=a+1, c=a+N+1, d=c+1; I.push(a,c,b,b,c,d); } leaf(id,V,I,6000); }
+  const props=P('/set/props','assembly',root);
+  { const gc=P('/set/props/barn','component',props), wl={V:[],I:[]}, rf={V:[],I:[]}, c=[-25,mGround(-25,-34)-0.2,-34], yaw=0.25; boxMesh(add(c,[0,2.6,0]),[6,2.8,4.5],yaw,wl.V,wl.I);
+    const cy=Math.cos(yaw), sy=Math.sin(yaw), W=(x,y,z)=>[c[0]+cy*x-sy*z,c[1]+y,c[2]+sy*x+cy*z]; for(const sd of [1,-1]){ const o=rf.V.length/6, L=Math.hypot(5,2.8), n=[0,5/L,sd*2.8/L], N=[cy*n[0]-sy*n[2],n[1],sy*n[0]+cy*n[2]];
+      for(const q of [[-6.4,5.4,sd*5],[6.4,5.4,sd*5],[6.4,8.2,0],[-6.4,8.2,0]]) rf.V.push(...W(...q),...N); rf.I.push(o,o+1,o+2,o,o+2,o+3,o,o+2,o+1,o,o+3,o+2); }
+    for(const sx of [-6,6]){ const o=wl.V.length/6, n=[Math.sign(sx)*cy,0,Math.sign(sx)*sy]; for(const q of [[sx,5.4,-4.5],[sx,5.4,4.5],[sx,8.2,0]]) wl.V.push(...W(...q),...n); wl.I.push(o,o+1,o+2,o,o+2,o+1); }
+    leaf(P('/set/props/barn/walls','mesh',gc),wl.V,wl.I,7000); leaf(P('/set/props/barn/roof','mesh',gc),rf.V,rf.I,7001); }
+  { const gc=P('/set/props/fence','component',props), po={V:[],I:[]}, ra={V:[],I:[]}; for(let x=-36;x<=36;x+=2.4){ const z=-12.6; boxMesh([x,mGround(x,z)+0.55,z],[0.07,0.6,0.07],0,po.V,po.I); }
+    for(let x=-36;x<36;x+=2.4) for(const y of [0.5,0.95]){ const z=-12.6, x1=x+2.4, y0=mGround(x,z)+y, y1=mGround(x1,z)+y; capsuleMesh([x,y0,z],[x1,y1,z],0.04,0.04,ra.V,ra.I,6); }
+    leaf(P('/set/props/fence/posts','mesh',gc),po.V,po.I,7002); leaf(P('/set/props/fence/rails','mesh',gc),ra.V,ra.I,7002); }
+  { const gc=P('/set/props/windmill','component',props), tw={V:[],I:[]}, gy=mGround(24,-36); capsuleMesh([24,gy,-36],[24,gy+9.4,-36],0.7,0.35,tw.V,tw.I,12); boxMesh([24,gy+9.6,-36],[0.45,0.45,0.7],0,tw.V,tw.I); leaf(P('/set/props/windmill/tower','mesh',gc),tw.V,tw.I,7003); }
+  { const R=mulberry(31); for(let k=0;k<9;k++){ const x=-40+k*10+R()*5, z=-44-R()*10, y=mGround(x,z)-0.2, h=7+R()*5, r=1.8+R()*1.2, gc=P('/set/props/tree_'+String(k+1).padStart(2,'0'),'component',props), tk={V:[],I:[]}, cn={V:[],I:[]};
+      capsuleMesh([x,y,z],[x,y+h*0.35,z],0.25,0.2,tk.V,tk.I,6); capsuleMesh([x,y+h*0.3,z],[x,y+h,z],r,0.15,cn.V,cn.I,9); leaf(P(gc>=0?prims[gc].path+'/trunk':'','mesh',gc),tk.V,tk.I,4000+k); leaf(P(prims[gc].path+'/canopy','mesh',gc),cn.V,cn.I,5000+k); } }
+  { const gc=P('/set/props/rocks','component',props), rk={V:[],I:[]}; for(const [x,z,s] of [[-8,-24,1.1],[12,-28,0.8],[30,-6,0.9]]) capsuleMesh([x-s*0.6,mGround(x,z)+s*0.3,z],[x+s*0.5,mGround(x,z)+s*0.35,z+0.2],s*0.75,s*0.6,rk.V,rk.I,8); leaf(P('/set/props/rocks/geo','mesh',gc),rk.V,rk.I,7004); }
+  /* the actors: prims with no static geometry, animated */
+  const acts=P('/set/actors','assembly',root), debris=P('/set/actors/debris','assembly',acts), movers=motionActors();
+  movers.forEach((m,mi)=>{ const par=m.path.startsWith('/set/actors/debris/')?debris:acts, c=P(m.path,'component',par); m.comp=c; m.leafIds=m.leaves.map(([nm,col],li)=>{ const id=P(m.path+'/'+nm,'mesh',c); Object.assign(prims[id],{anim:true,mover:mi,li,col:hexLin(col),gloss:(m.gloss||[])[li]||0}); return id; }); prims[c].anim=true; });
+  prims[acts].anim=true; prims[debris].anim=true;
+  return {name:'Motion test',k:0.12,prims,movers,shotCam:{...MOTION_CAM},hmapB:B,maskB:[-60,-60,120,120],ground:mGround}; }
+
+/* ---------------------------------------------------------------------
+   MOVERS: what the artist picked (scene parts, or a keyed sphere), evaluated at a scene time
+   --------------------------------------------------------------------- */
+const MOV={tex:[null,null],K:0,t:NaN,ver:0,blocks:[],sig:0};
+const movList=()=>UI.ws==='shot'&&SHOT&&SHOT.movers?SHOT.movers:[];
+function sceneTime(){ if(UI.ws!=='shot'||!REC) return 0; if(MOVT!=null) return MOVT; if(UI.mode!=='anim'&&MAIN.phase!=='anim') return 0; const tm=timing(REC); return (frameOf(tm,viewTime(REC))-tm.start)/tm.fps; }
+let MOVT=null, MOVPRE=false;
+/* the primitives of one picked scene part at time t, with the 'before frame 1' rule */
+function srcPrims(m,ids,t,pre){ const src=SCAN.src; if(!src||!src.movers) return []; const act=src.movers[m]; const leafSet=new Set(ids.map(i=>prim(i).li));
+  const at=tt=>act.prims(tt).filter(o=>leafSet.has(o.l));
+  if(t>=0||pre==='cache') return at(t);
+  if(pre==='hold') return at(0);
+  const c=ps=>{ const s=[0,0,0]; let n=0; for(const o of ps){ for(let i=0;i<3;i++) s[i]+=o.a[i]+(o.box?o.a[i]:o.b[i]); n+=2; } return s.map(v=>v/Math.max(n,1)); };   // extrapolate: the start's speed carried backwards, the limbs still cycling
+  const c0=c(at(0)), c1=c(at(1/24)), v=mul(sub(c1,c0),24), ct=c(at(t)), sh=sub(add(c0,mul(v,t)),ct); sh[1]=0;
+  return at(t).map(o=>({...o,a:add(o.a,sh),b:o.box?o.b:add(o.b,sh)})); }
+function sphereAt(m,t){ const K=(m.keys||[]).slice().sort((a,b)=>a.t-b.t); if(!K.length) return null; if(K.length===1) return K[0].p;
+  if(t<=K[0].t){ if((m.pre||'extrapolate')==='hold') return K[0].p; const v=mul(sub(K[1].p,K[0].p),1/Math.max(K[1].t-K[0].t,1e-3)); return add(K[0].p,mul(v,t-K[0].t)); }
+  if(t>=K[K.length-1].t) return K[K.length-1].p; let i=0; while(K[i+1].t<t) i++; const P0=K[Math.max(i-1,0)].p, P1=K[i].p, P2=K[i+1].p, P3=K[Math.min(i+2,K.length-1)].p, u=(t-K[i].t)/Math.max(K[i+1].t-K[i].t,1e-4);
+  return [0,1,2].map(j=>0.5*((2*P1[j])+(-P0[j]+P2[j])*u+(2*P0[j]-5*P1[j]+4*P2[j]-P3[j])*u*u+(-P0[j]+3*P1[j]-3*P2[j]+P3[j])*u*u*u)); }
+/* before frame 1: the guessed path, bent by the ghost the artist dragged (an offset that fades to nothing at frame 1, so speed there is untouched) */
+function moverBlocks(m,t){ const B=moverBlocks0(m,t); const pre=preOf(m); if(t>=0||!m.preOff||!pre) return B; const s=clamp(-t/pre,0,1), h=s*s*(3-2*s), o=mul(m.preOff,h);
+  return B.map(b=>({...b,prims:b.prims.map(q=>({...q,a:add(q.a,o),b:q.box?q.b:add(q.b,o)}))})); }
+function blocksCentroid(B){ const s=[0,0,0]; let n=0; for(const b of B) for(const o of b.prims){ for(let i=0;i<3;i++) s[i]+=o.a[i]+(o.box?o.a[i]:o.b[i]); n+=2; } return n?s.map(v=>v/n):null; }
+/* how long before frame 1 a mover starts: long enough to travel three or four of its own lengths, from its fastest moving part */
+function autoPre(m){ const k=m._pk, key=MOV.ver+'|'+(m.paths||[]).join()+'|'+JSON.stringify(m.keys||0); if(k===key) return m._pa; const B0=moverBlocks0(m,0), B1=moverBlocks0(m,1/24); let sp=0, ext=0;
+  B0.forEach((b,i)=>{ ext=Math.max(ext,b.ext); const c=B1[i]; if(!c) return; b.prims.forEach((o,j)=>{ const q=c.prims[j]; if(!q) return; sp=Math.max(sp,len(sub(q.a,o.a))*24,o.box?0:len(sub(q.b,o.b))*24); }); });
+  const v=sp<0.05?0:clamp(3.5*Math.max(ext,0.3)/sp,0.3,4); m._pk=key; m._pa=+v.toFixed(2); return m._pa; }
+const preOf=m=>(m.pre||'extrapolate')==='hold'?0:m.preT??autoPre(m);
+function moverBlocks0(m,t){ if(m.src==='sphere'){ const p=sphereAt(m,t); if(!p) return []; return [{prims:[{a:p,b:p,ra:m.r,rb:m.r}],ext:m.r*2}]; }
+  const src=SCAN.src; if(!src||!src.movers) return []; const by=new Map(); for(const path of m.paths||[]){ const id=SCAN.pathIx.get(path); if(id==null) continue; const p=prim(id); if(p.mover==null) continue; if(!by.has(p.mover)) by.set(p.mover,[]); by.get(p.mover).push(id); }
+  const out=[]; for(const [mi,ids] of by){ const ps=srcPrims(mi,ids,t,m.pre||'extrapolate'); if(!ps.length) continue; const bb=primBounds(ps); out.push({prims:ps,ext:Math.max(...[0,1,2].map(i=>bb[1][i]-bb[0][i]))}); } return out; }
+function primBounds(ps){ const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9]; for(const o of ps){ if(o.box){ const c=Math.abs(Math.cos(o.yaw)), s=Math.abs(Math.sin(o.yaw)), e=[o.b[0]*c+o.b[2]*s,o.b[1],o.b[0]*s+o.b[2]*c]; for(let i=0;i<3;i++){ lo[i]=Math.min(lo[i],o.a[i]-e[i]); hi[i]=Math.max(hi[i],o.a[i]+e[i]); } }
+    else for(const [p,r] of [[o.a,o.ra],[o.b,o.rb]]) for(let i=0;i<3;i++){ lo[i]=Math.min(lo[i],p[i]-r); hi[i]=Math.max(hi[i],p[i]+r); } } return [lo,hi]; }
+const movActive=()=>movList().some(m=>m.src==='sphere'?(m.keys||[]).length:(m.paths||[]).length);
+
+/* ---------------------------------------------------------------------
+   THE MOVER VOLUMES: every block is 32³ in one atlas (32 × 32K × 32), voxelised from its primitives with their
+   velocities, then blurred by Simplify (thin parts fade first). The real bake writes the same grids from the geometry.
+   --------------------------------------------------------------------- */
+const MOV_PRIMS=160;
+const FS_MOVV=HEAD+VOX_GLSL+`uniform float uMK; uniform vec4 uBL[16], uBS[16]; uniform highp sampler2D uPT; out vec4 o;
+void main(){ vec3 u=vU(); float fy=u.y*uMK; int i=int(floor(fy)); vec3 q=vec3(u.x,fract(fy),u.z); vec3 p=uBL[i].xyz+q*uBS[i].xyz; float vx=min(uBS[i].x,min(uBS[i].y,uBS[i].z))/32.;
+  int s0=int(uBL[i].w), n=int(uBS[i].w); float best=0.; vec3 bv=vec3(0.);
+  for(int j=0;j<${MOV_PRIMS};j++){ if(j<s0) continue; if(j>=s0+n) break; vec4 A=texelFetch(uPT,ivec2(0,j),0), B=texelFetch(uPT,ivec2(1,j),0), V=texelFetch(uPT,ivec2(2,j),0), W=texelFetch(uPT,ivec2(3,j),0); float sd; vec3 v;
+    if(V.w>0.5){ vec3 d=p-A.xyz; float c=cos(W.w), s=sin(W.w); d.xz=vec2(c*d.x-s*d.z,s*d.x+c*d.z); vec3 k=abs(d)-B.xyz+A.w; sd=length(max(k,0.))+min(max(k.x,max(k.y,k.z)),0.)-A.w; v=V.xyz; }
+    else { vec3 ab=B.xyz-A.xyz; float h=clamp(dot(p-A.xyz,ab)/max(dot(ab,ab),1e-8),0.,1.); sd=length(p-A.xyz-ab*h)-mix(A.w,B.w,h); v=mix(V.xyz,W.xyz,h); }
+    float oc=clamp(0.5-sd/vx,0.,1.); if(oc>best){ best=oc; bv=v; } }
+  o=vec4(best,best*bv); }`;
+const FS_MOVB=HEAD+VOX_GLSL+`uniform sampler3D uS; uniform float uMK; uniform vec4 uSig[16]; uniform int uAx; out vec4 o;
+void main(){ vec3 u=vU(); float fy=u.y*uMK; int i=int(floor(fy)); ivec3 c=ivec3(gl_FragCoord.xy,int(u.z*32.)); int by=i*32; float sg=uSig[i].x;
+  if(sg<0.35){ o=texelFetch(uS,c,0); return; } vec4 acc=vec4(0.); float ws=0.; ivec3 ax=uAx==0?ivec3(1,0,0):uAx==1?ivec3(0,1,0):ivec3(0,0,1);
+  for(int k=-12;k<=12;k++){ float w=exp(-float(k*k)/(2.*sg*sg)); if(w<0.01) continue; ivec3 cc=c+ax*k; if(cc.x<0||cc.x>31||cc.z<0||cc.z>31||cc.y<by||cc.y>by+31){ ws+=w; continue; } acc+=texelFetch(uS,cc,0)*w; ws+=w; }   // outside the block counts as empty
+  o=acc/ws; }`;
+function movProgs(){ if(PR.movV) return; mkProg('movV',FS_MOVV); mkProg('movB',FS_MOVB); }
+function movAtlas(K){ if(MOV.K===K&&MOV.tex[0]) return; for(const t of MOV.tex) if(t) gl.deleteTexture(t); MOV.tex=[tex3D(32,32*K,32,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT),tex3D(32,32*K,32,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT)]; MOV.K=K; }
+const MPT=new Float32Array(MOV_PRIMS*16), MBL=new Float32Array(64), MBS=new Float32Array(64), MSG=new Float32Array(64), MB0=new Float32Array(64), MB1=new Float32Array(64);
+/* build the atlas for scene time t (velocities by finite difference) */
+function movPrep(t){ if(!movActive()){ MOV.blocks=[]; return; } const key=t.toFixed(5)+'|'+MOV.ver; if(MOV.key===key) return; MOV.key=key; movProgs();
+  const dt=1/60, blocks=[]; for(const m of movList()){ if(t<-preOf(m)-1e-6) continue; const B1=moverBlocks(m,t), B0=moverBlocks(m,t-dt); B1.forEach((b,k)=>{ if(blocks.length<16) blocks.push({...b,prev:(B0[k]||b).prims,m}); }); }
+  MOV.blocks=blocks; if(!blocks.length) return; movAtlas(blocks.length); let np=0;
+  blocks.forEach((b,i)=>{ const s0=np, sig=(b.m.simplify??0.15)*0.35*Math.max(b.ext,0.2); const [lo,hi]=primBounds(b.prims); const pad=Math.max(sig*2.6,b.ext*0.12,0.15); for(let k=0;k<3;k++){ lo[k]-=pad; hi[k]+=pad; }
+    b.prims.forEach((o,j)=>{ if(np>=MOV_PRIMS) return; const q=b.prev[j]||o; const va=mul(sub(o.a,q.a),1/dt), vb=o.box?va:mul(sub(o.b,q.b),1/dt);
+      MPT.set([...o.a,o.box?Math.min(...o.b)*0.25:o.ra, ...o.b,o.box?0:o.rb, ...va,o.box?1:0, ...vb,o.box?o.yaw:0],np*16); np++; });
+    b.lo=lo; b.size=[0,1,2].map(k=>hi[k]-lo[k]); MBL.set([...lo,s0],i*4); MBS.set([...b.size,np-s0],i*4); MSG.set([sig/(Math.max(...b.size)/32),0,0,0],i*4);
+    const st=b.m.strength??1; MB0.set([...lo,st],i*4); MB1.set([...b.size,0],i*4); });
+  const K=blocks.length, dims=[32,32*K,32]; if(!MOV.pt){ MOV.pt=gl.createTexture(); } gl.bindTexture(gl.TEXTURE_2D,MOV.pt); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,4,MOV_PRIMS,0,gl.RGBA,gl.FLOAT,MPT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  let pr=use('movV'); u1f(pr,'uMK',K); gl.uniform4fv(U(pr,'uBL[0]'),MBL); gl.uniform4fv(U(pr,'uBS[0]'),MBS); bindTex(0,gl.TEXTURE_2D,MOV.pt); u1i(pr,'uPT',0);
+  volPass(pr,[MOV.tex[0]],dims);
+  pr=use('movB'); u1f(pr,'uMK',K); gl.uniform4fv(U(pr,'uSig[0]'),MSG); for(let ax=0;ax<3;ax++){ bind3(pr,0,'uS',MOV.tex[ax%2]); u1i(pr,'uAx',ax); volPass(pr,[MOV.tex[(ax+1)%2]],dims); }   // x, y, z: the result lands in tex[1]
+}
+/* sim uniforms: called from velUniforms */
+function movU(pr,ctx,rec){ const on=UI.ws==='shot'&&(MOVPRE||(ctx===MAIN&&MAIN.phase==='anim')||ctx===AFIT.ctx)&&MOV.blocks.length;
+  if(!on){ u1i(pr,'uNMB',0); bind3(pr,6,'uMov',T.noise); return; }
+  const tm=timing(REC); u1i(pr,'uNMB',MOV.blocks.length); u1f(pr,'uMK',MOV.K); u1f(pr,'uMovK',1/Math.max(tm.speed,1e-4)); bind3(pr,6,'uMov',MOV.tex[1]); gl.uniform4fv(U(pr,'uMB0[0]'),MB0); gl.uniform4fv(U(pr,'uMB1[0]'),MB1); }
+/* before each sim step: the movers at the step's middle, in scene time */
+function movStep(ctx,rec,h){ if(UI.ws!=='shot'||!movActive()) { MOV.blocks=[]; return; } if(!(MOVPRE||(ctx===MAIN&&MAIN.phase==='anim')||ctx===AFIT.ctx)) return;
+  let t; if(MOVPRE) t=MOVT; else { const tm=timing(REC); t=(frameOf(tm,ctx.sim.t+h*0.5)-tm.start)/tm.fps; } movPrep(t); }
+/* pre-roll: before frame 1, only the movers act on the sculpted fog, so frame 1 opens with their wake already cut */
+function moverPreroll(ctx,rec){ const pre=Math.max(0,...movList().map(preOf)); if(UI.ws!=='shot'||!pre||!movActive()||!ctx.dims) return; const tm=timing(REC), S=ctx.sim, save={t:S.t,step:S.step,steps:S.steps,h:S.h,target:S.target};
+  const fdt=1/tm.fps, hs=fdt*tm.speed, n=Math.max(1,Math.ceil(hs/Math.max(S.dt,1e-6))); MOVPRE=true;
+  try{ for(let ts=-pre; ts<-1e-6; ts+=fdt) for(let k=0;k<n;k++){ MOVT=ts+fdt*(k+0.5)/n; S.target=1e9; simStep(ctx,rec,hs/n); } } finally{ MOVPRE=false; MOVT=null; Object.assign(S,save); } }
+
+/* ---------------------------------------------------------------------
+   DRAWING THE ACTORS: their parts as meshes at the playhead's time, lit like the scan, with ids for picking,
+   casting into the near shadow map
+   --------------------------------------------------------------------- */
+const ACT={vao:null,vb:null,n:0,key:'',svao:null};
+function actorsMesh(t){ const src=SCAN.src; if(!src||!src.movers) return 0; const V=[], I=[], C=[], ID=[];
+  src.movers.forEach(act=>{ for(const o of act.prims(t)){ const lid=act.leafIds[o.l], p=prim(lid); const v0=V.length/6; if(o.box) boxMesh(o.a,o.b,-o.yaw,V,I); else capsuleMesh(o.a,o.b,o.ra,o.rb,V,I,10); const n=V.length/6-v0; for(let k=0;k<n;k++){ C.push(p.col[0],p.col[1],p.col[2],p.gloss||0); ID.push(lid); } } });
+  const n=V.length/6; if(!n){ ACT.n=0; return 0; } const buf=new Float32Array(n*11); for(let k=0;k<n;k++){ buf.set(V.slice(k*6,k*6+6),k*11); buf.set(C.slice(k*4,k*4+4),k*11+6); } const ib=new Uint32Array(I), idb=new Uint32Array(ID);
+  if(!ACT.vao){ ACT.vb=gl.createBuffer(); ACT.ib=gl.createBuffer(); ACT.idb=gl.createBuffer(); const mk=sh=>{ const vao=gl.createVertexArray(); gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER,ACT.vb); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,44,0);
+      if(!sh){ gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,44,12); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,4,gl.FLOAT,false,44,24); gl.bindBuffer(gl.ARRAY_BUFFER,ACT.idb); gl.enableVertexAttribArray(3); gl.vertexAttribIPointer(3,1,gl.UNSIGNED_INT,4,0); }
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ACT.ib); gl.bindVertexArray(null); return vao; }; ACT.vao=mk(false); ACT.svao=mk(true); }
+  gl.bindBuffer(gl.ARRAY_BUFFER,ACT.vb); gl.bufferData(gl.ARRAY_BUFFER,buf,gl.DYNAMIC_DRAW); gl.bindBuffer(gl.ARRAY_BUFFER,ACT.idb); gl.bufferData(gl.ARRAY_BUFFER,idb,gl.DYNAMIC_DRAW); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ACT.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,ib,gl.DYNAMIC_DRAW); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,null);
+  ACT.n=ib.length; return ACT.n; }
+const ACT_VS=`#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aC; layout(location=3) in uint aId; uniform mat4 uVP; uniform highp usampler2D uSt;
+out vec3 vP; out vec3 vN; out vec4 vA; flat out uint vId; flat out uint vS; void main(){ vP=aP; vN=aN; vA=aC; vId=aId; vS=texelFetch(uSt,ivec2(int(aId%1024u),int(aId/1024u)),0).r; gl_Position=uVP*vec4(aP,1.); }`;
+const ACT_SVS=`#version 300 es
+layout(location=0) in vec3 aP; uniform mat4 uVP; void main(){ gl_Position=uVP*vec4(aP,1.); }`;
+const ACT_SFS=`#version 300 es
+precision highp float; out vec4 o; void main(){ o=vec4(1.); }`;
+let ACT_FS=null;
+function actProgs(){ if(ACT.prog) return; ACT_FS=SPL_FS.replace(/\/\* each point is a small disc[\s\S]*?void main\(\)\{ vec3 N=normalize\(vN\), hp; if\(!surfel\(uVP,uIVP,vP,N,vR,hp\)\) discard; vec4 cp=uVP\*vec4\(hp,1\.\); gl_FragDepth=cp\.z\/cp\.w\*0\.5\+0\.5;/,'void main(){ vec3 N=normalize(vN), hp=vP;').replace('flat in float vR;','');
+  ACT.prog=glProg(ACT_VS,ACT_FS); ACT.sprog=glProg(ACT_SVS,ACT_SFS); }
+/* the near shadow map with the actors in it: the static scan's depth copied, then the actors drawn over */
+function actShadow(t){ const m=SET.sm.c[0]; if(!m||!ACT.n) return null; actProgs(); if(!m.dyn){ m.dyn=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,m.dyn); gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,m.N,m.N,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+    for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE],[gl.TEXTURE_COMPARE_MODE,gl.COMPARE_REF_TO_TEXTURE],[gl.TEXTURE_COMPARE_FUNC,gl.LEQUAL]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+    m.dfb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,m.dfb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,m.dyn,0); }
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER,m.fb); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,m.dfb); gl.blitFramebuffer(0,0,m.N,m.N,0,0,m.N,m.N,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,m.dfb); gl.drawBuffers([gl.NONE]); gl.viewport(0,0,m.N,m.N); gl.enable(gl.DEPTH_TEST); gl.useProgram(ACT.sprog); gl.uniformMatrix4fv(gl.getUniformLocation(ACT.sprog,'uVP'),false,m.vp);
+  gl.bindVertexArray(ACT.svao); gl.drawElements(gl.TRIANGLES,ACT.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return m.dyn; }
+/* called inside setRender with the splat program's uniforms already chosen: draw the actors with the same shading */
+function actDraw(w,h,setU){ if(!ACT.n) return; actProgs(); const p=ACT.prog; gl.useProgram(p); setU(p); gl.bindVertexArray(ACT.vao); gl.drawElements(gl.TRIANGLES,ACT.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); }
+
+/* ---------------------------------------------------------------------
+   PICKING AND THE PANEL
+   --------------------------------------------------------------------- */
+const isAnimPrim=i=>{ const p=prim(i); return !!(p&&p.anim); };
+function moverOf(ids){ const L=new Set(ids.flatMap(i=>leavesOf(i)).map(i=>prim(i).path)); return movList().findIndex(m=>m.src!=='sphere'&&m.paths.length===L.size&&m.paths.every(p=>L.has(p))); }
+function toggleMover(i,on){ const L=leavesOf(i).filter(isAnimPrim).map(l=>prim(l).path); if(!L.length) return; SHOT.movers=SHOT.movers||[]; const k=moverOf([i]);
+  if(k>=0&&on!==true){ SHOT.movers.splice(k,1); toast('No longer pushes the fog: '+prim(i).path); }
+  else if(k<0&&on!==false){ for(const m of SHOT.movers) if(m.src!=='sphere') m.paths=m.paths.filter(p=>!L.includes(p)); SHOT.movers=SHOT.movers.filter(m=>m.src==='sphere'||m.paths.length); SHOT.movers.push({src:'scene',name:prim(i).name,path:prim(i).path,paths:L,strength:1,simplify:0.15,pre:'extrapolate'}); toast('Pushes the fog as it moves: '+prim(i).path); }
+  MOV.ver++; stateSync(); autosave(); buildPanels(); if(UI.mode==='anim') markAnim(); }
+function moverLeafSet(){ const s=new Set(); for(const m of movList()) if(m.src!=='sphere') for(const p of m.paths){ const id=SCAN.pathIx.get(p); if(id!=null) s.add(id); } return s; }
+function buildMoverPanel(el){ if(!SCAN.src) return; const L=movList(); subH(el,`Movers · ${L.length}`);
+  if(!L.length) note(el,SCAN.src.movers?'Things that move can push the fog. Click one with Pick (K) or tick it in the tree, or key a sphere of your own. They act in Animate.':'Key a sphere of your own to push the fog through the shot (Animate · M). Load the motion test scene to try animated actors.');
+  L.forEach((m,k)=>{ const box=document.createElement('div'); box.style.cssText='border-left:2px solid #b48cff;padding-left:8px;margin:4px 0 8px';
+    const hd=document.createElement('div'); hd.style.cssText='display:flex;gap:6px;align-items:center'; hd.innerHTML=`<b style="flex:1">${m.src==='sphere'?'Sphere '+(k+1):m.name}</b><span class="note" style="margin:0">${m.src==='sphere'?(m.keys||[]).length+' keys':m.paths.length+' parts'}</span><button class="chip" aria-label="Remove">×</button>`;
+    hd.querySelector('button').onclick=()=>{ SHOT.movers.splice(k,1); MOV.ver++; stateSync(); autosave(); buildPanels(); markAnim(); }; box.appendChild(hd);
+    refreshers.push(slider(box,S_('Strength',-1,2,()=>m.strength??1,v=>{ m.strength=+v.toFixed(2); MOV.ver++; },v=>v<0?'clears only '+pct(-v):pct(v),()=>{ autosave(); markAnim(); },false,'How hard it moves the fog: drags it along, shoves it aside, clears its core. Below zero it only clears a path')));
+    refreshers.push(slider(box,S_('Simplify',0,1,()=>m.simplify??0.15,v=>{ m.simplify=+v.toFixed(2); MOV.ver++; },v=>v<0.05?'close to the shape':v<0.4?'softened':v<0.75?'soft':'one soft blob',()=>{ autosave(); markAnim(); },false,'Blurs it before the fog sees it: thin parts like legs fade first, then it becomes one soft shape')));
+    if(m.src==='sphere') refreshers.push(slider(box,S_('Size',0.05,40*SK()/0.12,()=>m.r,v=>{ m.r=+v.toPrecision(3); MOV.ver++; },fmLen,()=>{ autosave(); markAnim(); },true)));
+    if((m.pre||'extrapolate')!=='hold'){ refreshers.push(slider(box,S_('Pre-roll',0,8,()=>preOf(m),v=>{ m.preT=+v.toFixed(2); MOV.ver++; },v=>v<0.02?'none':v.toFixed(1)+' s'+(m.preT==null?' (auto)':''),()=>{ autosave(); markAnim(); },false,'How long before frame 1 it starts moving through the fog. Automatic: long enough to cover three or four of its own lengths')));
+      if(m.preT!=null||m.preOff){ const rr=document.createElement('div'); rr.className='chips'; if(m.preT!=null){ const b=document.createElement('button'); b.className='chip'; b.textContent='Auto pre-roll'; b.onclick=()=>{ delete m.preT; MOV.ver++; autosave(); markAnim(); buildPanels(); }; rr.appendChild(b); } if(m.preOff){ const b=document.createElement('button'); b.className='chip'; b.textContent='Reset path'; b.title='Back to the guessed path before frame 1'; b.onclick=()=>{ delete m.preOff; MOV.ver++; autosave(); markAnim(); buildPanels(); }; rr.appendChild(b); } box.appendChild(rr); } }
+    chips(box,'Before frame 1',[['extrapolate','Carry on'],['hold','Hold still'],...(m.src==='sphere'?[]:[['cache','From the cache']])],()=>m.pre||'extrapolate',v=>{ m.pre=v; MOV.ver++; autosave(); markAnim(); buildPanels(); });
+    if(m.src==='sphere'&&(m.keys||[]).length){ const kr=document.createElement('div'); kr.className='chips'; m.keys.slice().sort((a,b)=>a.t-b.t).forEach(K=>{ const b=document.createElement('button'); b.className='chip'; b.textContent='f '+Math.round(K.t*timing(REC).fps+timing(REC).start)+' ×'; b.title='Delete this key'; b.onclick=()=>{ m.keys.splice(m.keys.indexOf(K),1); MOV.ver++; autosave(); markAnim(); buildPanels(); }; kr.appendChild(b); }); box.appendChild(kr); }
+    el.appendChild(box); });
+  const r=document.createElement('div'); r.className='chips'; const a=document.createElement('button'); a.className='chip'; a.textContent='Key a sphere · M'; a.title='Click in the view to place a sphere; move the playhead and click or drag it again to key its path'; a.onclick=()=>{ UI.selMover=null; setTool('sphere'); }; r.appendChild(a); el.appendChild(r);
+  if(L.length) note(el,'Before frame 1 each mover runs through your sculpted fog for its pre-roll, so frame 1 opens with its wake already there. In Animate, drag a mover\'s faint ghost to change where it came from.'); }
+
+/* ---------------------------------------------------------------------
+   THE SPHERE TOOL: click to place, then on other frames click or drag to key where it goes
+   --------------------------------------------------------------------- */
+function sphereDown(mx,my,ev){ const tNow=sceneTime(); SHOT.movers=SHOT.movers||[]; const L=SHOT.movers;
+  const h=L.findIndex(m=>{ if(m.src!=='sphere') return false; const p=sphereAt(m,tNow); if(!p) return false; const q=project(p); if(!q) return false; const B=camBasis(CAM); return Math.hypot(q[0]-mx,q[1]-my)<Math.max(10,m.r/q[2]*(cssH/2)/B.tanY); });
+  if(h>=0){ UI.selMover=h; const m=L[h], p0=sphereAt(m,tNow); return {mode:'sphere',k:h,o:p0.slice(),vert:ev.shiftKey,lx:mx,ly:my}; }
+  const g=shotGround(mx,my); if(!g){ toast('Click on the set to place the sphere'); return null; } const r=+(UI.brushR*0.2).toPrecision(3), p=[g[0],g[1]+r*0.9,g[2]];
+  let m=UI.selMover!=null&&L[UI.selMover]&&L[UI.selMover].src==='sphere'&&!ev.altKey?L[UI.selMover]:null;
+  if(!m||ev.shiftKey){ m={src:'sphere',r,keys:[],strength:1,simplify:0.1,pre:'extrapolate'}; L.push(m); UI.selMover=L.length-1; }
+  sphereKey(m,tNow,p); toast(`Sphere keyed at frame ${Math.round(frameOfScene(tNow))}`+(m.keys.length===1?': move the playhead and click again to key its path':'')); buildPanels(); return null; }
+const frameOfScene=t=>{ const tm=timing(REC); return tm.start+t*tm.fps; };
+function sphereKey(m,t,p){ const K=m.keys, f=Math.round(frameOfScene(t)); const ex=K.find(k=>Math.round(frameOfScene(k.t))===f); const P=p.map(v=>+v.toPrecision(5)); if(ex) ex.p=P; else K.push({t:+t.toFixed(4),p:P}); MOV.ver++; autosave(); if(UI.mode==='anim') markAnim(); }
+function sphereMove(mx,my){ const m=SHOT.movers[drag.k]; const p=planePt(mx,my,drag.o,drag.vert?1:0); drag.cur=p; drag.label='keying frame '+Math.round(frameOfScene(sceneTime())); sphereKey(m,sceneTime(),p); }
+function drawSpheres(){ const L=movList(); if(!L.length||UI.clean) return; const tNow=sceneTime(), B=camBasis(CAM);
+  L.forEach((m,k)=>{ if(m.src!=='sphere'||!(m.keys||[]).length) return; const sel=UI.selMover===k; octx.strokeStyle=`rgba(180,140,255,${sel?0.95:0.55})`; octx.lineWidth=1.5*dpr; octx.setLineDash([4*dpr,4*dpr]); octx.beginPath(); let f=true;
+    const K=m.keys.slice().sort((a,b)=>a.t-b.t), t0=Math.min(K[0].t,0), t1=Math.max(K[K.length-1].t,timing(REC).frames/timing(REC).fps);
+    for(let i=0;i<=80;i++){ const q=project(sphereAt(m,t0+(t1-t0)*i/80)); if(!q){ f=true; continue; } if(f){ octx.moveTo(q[0]*dpr,q[1]*dpr); f=false; } else octx.lineTo(q[0]*dpr,q[1]*dpr); } octx.stroke(); octx.setLineDash([]);
+    octx.fillStyle='rgba(180,140,255,0.95)'; for(const K1 of K){ const q=project(K1.p); if(q){ octx.beginPath(); octx.arc(q[0]*dpr,q[1]*dpr,3.5*dpr,0,Math.PI*2); octx.fill(); } }
+    const p=sphereAt(m,tNow), q=p&&project(p); if(q){ const rp=m.r/q[2]*(cssH/2)/B.tanY; octx.lineWidth=(sel?2.2:1.4)*dpr; octx.beginPath(); octx.arc(q[0]*dpr,q[1]*dpr,rp*dpr,0,Math.PI*2); octx.stroke(); octx.beginPath(); octx.arc(q[0]*dpr,q[1]*dpr,5*dpr,0,Math.PI*2); octx.fill(); } }); }
+
+/* ---------------------------------------------------------------------
+   SWITCHING SCENES
+   --------------------------------------------------------------------- */
+function scanReset(){ const B=SCAN.bake; if(B){ try{ gl.deleteVertexArray(B.mesh.vao); }catch(e){} } Object.assign(SCAN,{src:null,n:0,pts:null,floor:null,cams:[],bake:null,reach:0,region:null,hover:-1}); SCAN.col.clear(); SCAN.sel.clear(); SCAN.open=new Set([0]); if(SCAN.colGL) SCAN.colGL.vao=null;
+  HMAP.h=null; if(HMAP.tex){ gl.deleteTexture(HMAP.tex); HMAP.tex=null; } SET.key=''; SET.sm.key=''; ACT.n=0; ACT.key=''; MOV.key=''; MOV.blocks=[]; }
+function switchScene(id){ if(!SCENES[id]||!SHOT||SHOT.scene===id) return; if(UI.playing) togglePlay(); if(UI.mode!=='shape') setMode('shape'); stash(); store.set(shotKey(SHOT.scene||'village'),SHOT); store.set(shotKey(SHOT.scene||'village')+'.cam',{...CAM});
+  for(const rt of RTM.values()) freeRt(rt); RTM.clear(); try{ localStorage.setItem('brume.shot.scene',id); }catch(e){} SHOT=loadShot(id); scanReset(); scanEnsure(); maskBuild(); REC=null; activate(0,true);
+  const cam=store.get(shotKey(id)+'.cam'); if(cam&&cam.dist) Object.assign(CAM,cam); else setShotCam(); UI.brushR=60*SK(); $('#assetName').value=SHOT.name; buildPanels(); drawTimeline(); resetAccum(); toast(SCENES[id].label+': scanning the set…'); }
+
+/* ---------------------------------------------------------------------
+   GHOSTS: where each mover starts its pre-roll, with the path into frame 1. Drag one (in Animate) to say where it came from.
+   --------------------------------------------------------------------- */
+function ghostOf(m){ const pre=preOf(m); if(!pre) return null; const g=blocksCentroid(moverBlocks(m,-pre)); return g?{p:g,pre}:null; }
+function drawGhosts(){ if(UI.mode!=='anim'||UI.clean||UI.ws!=='shot') return; movList().forEach((m,k)=>{ const g=ghostOf(m); if(!g) return; octx.strokeStyle='rgba(180,140,255,0.7)'; octx.fillStyle='rgba(180,140,255,0.5)'; octx.lineWidth=1.3*dpr; octx.setLineDash([2*dpr,4*dpr]); octx.beginPath(); let f=true;
+    for(let i=0;i<=24;i++){ const c=blocksCentroid(moverBlocks(m,-g.pre*(1-i/24))); const q=c&&project(c); if(!q){ f=true; continue; } if(f){ octx.moveTo(q[0]*dpr,q[1]*dpr); f=false; } else octx.lineTo(q[0]*dpr,q[1]*dpr); } octx.stroke(); octx.setLineDash([]);
+    const q=project(g.p); if(q){ octx.beginPath(); octx.arc(q[0]*dpr,q[1]*dpr,7*dpr,0,Math.PI*2); octx.fill(); octx.stroke(); octx.font=`${10*dpr}px ui-monospace,monospace`; octx.fillStyle='rgba(220,200,255,0.9)'; octx.fillText(`−${g.pre.toFixed(1)} s`,q[0]*dpr+10*dpr,q[1]*dpr-8*dpr); } }); }
+function pickGhost(mx,my){ if(UI.mode!=='anim'||UI.ws!=='shot') return null; let best=null, bd=12; movList().forEach((m,k)=>{ const g=ghostOf(m); if(!g) return; const q=project(g.p); if(!q) return; const d=Math.hypot(q[0]-mx,q[1]-my); if(d<bd){ bd=d; best={k,o:g.p,off0:(m.preOff||[0,0,0]).slice()}; } }); return best; }
+function ghostMove(mx,my){ const m=SHOT.movers[drag.k]; const p=planePt(mx,my,drag.o,drag.vert?1:0); m.preOff=add(drag.off0,sub(p,drag.o)).map(v=>+v.toPrecision(4)); MOV.ver++; drag.label='where it comes from: '+fmLen(len(m.preOff))+' off the guess'; }
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
@@ -2139,6 +2704,9 @@ const ICONS={
   look:'<path d="M4 14c0-3 2.5-5.5 5.5-5.5S15 11 15 14s-2.5 5-5.5 5S4 17 4 14z"/><path d="M14 6l5-3 1 1.5-4.5 4"/><path d="M7 14h0M10 12h0M11 16h0" stroke-width="2.4" stroke-linecap="round"/>',
   tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
   wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
+  sphere:'<circle cx="12" cy="12" r="6"/><path d="M3 19c3-3 6-4 9-4" stroke-dasharray="2 2"/>',
+  attract:'<circle cx="12" cy="12" r="2"/><path d="M12 3a9 9 0 0 1 9 9M21 12a9 9 0 0 1-9 9M12 21a9 9 0 0 1-9-9M3 12a9 9 0 0 1 9-9" stroke-dasharray="3 3"/><path d="M18 6l-3 3M6 18l3-3"/>',
+  collide:'<path d="M4 8l7-4 7 4v8l-7 4-7-4z"/><path d="M4 8l7 4 7-4M11 12v8"/><path d="M15 15l5 5" stroke-width="2.2"/>',
   place:'<path d="M4 18c3-1 5-4 8-4s5 3 8 4"/><path d="M14 4l4 4-7 7H7v-4z"/>',
   source:'<ellipse cx="12" cy="18" rx="8" ry="3" stroke-dasharray="2.5 2"/><path d="M10 15c-2-3 2-5 0-8M14 15c-1-3 3-5 1-9"/>',
   flow:'<path d="M3 17c5 0 8-1 11-4s3-7 0-7-4 4-1 6 7 1 8-1"/><path d="M19 8l2 3-3 1"/>',
@@ -2147,6 +2715,8 @@ const ICONS={
 const TOOLS=[
   {id:'orbit',key:'v',m:'both',name:'Look around',hint:'Drag to orbit, middle-drag to pan, right-drag or scroll to zoom. Alt does the same with any other tool, like Maya. F frames the fog, H hides the handles.'},
   {id:'place',m:'shape',ws:'shot',key:'q',name:'Place fog',hint:'Paint fog into the set: pick a layer under Shot layers (or add one), then paint on the ground where it should be. It forms there by its type when you let go: ground fog lies on the ground, valley fog fills to a level, hanging mist floats above it, low cloud sits at an altitude, a cap sits on the peaks. Big brush for broad areas; Ctrl erases. The tint shows what each layer covers.'},
+  {id:'collide',m:'both',ws:'shot',key:'k',name:'Pick colliders',hint:'Click objects in the set to make the fog meet them: it sits on them and flows around them. Click again to drop one, Ctrl-click to drop. Pick by Element (a whole house or tree) or Leaf (just a roof) in the Set panel, where the scene tree does the same. Everything else is only there to look at.'},
+  {id:'sphere',m:'anim',ws:'shot',key:'m',name:'Sphere mover',hint:'Your own mover: click on the set to place a sphere at this frame. Move the playhead and click (or drag the sphere) to key where it goes next; the fog is pushed along its path. Shift-click starts another sphere. Strength, Simplify and Size are in the Set panel under Movers.'},
   {id:'add',m:'shape',key:'1',name:'Add fog',hint:'Paint fog in where you want more. Start the stroke on existing fog and the new fog takes on its density and breakup, so it blends in. Strength: how much each pass adds. Ctrl erases instead.'},
   {id:'erase',m:'shape',key:'2',name:'Erase',hint:'Paint over fog to thin it out or carve it away. Short passes at low strength thin it gently; full strength cuts it out. Ctrl adds instead.'},
   {id:'smooth',m:'shape',key:'3',name:'Smooth',hint:'Brush over lumpy or noisy areas to even the density out. Good after a lot of adding or erasing.'},
@@ -2161,6 +2731,7 @@ const TOOLS=[
   {id:'lift',m:'anim',key:'u',name:'Lift',hint:'Press where the fog should rise and drag out to size it: one mark is placed when you let go (Ctrl makes it sink). Its arrow shows the push: drag the arrow\'s tip to point it any way, the centre dot to move it, the ring dot to resize it.'},
   {id:'calm',m:'anim',key:'c',name:'Calm',hint:'Press where the fog should hold still and drag out to size it: one calm pocket is placed when you let go. The wind and churn leave it alone. Drag the centre dot to move it and the ring dot to resize it.'},
   {id:'thin',m:'anim',key:'t',name:'Thin',hint:'Press where the fog should thin out and evaporate as it plays, and drag out to size it: one mark is placed when you let go (Ctrl makes it thicken and fill in instead). Strength is in the panel. Drag the centre dot to move it and the ring dot to resize it.'},
+  {id:'attract',m:'anim',key:'a',name:'Attract',hint:'A black hole for fog: press where it should pull and drag out to size it. Fog that comes near is drawn in and, at the core, consumed (Consume in the panel). Ctrl makes a blast that blows it outward instead. Spin turns it into a drain. Drag the centre dot to move it and the ring dot to resize it.'},
   {id:'swirl',m:'anim',key:'s',name:'Vortex',hint:'Press where the vortex should start (on the fog or the ground) and drag out its direction and length: it can point any way, and Shift keeps it upright. A short click makes an upright one. A spiral shows which way the fog will turn (hold Ctrl when placing for clockwise). Afterwards drag either end anywhere, drag the middle dot to bend it into a curve, and the side dot to make it wider or thinner; Ctrl moves the whole thing. Put one on a wind path and the fog travels along the path while it spins.'},
   {id:'edit',m:'anim',key:'e',name:'Edit influencers',hint:'Click any force to select it and tune it in the Animation panel. Every force has dots: square dots move a point (a path\'s points, a vortex\'s ends, a lift\'s centre and arrow tip, the middle of a vortex to bend it), ring dots set the size or width. Drag a dot in the plane facing you; Shift moves it straight up and down, Ctrl moves the whole force. Delete removes the selected one. Dashed lines drop to the ground so you can see how high each one is.'},
   {id:'box',m:'both',key:'x',name:'Box',hint:'Drag the dot on any side of the box to move that side in or out (Look around shows the dots too). The fog is resampled into the new box, nothing re-simulates, and a tighter box gives finer voxels. Setting it by hand locks the room; Room → Auto fits it to the fog again. In Animate it sets the animation\'s box.'},
@@ -2268,9 +2839,9 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
   subH(ab,'Sculpt guidance');
   refreshers.push(slider(ab,S_('Follow my sculpt',0,3,()=>A.guide??1,v=>A.guide=+v.toFixed(2),v=>v<0.02?'off':v<0.6?'gently':v<1.4?'yes':'strongly',markAnim,false,'The way you pulled, combed and blew the shape keeps going as it plays, so the motion carries on from your sculpt instead of snapping back to the original flow. Off: only the wind and your influencers move it')));
   subH(ab,'Influencers');
-  { const row=document.createElement('div'); row.className='chips'; row.style.marginBottom='6px'; for(const [t,lbl,tip] of [['flow','Wind path · P','Draw where the air should go'],['lift','Lift · U','Paint where it rises (Ctrl sinks)'],['calm','Calm · C','Paint where it holds still'],['thin','Thin · T','Paint where it evaporates (Ctrl thickens)'],['swirl','Vortex · S','Click where it should spin (Ctrl clockwise)'],['edit','Edit · E','Select, move and tune influencers']]){ const bt=document.createElement('button'); bt.className='chip'; bt.textContent=lbl; bt.title=tip; bt.setAttribute('aria-pressed',UI.tool===t); bt.onclick=()=>setTool(t); row.appendChild(bt); } ab.appendChild(row); }
+  { const row=document.createElement('div'); row.className='chips'; row.style.marginBottom='6px'; for(const [t,lbl,tip] of [['flow','Wind path · P','Draw where the air should go'],['lift','Lift · U','Paint where it rises (Ctrl sinks)'],['calm','Calm · C','Paint where it holds still'],['thin','Thin · T','Paint where it evaporates (Ctrl thickens)'],['attract','Attract · A','A black hole: pulls fog in (Ctrl blasts it out)'],['swirl','Vortex · S','Click where it should spin (Ctrl clockwise)'],['edit','Edit · E','Select, move and tune influencers']]){ const bt=document.createElement('button'); bt.className='chip'; bt.textContent=lbl; bt.title=tip; bt.setAttribute('aria-pressed',UI.tool===t); bt.onclick=()=>setTool(t); row.appendChild(bt); } ab.appendChild(row); }
   const FL=A.flows||[]; if(!FL.length) note(ab,'Direct the motion by drawing in the view: where the air goes, where the fog rises, sinks, holds still, thins out, thickens or turns. Each one shows a dashed line down to the ground so you can see its height.');
-  const KN=f=>({lift:f.down?'Sink':'Lift',calm:'Calm',thin:f.thick?'Thicken':'Thin',swirl:'Vortex'})[f.kind]||'Wind path';
+  const KN=f=>({lift:f.down?'Sink':'Lift',calm:'Calm',thin:f.thick?'Thicken':'Thin',swirl:'Vortex',attract:f.v<0?'Blast':'Attract'})[f.kind]||'Wind path';
   FL.forEach((f,i)=>{ const sel=UI.selInfl===i; const row=document.createElement('div'); row.className='lookrow'+(sel?' on':''); row.style.gridTemplateColumns='minmax(0,1fr) 28px';
     row.innerHTML=`<button class="lksel" title="Select it to edit; drag its dots in the view"><i style="background:rgb(${INFL_COL[f.kind||'path']})"></i><b>${KN(f)} ${i+1}</b><span>${f.kind==='calm'?pct(f.v)+' still':f.kind==='thin'?pct(f.v)+' per second':f.v.toFixed(1)+' m/s'} · ${fmLen(f.r)}</span></button><button class="chip" aria-label="Remove" title="Remove (Delete)">×</button>`;
     row.querySelector('.lksel').onclick=()=>{ UI.selInfl=sel?null:i; if(!sel&&!INFL_TOOLS.includes(UI.tool)) setTool('edit'); buildPanels(); };
@@ -2278,6 +2849,9 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
     if(sel){ const box=document.createElement('div'); box.style.cssText='border-left:2px solid var(--sun);padding-left:8px;margin:2px 0 8px';
       if(f.kind==='calm') refreshers.push(slider(box,S_('Stillness',0.05,1,()=>f.v,v=>f.v=v,pct,markAnim,false,'How completely the fog stops there')));
       else if(f.kind==='thin') refreshers.push(slider(box,S_(f.thick?'Thicken rate':'Thin rate',0.02,3,()=>f.v,v=>f.v=v,v=>pct(v)+'/s',markAnim,true,'How fast it '+(f.thick?'fills in':'evaporates'))));
+      else if(f.kind==='attract'){ refreshers.push(slider(box,S_('Pull',-20,30,()=>f.v,v=>f.v=+v.toFixed(2),v=>v<0?'blows out '+(-v).toFixed(1)+' m/s':'pulls in '+v.toFixed(1)+' m/s',markAnim,false,'How fast fog is drawn in. Below zero it blasts outward')));
+        refreshers.push(slider(box,S_('Spin',-20,20,()=>f.spin||0,v=>f.spin=Math.abs(v)<0.1?0:+v.toFixed(2),v=>Math.abs(v)<0.1?'none':(v>0?'↺ ':'↻ ')+Math.abs(v).toFixed(1)+' m/s',markAnim,false,'Swirl around it as it pulls, like water down a drain')));
+        refreshers.push(slider(box,S_('Consume',0,1,()=>f.eat??0.3,v=>f.eat=+v.toFixed(2),v=>v<0.02?'gathers (keeps the fog)':pct(v),markAnim,false,'How much fog disappears at its core. At zero the fog piles up and thickens there instead'))); }
       else refreshers.push(slider(box,S_(f.kind==='swirl'?'Spin speed':'Speed',0.1,40,()=>f.v,v=>f.v=+v.toFixed(2),v=>v.toFixed(1)+' m/s',markAnim,true)));
       if(!f.kind||f.kind==='path') refreshers.push(slider(box,S_('Twist',-1,1,()=>f.tw||0,v=>f.tw=Math.abs(v)<0.04?0:+v.toFixed(2),v=>Math.abs(v)<0.04?'none':(v>0?'↺ ':'↻ ')+pct(Math.abs(v)),markAnim,false,'Spin the fog around the path as it travels along it, like a corkscrew')));
       refreshers.push(slider(box,S_(f.kind==='swirl'?'Width':!f.kind||f.kind==='path'?'Width':'Radius',0.05,Math.max(...REC.size)*2,()=>f.r,v=>f.r=+v.toPrecision(3),fmLen,markAnim,true,!f.kind||f.kind==='path'?'How far around the path the air is carried':'How wide an area it acts on')));
@@ -2292,7 +2866,7 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
     const b2=document.createElement('button'); b2.className='chip'; b2.textContent='Sculpt this frame'; b2.title='The frame under the playhead becomes your shape, and you go to Shape to sculpt it'; b2.onclick=()=>frameToShape(false); row.appendChild(b2); ab.appendChild(row); }
   note(ab,'Either way the frame under the playhead becomes the new start, pre-roll and all. Sculpt guidance then only follows strokes you make after that. Undo takes it back.');
   note(ab,'Speed on the timeline slows or speeds the whole shot; Hold keeps the fog churning in place.'); }
-function buildPanels(){ if(UI.ws==='shot') buildLayers();
+function buildPanels(){ if(UI.ws==='shot'){ buildLayers(); buildSetPanel(); }
   refreshers=[];
   // start from
   const sb=$('#startBody'); sb.innerHTML=''; const T0=LIB[REC.template]||LIB.bank;
@@ -2451,7 +3025,7 @@ function openLibrary(){ const tabs=$('#libTabs'); tabs.innerHTML=''; for(const [
 function closeLibrary(){ $('#libModal').hidden=true; }
 $('#libClose').onclick=closeLibrary; $('#libModal').addEventListener('click',ev=>{ if(ev.target.id==='libModal') closeLibrary(); });
 let brushRow=null;
-function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','place'].includes(UI.tool); $('#brushSec').hidden=!on; if(!on) return;
+function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','attract','sphere','place'].includes(UI.tool); $('#brushSec').hidden=!on; if(!on) return;
   brushRow=lb;
   brushRefs=[]; brushRefs.push(slider(lb,{label:UI.tool==='flow'?'Width':'Radius',tip:UI.tool==='flow'?'How far around the path the air is carried: the tube you see while drawing':'',min:0.05,max:2000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen}));
   if(UI.tool==='flow'||UI.tool==='lift'||UI.tool==='swirl') brushRefs.push(slider(lb,{label:'Speed',min:0.2,max:30,log:true,get:()=>UI.flowV,set:v=>{ UI.flowV=+v.toFixed(1); },fmt:v=>v.toFixed(1)+' m/s'}));
