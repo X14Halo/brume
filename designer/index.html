@@ -774,8 +774,9 @@ const FS_PICK=HEAD+DENS_GLSL+`uniform vec3 uCam, uRd; out vec4 o;
 vec2 box(vec3 ro,vec3 rd,vec3 a,vec3 b){ vec3 ir=1./rd; vec3 t0=(a-ro)*ir, t1=(b-ro)*ir; vec3 mn=min(t0,t1), mx=max(t0,t1); return vec2(max(max(mn.x,mn.y),mn.z),min(min(mx.x,mx.y),mx.z)); }
 uniform vec3 uRB0, uRB1;
 void main(){ vec2 tb=box(uCam,uRd,uRB0,uRB1); float t0=max(tb.x,0.), t1=tb.y; float hit=-1.;
-  if(t1>t0){ float dt=(t1-t0)/240.; float T=1.; for(int i=0;i<240;i++){ float t=t0+(float(i)+0.5)*dt; float d=densGrid(uCam+uRd*t); T*=exp(-d*dt); if(T<0.6){ hit=t; break; } } }
-  o=vec4(hit,t0,t1,1.); }`;
+  float tm=-1., dmx=0.;
+  if(t1>t0){ float dt=(t1-t0)/240.; float T=1.; for(int i=0;i<240;i++){ float t=t0+(float(i)+0.5)*dt; float d=densGrid(uCam+uRd*t); if(d>dmx){ dmx=d; tm=t; } T*=exp(-d*dt); if(T<0.85){ hit=t; break; } } }   /* where the fog becomes visible (15% opaque): its surface, wispy edges included */
+  o=vec4(hit,t0,t1,dmx>1e-5?tm:-1.); }`;
 
 /* export: the final density, detail included, written out voxel by voxel */
 const FS_BAKE=HEAD+DENS_GLSL+`uniform vec3 uEDims, uEB0, uESz; uniform float uEZ; out vec4 o;
@@ -1051,7 +1052,17 @@ function makeRecipe(tpl,cls='mid',seed=Math.floor(Math.random()*9999)){
   r0.anim=animDefaults(r0); detSplit(r0.det); return r0;
 }
 /* animation: how the finished shape moves from frame 1 on. Kept apart from forming, so changing it never changes the shape */
-function animDefaults(r){ const s=r.sim; return {wind:Math.max(s.wind,0.8),windDir:s.windDir??70,gust:s.gust??0.35,gustL:s.gustL||s.eddy*3,churn:1,lift:0,hold:false,flows:[],body:'gentle',gm:{type:'breathe',amt:0.35,per:10,dir:null,spd:0.3},dm:{type:'boil',spd:0.12,fine:0.3,amt:0.6,dir:null},loop:false,drain:0}; }   /* most shots: a gentle motion and moving detail, no simulation */
+function animDefaults(r){ const s=r.sim, t=r.template, ly=r.layer&&r.layer.type, cat=(LIB[t]||{}).cat;
+  /* how this element really moves, a little livelier than life so it reads in a 5 second shot: then dial it back */
+  const M={radiation:[1.6,1.4,0.35,0.5,'boil',0.3],valley:[1.2,1.2,0.25,0.4,'boil',0.25],advection:[3.5,1.6,0.5,0,'stream',0.5],upslope:[3,1.5,0.45,0,'roll',0.45],freezing:[1.2,1.1,0.25,0.3,'boil',0.2],icefog:[0.8,0.9,0.2,0,'stream',0.2],steam:[1.5,1.8,0.4,0,'swirl',0.4],
+    cap:[5,1.5,0.5,0,'roll',0.7],banner:[9,1.7,0.6,0,'stream',1.1],deck:[3,1.3,0.4,0,'roll',0.5],scud:[6,1.8,0.6,0,'boil',0.8],curtain:[4,1.5,0.5,0,'stream',0.6],cloud:[3,1.6,0.45,0,'roll',0.6],
+    haze:[2,0.8,0.3,0,'stream',0.3],shafts:[1,0.9,0.25,0,'boil',0.15],interior:[0.4,1,0.15,0,'swirl',0.12],inversion:[1.5,0.9,0.3,0,'stream',0.25],
+    residual:[1.2,1.3,0.35,0,'swirl',0.3],dust:[1.8,1.5,0.45,0,'swirl',0.4],spray:[3,2,0.6,0,'swirl',0.6],glowmist:[1,1.4,0.3,0,'swirl',0.3],swirl:[1.5,2.2,0.4,0,'swirl',0.5],
+    bank:[3,1.6,0.45,0.3,'roll',0.45],hang:[2.5,1.4,0.4,0,'boil',0.35],sheet:[1.5,1.3,0.35,0.4,'boil',0.3],veil:[2,1.3,0.4,0,'stream',0.35],wisps:[1.2,1.8,0.4,0,'swirl',0.35],tendril:[3,1.7,0.5,0,'stream',0.5],puff:[2,1.8,0.45,0,'swirl',0.4],
+    ground:[1.6,1.4,0.35,0.5,'boil',0.3],hang_:[2.5,1.4,0.4,0,'boil',0.35],cloud_:[5,1.5,0.5,0,'roll',0.7]};
+  const k=ly?({ground:'ground',valley:'valley',hang:'hang_',cloud:'cloud_',cap:'cloud_',haze:'haze'}[ly]||'ground'):t; const m=M[k]||(cat==='cloud'?M.cloud:cat==='atmos'?M.haze:M.bank);
+  const rise={wisps:0.5,steam:0.6,spray:0.3,glowmist:0.2}[t]||0;
+  return {wind:Math.max(s.wind,m[0]),windDir:s.windDir??70,gust:m[2],gustL:s.gustL||s.eddy*3,churn:m[1],rise,lift:0,hold:false,flows:[],body:'sim',gm:{type:'breathe',amt:0.5,per:8,dir:null,spd:0.4},dm:{type:m[4],spd:m[5],fine:0.4,amt:0.8,dir:null},loop:false,drain:m[3]}; }   /* by default it simulates: churn, drift and drain the way that element does */
 /* primitives for each starting shape, in metres, laid out from the seed */
 function templatePrims(rec){ const P=templatePrims0(rec), o=rec.off; const base=!o?P:P.map(q=>{ const r=q.slice(); for(let i=0;i<3;i++) r[i]+=o[i]; if(q[3]===1) for(let i=0;i<3;i++) r[8+i]+=o[i]; return r; }); rec._npt=base.length; return [...base,...(typeof blockPrims==='function'?blockPrims(rec):[])].slice(0,64); }   /* the type's own shape, then your blocking shapes (already where they stand) */   // a Designer volume placed in the shot: built around the origin, shifted to where it stands
 function templatePrims0(rec){
@@ -1305,7 +1316,8 @@ function warpPass(ctx,rec,mode,d,r,ext){ const C=[d[0],d[1],d[2]], D=[d[3],d[4],
 /* blow: run the real flow for a moment with a gust along the stroke, so the fog is carried and curls naturally */
 function blowDab(ctx,rec,d,r,s){ const a=[d[0],d[1],d[2]], m=[d[3],d[4],d[5]], L=len(m); if(L<1e-6) return;
   const vx=voxSize(ctx,rec), dist=L*(0.4+1.6*s), n=clamp(Math.ceil(dist/(vx*1.2)),1,12), h=0.05, v=dist/(n*h);
-  const r2={...rec,strokes:[],flowRaw:true,flows:[{pts:[a,add(a,m)],r,v}],sim:{...rec.sim,wind:0,gust:0,lift:0,spread:0,diss:0}};
+  const u=mul(m,1/L), e1=add(a,m), e2=add(e1,mul(u,Math.max(L,r)*1.2)), e3=add(e2,mul(u,Math.max(L,r)*1.8));   /* a puff of air does not stop at the end of the stroke: the jet carries on, widening and slowing, so the fog ahead is pushed on too instead of piling up */
+  const r2={...rec,strokes:[],flowRaw:true,flows:[{pts:[a,e1],r,v},{pts:[e1,e2],r:r*1.5,v:v*0.55},{pts:[e2,e3],r:r*2.1,v:v*0.25}],sim:{...rec.sim,wind:0,gust:0,lift:0,spread:0,diss:0}};
   const save=ctx.sim; ctx.sim={...save,h,dt:h,U:v*0.3/CURL_RMS,wind:[0,0,0],lift:0,spreadK:0,emit:null,holdT:1e30,forming:false,step:0,steps:n,noRest:true};
   for(let i=0;i<n;i++) simStep(ctx,r2,h); const t=save.t; ctx.sim=save; ctx.sim.t=t; }
 /* replay "sculpt this frame": run the animation as it was set then, for as long as it had run, inside the shape's box */
@@ -1496,7 +1508,11 @@ function displayPass(ctx,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewp
 let PICKT=null, PICKFB=null;
 function pickRay(ctx,rec,ro,rd){ if(!PICKT){ PICKT=tex2D(1,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); PICKFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,PICKT,0); }
   gl.bindFramebuffer(gl.FRAMEBUFFER,PICKFB); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,1,1); const pr=use('pick'); densUniforms(pr,ctx,rec,false); u3v(pr,'uCam',ro); u3v(pr,'uRd',rd); fullscreen();
-  const a=new Float32Array(4); gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return {t:a[0],t0:a[1],t1:a[2]}; }
+  const a=new Float32Array(4); gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,a); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return {t:a[0],t0:a[1],t1:a[2],tm:a[3]}; }
+/* where a brush meant to land: the fog's visible surface under the cursor; on a thin edge, its densest point; just off the edge, the nearest fog around the cursor (at that fog's depth) */
+function pickFog(mx,my,rec){ const R=rec||REC, {ro,rd}=mouseRay(mx,my); const pk=pickRay(MAIN,R,ro,rd); if(pk.t>0) return add(ro,mul(rd,pk.t)); if(pk.tm>0) return add(ro,mul(rd,pk.tm));
+  const B=camBasis(CAM); let best=null; for(const rr of [0.03,0.06,0.1]) { for(let k=0;k<12;k++){ const a=k/12*Math.PI*2, x=mx+Math.cos(a)*rr*cssH, y=my+Math.sin(a)*rr*cssH, m=mouseRay(x,y), q=pickRay(MAIN,R,m.ro,m.rd), t=q.t>0?q.t:q.tm; if(t>0){ const p=add(m.ro,mul(m.rd,t)); const z=dot(sub(p,B.pos),B.f); best=add(ro,mul(rd,z/Math.max(dot(rd,B.f),1e-4))); break; } } if(best) break; }
+  return best; }
 /* after a simulation: the most fog found just inside each wall */
 let WALLT=null, WALLFB=null;
 function wallCheck(ctx){ if(!WALLT){ WALLT=tex2D(6,1,gl.RGBA32F,gl.RGBA,gl.FLOAT); WALLFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,WALLFB); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,WALLT,0); }
@@ -1828,9 +1844,9 @@ function rayGround(ro,rd){ if(!hasGround(REC)) return null; if(flatBase(REC)&&RE
 function sourcePoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const g=rayGround(ro,rd); if(g) return g; const y=REC.emit.y; if(Math.abs(rd[1])<1e-5) return null; const t=(y-ro[1])/rd[1]; return t>0?add(ro,mul(rd,t)):null; }
 function brushDepthPoint(mx,my){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const z=drag.depth; return add(ro,mul(rd,z/Math.max(dot(rd,B.f),1e-4))); }
 function startStroke(mx,my,ev){
-  const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pk=pickRay(MAIN,REC,ro,rd); let p;
-  const gh=pk.t>0?null:rayGround(ro,rd);
-  if(pk.t>0) p=add(ro,mul(rd,pk.t)); else if(gh&&len(sub(gh,ro))<CAM.dist*3) p=add(gh,[0,UI.brushR*0.5,0]); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
+  const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pf=pickFog(mx,my); let p;
+  const gh=pf?null:rayGround(ro,rd);
+  if(pf) p=pf; else if(gh&&len(sub(gh,ro))<CAM.dist*3) p=add(gh,[0,UI.brushR*0.5,0]); else { const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); p=add(ro,mul(rd,t)); }
   const op=brushOp(ev.ctrlKey||ev.metaKey); const r=+UI.brushR.toPrecision(4);
   drag={mode:'brush',op,depth:dot(sub(p,B.pos),B.f),last:p,stroke:{op,r,s:op===8||op===4||op===10?UI.brushStr:UI.brushStr*0.45,dabs:[],t:0,...(op===7?{lk:(ev.ctrlKey||ev.metaKey)?0:1,ch:activeLook().ch}:{})},lx:mx,ly:my,start:p};
   if(op===0) drag.match=matchAt(MAIN,REC,p,r);                                 // Add takes on the fog it is painted onto
@@ -1840,17 +1856,21 @@ const brushPlaneC=()=>REC.dom?[domCenter(REC)[0],REC.dom[0][1]+domSize(REC)[1]*0
 function putDab(p,dm){ const s=drag.stroke; if(hasGround(REC)){ const g=terrHJ(REC,p[0],p[2]); if(p[1]<g) p=[p[0],g,p[2]]; }
   const d=[...p,...dm].map(v=>+v.toPrecision(5));
   // a stroke heading out of the box: grow the box ahead of it and rebuild what is already there, so nothing flattens on a wall
-  if(REC.fit==='auto'&&(GROW_OPS[s.op]||s.op===8||s.op===10)&&outsideRoom(s.op===8?add(d,d.slice(3)):d,s.r+(s.op===10?len(d.slice(3)):0))){ if(s.op===8) snapRestore(MAIN); growForDab(s.op===8?add(d,d.slice(3)):d,s.r); if(s.op===8) snapTake(MAIN); }   // heading out of the box: grow it ahead of the stroke and carry the fog over
+  if(REC.fit==='auto'&&(GROW_OPS[s.op]&&s.op!==2||s.op===8||s.op===10)&&outsideRoom(s.op===8?add(d,d.slice(3)):d,s.r+(s.op===10?len(d.slice(3)):0))){ if(s.op===8) snapRestore(MAIN); growForDab(s.op===8?add(d,d.slice(3)):d,s.r); if(s.op===8) snapTake(MAIN); }   // heading out of the box: grow it ahead of the stroke and carry the fog over
   if(s.op===8){ s.dabs=[d]; warpPass(MAIN,REC,0,d,s.r,s.r*1.05+drag.maxD*1.7); }                 // grab: always from the copy taken when the stroke began, so it never smears
   else if(s.op===4){ s.dabs.push(d); snapTake(MAIN); warpPass(MAIN,REC,1,d,s.r); }
   else if(s.op===10){ s.dabs.push(d); blowDab(MAIN,REC,d,s.r,s.s); }
   else { if(s.op===0&&drag.match){ d.push(+drag.match[0].toFixed(3),...drag.match[1]); } s.dabs.push(d); dabDen(MAIN,REC,s.op,d,s.r,s.s,s.lk??1,null,s.ch||0); }
   dirty.light=true; resetAccum(); }
 function growForDab(d,r){ const lo=REC.dom[0].slice(), hi=REC.dom[1].slice(), sz=domSize(REC), old=[REC.dom[0].slice(),REC.dom[1].slice()]; let g=false;
-  for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN, pad=Math.max(sz[i]*0.2,r*1.5); if(d[i]-r<lo[i]+m){ lo[i]=d[i]-r-pad; g=true; } if(d[i]+r>hi[i]-m){ hi[i]=d[i]+r+pad; g=true; } }
+  for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN, pad=Math.max(sz[i]*0.06,r*0.6); if(d[i]-r<lo[i]+m){ lo[i]=d[i]-r-pad; g=true; } if(d[i]+r>hi[i]-m){ hi[i]=d[i]+r+pad; g=true; } }   /* just enough room ahead of the stroke; trimmed back to the fog when the stroke ends */
   if(!g) return; if(flatBase(REC)) lo[1]=0; if(REC.floor&&hasGround(REC)) lo[1]=old[0][1];
   const v0=domSize({dom:old}).reduce((a,b)=>a*b,1); REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; const v1=domSize(REC).reduce((a,b)=>a*b,1); REC.budgetK=clamp((REC.budgetK||1)*v1/v0,1,3);   // keep the detail: more voxels for the bigger box
-  rebox(MAIN,REC,old); roomFlash=performance.now(); }
+  rebox(MAIN,REC,old); roomFlash=performance.now(); if(drag) drag.grew=true; }
+/* after a stroke that grew the box: cut it back to where the fog actually is (resampled, nothing re-simulates) */
+function trimToFog(){ if(REC.fit!=='auto'||MAIN.phase!=='shape') return; const e=measureExtent(MAIN,REC,0.04,0.002); if(!e) return; const old=[REC.dom[0].slice(),REC.dom[1].slice()], vx=voxSize(MAIN,REC), lo=[], hi=[];
+  for(let i=0;i<3;i++){ const m=vx*5+(e.hi[i]-e.lo[i])*0.05; lo[i]=Math.max(e.lo[i]-m,old[0][i]); hi[i]=Math.min(e.hi[i]+m,old[1][i]); } if(flatBase(REC)||floorIn(REC)) lo[1]=old[0][1];
+  if(![0,1,2].some(i=>(old[1][i]-old[0][i])-(hi[i]-lo[i])>(old[1][i]-old[0][i])*0.05)) return; REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; REC.budgetK=1; rebox(MAIN,REC,old); roomFlash=performance.now(); syncUndoTop(); }
 function outsideRoom(d,r){ const lo=REC.dom[0], hi=REC.dom[1], sz=domSize(REC); for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN; if(i===1&&REC.floor){ if(d[1]+r>hi[1]-m) return true; continue; } if(d[i]-r<lo[i]+m||d[i]+r>hi[i]-m) return true; } return false; }
 function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
   if(drag.op===8){ const D=mul(sub(p,drag.start),0.25+0.75*drag.stroke.s); drag.maxD=Math.max(drag.maxD||0,len(D)); if(L>UI.brushR*0.03){ putDab(drag.start,D); drag.last=p; } }   // grab: the fog under the brush follows the cursor (Strength: how closely)
@@ -1865,7 +1885,7 @@ function drawSource(a,b){ const E=REC.emit; const dx=b[0]-a[0], dz=b[2]-a[2], L=
   else if(E.shape==='rect'){ E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(Math.abs(dx)/2); E.d=q(Math.abs(dz)/2); E.ang=0; drag.label=`${fmLen(Math.abs(dx))} × ${fmLen(Math.abs(dz))}`; }
   else { E.x=+((a[0]+b[0])/2).toPrecision(5); E.z=+((a[2]+b[2])/2).toPrecision(5); E.w=q(L/2); E.ang=+(Math.atan2(dz,dx)/D2R).toFixed(1); drag.label=`line · ${fmLen(L)}`; }
   E.patchS=+(Math.max(E.w,E.d)*0.7).toPrecision(3); poke(); }
-function endStroke(){ brushing=false; if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); pushUndo(); MAIN.sim.si=(MAIN.sim.si||0)+1; if(drag.stroke.op===7) buildPanels(); } dirty.light=true; resetAccum(); }   // already on the fog: nothing to simulate again
+function endStroke(){ brushing=false; if(drag.grew) trimToFog(); if(drag.stroke.dabs.length){ REC.strokes.push(drag.stroke); pushUndo(); MAIN.sim.si=(MAIN.sim.si||0)+1; if(drag.stroke.op===7) buildPanels(); } dirty.light=true; resetAccum(); }   // already on the fog: nothing to simulate again
 ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
@@ -1898,7 +1918,7 @@ ov.addEventListener('pointermove',ev=>{
   if(!drag&&ready&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f!==hoverBox){ hoverBox=f; ov.style.cursor=f>=0?'ns-resize':UI.tool==='orbit'?'grab':'default'; } }
   if(!drag&&ready&&UI.tool==='place'){ hoverG=shotGround(mx,my); }
   if(!drag&&ready&&UI.tool==='collide') collideHover(mx,my);
-  if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const c=brushPlaneC(); const t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }
+  if(!drag){ if(ready&&BRUSHES[UI.tool]!=null){ const {ro,rd}=mouseRay(mx,my); const B=camBasis(CAM); const pk=REC.dom&&MAIN.dims&&MAIN.phase!=='form'?pickRay(MAIN,REC,ro,rd):{t:-1,tm:-1}, tf=pk.t>0?pk.t:pk.tm; let t=tf; if(!(t>0)){ const c=brushPlaneC(); t=dot(sub(c,ro),B.f)/Math.max(dot(rd,B.f),1e-4); } hover={p:add(ro,mul(rd,t)),ctrl:ev.ctrlKey||ev.metaKey}; } return; }   // the brush ring sits on the fog under the cursor
   if(drag.mode==='pinch'&&pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2; dolly(drag.d/Math.max(d,1)); track(cx-drag.cx,cy-drag.cy); drag.d=d; drag.cx=cx; drag.cy=cy; return; }
   if(drag.mode==='tumble'){ tumble(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='region'){ drag.x1=mx; drag.y1=my; return; }
@@ -2070,7 +2090,7 @@ function activate(k,force){ if(!SHOT) return; if(SHOT.els[k]&&SHOT.els[k].inst){
 const shotEls=()=>SHOT?SHOT.els:[];
 function styleInto(r,id){ const st=DSTYLES.find(x=>x.id===id); if(!st) return; const {sz,...dt}=st.det; Object.assign(r.det,dt); if(dt.billow!=null){ r.det.bA=dt.billow; r.det.wA=+(1-dt.billow).toFixed(3); } if(sz) r.det.size=+(r.sim.eddy*sz).toPrecision(3); if(st.ext) r.den.extD=+(Math.min(...r.size)*st.ext*(r.layer?STYPE(r.layer.type).extK||1:1)).toPrecision(3); if(st.ecc!=null) r.den.ecc=st.ecc; if(st.sim) Object.assign(r.sim,st.sim); r.style=id; }
 function makeShotEl(type,el){ const T=STYPE(type), r=makeRecipe('shot','mid',Math.floor(Math.random()*9999)); r.name=T.label; r.sim.eddy={ground:12,valley:16,hang:16,cloud:30,cap:30,haze:45}[type]||16; r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(r.sim.eddy*1.8).toPrecision(3);
-  r.layer={type,p:Object.fromEntries(T.params.map(([id,,,,df])=>[id,+(df*SK()).toPrecision(3)]))}; r.el=el; { const k=SK(); if(k!==1){ r.size=r.size.map(v=>+(v*k).toPrecision(3)); r.sim.eddy=+(r.sim.eddy*k*1.6).toPrecision(3); r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(r.sim.eddy*1.8).toPrecision(3); } } r.eid='e'+Math.random().toString(36).slice(2,9); r.place=[]; r.looks=[]; styleInto(r,T.look); r.name=T.label; r.anim=animDefaults(r); r.anim.wind=1.5;
+  r.layer={type,p:Object.fromEntries(T.params.map(([id,,,,df])=>[id,+(df*SK()).toPrecision(3)]))}; r.el=el; { const k=SK(); if(k!==1){ r.size=r.size.map(v=>+(v*k).toPrecision(3)); r.sim.eddy=+(r.sim.eddy*k*1.6).toPrecision(3); r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(r.sim.eddy*1.8).toPrecision(3); } } r.eid='e'+Math.random().toString(36).slice(2,9); r.place=[]; r.looks=[]; styleInto(r,T.look); r.name=T.label; r.anim=animDefaults(r);
   r.lod=type==='haze'?1:2; return r; }   /* the Designer's own detail budget over the layer's box: Detailed (Medium for haze), same voxels across as a Designer volume */   // voxels as fine as the Designer's, held to about 7M per layer
 /* ---------- the painted mask: one channel per layer, on a top-down grid over the scene ---------- */
 const MASK={N:256,a:new Float32Array(256*256*4),tex:null,ver:0,info:null};
