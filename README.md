@@ -53,6 +53,13 @@ Live: https://x14halo.github.io/brume/
 - **Timeline**: scrub the simulation, set In and Out on the stretch you like, set frames and fps, retime (slow motion re-simulates in finer steps rather than blending frames), extend a range for a longer shot, or Hold so the fog churns in place.
 - **Export** this frame or the whole In–Out sequence as half-float density (normalised, so extinction distance sets the look) with a Houdini Python SOP that loads the right frame and a meta.json carrying the shader values; recipes save as JSON.
 
+### Steps
+
+Both workspaces run as a short series of steps across the top of the panel. Each step shows only the panels and tools it needs, says in a sentence what to do, and offers the next step. Tool shortcuts still work and move to their step. Every tool on the left rail has a label.
+
+- **Shot:** 1 Scan (check the set) · 2 Ground (colliders) · 3 Fog (paint layers, or place a Designer volume from the Shelf) · 4 Shape · 5 Animate.
+- **Designer:** 1 Start · 2 Look · 3 Sculpt · 4 Animate · 5 Save.
+
 ### Shot (test scene)
 
 The **Shot** tab opens a made-up test shot (a village on a valley floor, rolling hills, a mountain range) through a shot camera. Fog is painted into the set rather than dropped in and scaled:
@@ -70,7 +77,7 @@ The **Shot** tab opens a made-up test shot (a village on a valley floor, rolling
 - **Movers** (Animate): click something that moves, or tick it in the tree, and it pushes the fog as it moves. The same tool picks colliders and movers; Brume knows which objects are animated. Each mover becomes a small soft volume per frame recording how much of it is there and how fast it is moving. The fog is dragged along inside it, shoved aside at its edges and cleared from its core. A mover has two sliders: **Strength** (below zero it only clears a path) and **Simplify** (blurs it first, so thin parts like legs fade, then it becomes one soft blob).
 - **Before frame 1**, each mover gets an automatic pre-roll: long enough to travel three or four of its own lengths. Its motion is guessed from its speed at the start (*Carry on*), or set to *Hold still* or *From the cache*. During the pre-roll the movers run through the sculpted fog, so frame 1 opens with their wake. In Animate, drag a mover's faint ghost to change where it came from.
 - **Sphere movers** (M): click to place a sphere, then move the playhead and click or drag to key its path.
-- **Attract** (A, Animate): a black hole for fog, drawn in and spun like a drain, with an optional **Consume** at the core. Ctrl makes a blast that pushes fog outward.
+- **Attract** (A, Animate): a black hole for fog. It has a **core** (the source, at full strength) and a **reach** (how far out it pulls), each with its own dot in the view. Fog is drawn in and can spin like a drain, with an optional **Consume** in the core. Ctrl, or a negative Pull, makes a blast that pushes fog outward from the core.
 - **Scan file (.bset)**: the format a Houdini bake would write. It holds a JSON header (cameras, prim paths and kinds, proxy ranges) plus binary blocks: points (P f32×3, N i8×4, colour u8×4, id u32, radius f32) and proxy meshes. Save it from the Set panel and load it back.
 
 Live: https://x14halo.github.io/brume/designer/
