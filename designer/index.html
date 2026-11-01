@@ -2112,7 +2112,8 @@ function testSetSource(){ const S=SCENE, R=mulberry(9171), prims=[];
       cn.V.push(x+Math.cos(a0)*rr,y0,z+Math.sin(a0)*rr,...n, x+Math.cos(a1)*rr,y0,z+Math.sin(a1)*rr,...n, x,top,z,...n); cn.I.push(o,o+2,o+1); }
     const cb=cn.V.length/6; cn.V.push(x,y0,z,0,-1,0); for(let i=0;i<cs;i++){ const a=i/cs*Math.PI*2; cn.V.push(x+Math.cos(a)*rr,y0,z+Math.sin(a)*rr,0,-1,0); cn.I.push(cb,cb+1+i,cb+1+(i+1)%cs); }
     leaf(P(`/set/forest/${nm}/trunk`,'mesh',g),tk.V,tk.I,4000+tn_); leaf(P(`/set/forest/${nm}/canopy`,'mesh',g),cn.V,cn.I,5000+tn_); }
-  return {name:'Test village',prims,shotCam:{pos:S.cam.pos.slice(),look:S.cam.look.slice(),tanY:Math.tan(21*D2R_),aspect:16/9},hmapB:HMAP.B.slice(),ground:th}; }
+  return {name:'Test village',prims,shotCam:{pos:S.cam.pos.slice(),look:S.cam.look.slice(),tanY:Math.tan(21*D2R_),aspect:16/9},hmapB:HMAP.B.slice(),ground:th,
+    witness:[['witness_back',{pos:[150,120,-900],look:[0,20,0]}],['witness_high',{pos:[-500,500,400],look:[0,20,-200]}]]}; }
 
 /* ---------------------------------------------------------------------
    THE BAKE: the shot camera first, then temporary cameras around what it sees. The GPU's rasteriser stands in for
@@ -2122,10 +2123,11 @@ const BAKE_VS=`#version 300 es
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec2 aM; uniform mat4 uVP; out vec3 vP; out vec3 vN; flat out vec2 vM;
 void main(){ vP=aP; vN=aN; vM=aM; gl_Position=uVP*vec4(aP,1.); }`;
 const BAKE_FS=`#version 300 es
-precision highp float; in vec3 vP; in vec3 vN; flat in vec2 vM; layout(location=0) out vec4 o0; layout(location=1) out vec4 o1;
+precision highp float; in vec3 vP; in vec3 vN; flat in vec2 vM; layout(location=0) out vec4 o0; layout(location=1) out vec4 o1; uniform highp sampler2D uPeel; uniform int uPeelOn; uniform vec3 uCamP;
 float tn(vec2 p){ return sin(p.x*1.7+sin(p.y*1.3))*0.5+sin(p.y*2.1+sin(p.x*0.9)*1.4)*0.35+sin((p.x+p.y)*3.7)*0.15; }
 ${SCENE_ALB_GLSL}
-void main(){ vec3 N=normalize(vN); float mat=floor(vM.x/1000.), v=vM.x-mat*1000.; float hh=fract(sin(v*91.7)*4375.85); vec3 a; float gls=0.;
+void main(){ if(uPeelOn==1){ float d0=texelFetch(uPeel,ivec2(gl_FragCoord.xy),0).r; if(length(vP-uCamP)<=d0*1.003+0.05) discard; }   // the second surface along each ray: what the first one hides
+  vec3 N=normalize(vN); float mat=floor(vM.x/1000.), v=vM.x-mat*1000.; float hh=fract(sin(v*91.7)*4375.85); vec3 a; float gls=0.;
   if(mat<0.5) a=sceneAlb(vP,N); else if(mat<1.5) a=mix(vec3(0.42,0.38,0.32),vec3(0.5,0.48,0.44),hh); else if(mat<2.5) a=mix(vec3(0.16,0.045,0.03),vec3(0.06,0.06,0.07),step(0.6,hh));
   else if(mat<3.5){ a=vec3(0.02,0.028,0.03); gls=1.; } else if(mat<4.5) a=vec3(0.07,0.05,0.035); else if(mat<5.5) a=mix(vec3(0.022,0.04,0.018),vec3(0.035,0.055,0.022),hh);
   else if(mat<6.5){ a=mix(vec3(0.055,0.095,0.03),vec3(0.1,0.115,0.045),smoothstep(-0.6,0.6,tn(vP.xz/6.)+0.4*tn(vP.xz/1.7))); float rz=-18.+3.*sin(vP.x/17.); a=mix(a,vec3(0.15,0.12,0.085)*(0.85+0.3*tn(vP.xz*2.)),1.-smoothstep(2.2,2.9,abs(vP.z-rz))); }   // meadow, with the dirt road
@@ -2148,37 +2150,89 @@ function bakeCams(src,region,reach){ const sc=src.shotCam, C=region.c, E=region.
   return cams; }
 const mix3=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
 function bakeStart(src){ if(SCAN.bake) return; const shot={name:'shot',pos:src.shotCam.pos,look:src.shotCam.look,tanY:src.shotCam.tanY,aspect:src.shotCam.aspect,w:960,h:540};
-  const mesh=bakeMesh(src), prog=SCAN.bprog||(SCAN.bprog=glProg(BAKE_VS,BAKE_FS)); const cap=960*540+19*640*360;
+  if(SCAN.keep) bakeFree(SCAN.keep); SCAN.keep=null; const mesh=bakeMesh(src), prog=SCAN.bprog||(SCAN.bprog=glProg(BAKE_VS,BAKE_FS)); const cap=1<<21;
   SCAN.bake={src,mesh,prog,cams:[shot],k:0,cap,n:0,P:new Float32Array(cap*3),N:new Int8Array(cap*4),C:new Uint8Array(cap*4),ID:new Uint32Array(cap),R:new Float32Array(cap),band:new Uint8Array(cap),
-    tab:new Int32Array(1<<23),shot,fb:null,t0:performance.now()};
+    tab:new Int32Array(1<<23),shot,fb:null,t0:performance.now(),fill:!!(SHOT&&SHOT.fillGaps),first:true};
   SCAN.n=0; SCAN.cams=[]; toast('Scanning the set from the shot camera…'); }
 function bakeTargets(B,w,h){ if(B.fb&&B.w===w&&B.h===h) return; if(B.fb){ gl.deleteFramebuffer(B.fb); gl.deleteTexture(B.t0); gl.deleteTexture(B.t1); gl.deleteRenderbuffer(B.d); }
   B.t0=tex2D(w,h,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); B.t1=tex2D(w,h,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); B.d=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,B.d); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
   B.fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,B.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,B.t0,0); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,B.t1,0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,B.d); B.w=w; B.h=h; }
-/* one camera per frame, so the set appears as it is scanned */
-function bakeStep(){ const B=SCAN.bake; if(!B) return; const cam=B.cams[B.k], w=cam.w, h=cam.h; bakeTargets(B,w,h);
-  const K=camLook(cam.pos,cam.look,cam.up), VP=m4mul(m4persp(cam.tanY,cam.aspect,0.5,30000),m4view(K.pos,K.r,K.u,K.f));
+/* cast a camera's rays (here: rasterise the set from it) and read back the first hits; with peel, the second hits behind them */
+function bakeShoot(B,cam,w,h,peel){ bakeTargets(B,w,h); const K=camLook(cam.pos,cam.look,cam.up), VP=m4mul(m4persp(cam.tanY,cam.aspect||w/h,0.5,30000),m4view(K.pos,K.r,K.u,K.f));
   gl.bindFramebuffer(gl.FRAMEBUFFER,B.fb); gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]); gl.viewport(0,0,w,h); gl.clearBufferfv(gl.COLOR,0,[0,0,0,0]); gl.clearBufferfv(gl.COLOR,1,[0,0,0,0]); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-  gl.useProgram(B.prog); gl.uniformMatrix4fv(gl.getUniformLocation(B.prog,'uVP'),false,VP); gl.bindVertexArray(B.mesh.vao); gl.drawElements(gl.TRIANGLES,B.mesh.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
-  const a0=new Float32Array(w*h*4), a1=new Float32Array(w*h*4); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a0); gl.readBuffer(gl.COLOR_ATTACHMENT1); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a1); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  const p=B.prog; gl.useProgram(p); gl.uniformMatrix4fv(gl.getUniformLocation(p,'uVP'),false,VP); gl.uniform1i(gl.getUniformLocation(p,'uPeelOn'),peel?1:0); gl.uniform3fv(gl.getUniformLocation(p,'uCamP'),cam.pos); bindTex(0,gl.TEXTURE_2D,peel||dummy2D()); gl.uniform1i(gl.getUniformLocation(p,'uPeel'),0);
+  gl.bindVertexArray(B.mesh.vao); gl.drawElements(gl.TRIANGLES,B.mesh.n,gl.UNSIGNED_INT,0); gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
+  const a0=new Float32Array(w*h*4), a1=new Float32Array(w*h*4); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a0); gl.readBuffer(gl.COLOR_ATTACHMENT1); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,a1); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return [a0,a1]; }
+function bakeGrow(B,need){ if(need<=B.cap) return; const cap=Math.max(need,Math.ceil(B.cap*1.6)); for(const [k,m] of [['P',3],['N',4],['C',4],['ID',1],['R',1],['band',1]]){ const a=new B[k].constructor(cap*m); a.set(B[k].subarray(0,B.n*m)); B[k]=a; } B.cap=cap; }
+function bakeFree(B){ try{ gl.deleteVertexArray(B.mesh.vao); gl.deleteBuffer(B.mesh.vb); gl.deleteBuffer(B.mesh.ib); if(B.fb){ gl.deleteFramebuffer(B.fb); gl.deleteTexture(B.t0); gl.deleteTexture(B.t1); gl.deleteRenderbuffer(B.d); B.fb=null; } if(B.peelT) gl.deleteTexture(B.peelT); }catch(e){} }
+/* the cell a point merges into: finer near the shot camera */
+function cellOf(B,x,y,z){ const sp=B.shot.pos, kS=2*B.shot.tanY/B.shot.h, dS=Math.hypot(x-sp[0],y-sp[1],z-sp[2]), cs0=Math.max(0.15*(SCAN.src.k||1),dS*kS), band=clamp(Math.ceil(Math.log2(cs0/0.125)),0,20); return {band,cs:0.125*Math.pow(2,band),dS}; }
+function cellHas(B,x,y,z,band,cs){ const T=B.tab, TM=T.length-1, ix=Math.floor(x/cs), iy=Math.floor(y/cs), iz=Math.floor(z/cs); let h=(Math.imul(ix,73856093)^Math.imul(iy,19349663)^Math.imul(iz,83492791)^Math.imul(band,2654435761))&TM;
+  while(T[h]){ const j=T[h]-1; if(B.band[j]===band&&Math.floor(B.P[j*3]/cs)===ix&&Math.floor(B.P[j*3+1]/cs)===iy&&Math.floor(B.P[j*3+2]/cs)===iz) return true; h=(h+1)&TM; } return false; }
+/* one camera per frame, so the set appears as it is scanned */
+function bakeStep(){ const B=SCAN.bake; if(!B) return; if(B.k>=B.cams.length){ bakeTail(B); return; } const cam=B.cams[B.k], w=cam.w, h=cam.h; const [a0,a1]=bakeShoot(B,cam,w,h,null); bakeGrow(B,B.n+w*h);
   const sp=B.shot.pos, kS=2*B.shot.tanY/B.shot.h, kC=2*cam.tanY/h;
   if(B.k===0){ const ds=[]; for(let i=0;i<w*h;i++) if(a0[i*4+3]>0.5) ds.push(Math.hypot(a0[i*4]-sp[0],a0[i*4+1]-sp[1],a0[i*4+2]-sp[2])); ds.sort((x,y)=>x-y); const reach=Math.min(ds.length?ds[Math.floor(ds.length*0.95)]:1000,6000);
     const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9]; for(let i=0;i<w*h;i++){ if(a0[i*4+3]<0.5) continue; const p=[a0[i*4],a0[i*4+1],a0[i*4+2]]; if(Math.hypot(p[0]-sp[0],p[1]-sp[1],p[2]-sp[2])>reach) continue; for(let c=0;c<3;c++){ lo[c]=Math.min(lo[c],p[c]); hi[c]=Math.max(hi[c],p[c]); } }
-    SCAN.reach=reach; SCAN.region={c:lo.map((v,i)=>(v+hi[i])/2),e:lo.map((v,i)=>(hi[i]-v)/2)}; B.cams.push(...bakeCams(B.src,SCAN.region,reach)); }
+    SCAN.reach=reach; SCAN.region={c:lo.map((v,i)=>(v+hi[i])/2),e:lo.map((v,i)=>(hi[i]-v)/2)}; B.cams.push(...bakeCams(B.src,SCAN.region,reach),...extraCams(B.src)); }
   const T=B.tab, TM=T.length-1; let added=0;
   for(let i=0;i<w*h;i++){ const id=a0[i*4+3]; if(id<0.5) continue; const x=a0[i*4], y=a0[i*4+1], z=a0[i*4+2]; const dS=Math.hypot(x-sp[0],y-sp[1],z-sp[2]), dC=Math.hypot(x-cam.pos[0],y-cam.pos[1],z-cam.pos[2]);
-    const cs0=Math.max(0.15,dS*kS), band=clamp(Math.ceil(Math.log2(cs0/0.125)),0,20), cs=0.125*Math.pow(2,band), ix=Math.floor(x/cs), iy=Math.floor(y/cs), iz=Math.floor(z/cs);
+    const cs0=Math.max(0.15*(SCAN.src.k||1),dS*kS), band=clamp(Math.ceil(Math.log2(cs0/0.125)),0,20), cs=0.125*Math.pow(2,band), ix=Math.floor(x/cs), iy=Math.floor(y/cs), iz=Math.floor(z/cs);
     let hsh=(Math.imul(ix,73856093)^Math.imul(iy,19349663)^Math.imul(iz,83492791)^Math.imul(band,2654435761))&TM, hit=false;
     while(T[hsh]){ const j=T[hsh]-1; if(B.band[j]===band&&Math.floor(B.P[j*3]/cs)===ix&&Math.floor(B.P[j*3+1]/cs)===iy&&Math.floor(B.P[j*3+2]/cs)===iz){ hit=true; break; } hsh=(hsh+1)&TM; }
-    if(hit||B.n>=B.cap) continue; const n=B.n++; T[hsh]=n+1; B.band[n]=band; B.P[n*3]=x; B.P[n*3+1]=y; B.P[n*3+2]=z; B.ID[n]=Math.round(id); { const cosT=Math.abs((a1[i*4]*(x-cam.pos[0])+a1[i*4+1]*(y-cam.pos[1])+a1[i*4+2]*(z-cam.pos[2]))/Math.max(dC,1e-3)); B.R[n]=clamp(dC*kC/Math.max(cosT,0.2),cs,cs*4)*1.05; }
+    if(hit||B.n>=B.cap) continue; const n=B.n++; T[hsh]=n+1; B.band[n]=band; B.P[n*3]=x; B.P[n*3+1]=y; B.P[n*3+2]=z; B.ID[n]=Math.round(id); { const cosT=Math.abs((a1[i*4]*(x-cam.pos[0])+a1[i*4+1]*(y-cam.pos[1])+a1[i*4+2]*(z-cam.pos[2]))/Math.max(dC,1e-3)); B.R[n]=clamp(dC*kC/Math.max(cosT,0.2),cs,cs*2.5)*1.05; }
     B.N[n*4]=Math.round(a1[i*4]*127); B.N[n*4+1]=Math.round(a1[i*4+1]*127); B.N[n*4+2]=Math.round(a1[i*4+2]*127); let pk=a1[i*4+3], g=0; if(pk<0){ pk=-pk; g=255; } pk=Math.round(pk)-1;
     B.C[n*4]=(pk>>16)&255; B.C[n*4+1]=(pk>>8)&255; B.C[n*4+2]=pk&255; B.C[n*4+3]=g; added++; }
   SCAN.cams.push({name:cam.name,pos:cam.pos,look:cam.look,tanY:cam.tanY,aspect:cam.aspect,res:[w,h],added});
-  B.k++; scanUpload(B.n,B.P,B.N,B.C,B.ID,B.R,true);
+  B.k++; scanUpload(B.n,B.P,B.N,B.C,B.ID,B.R,true); bakeTail(B); }
+function bakeTail(B){
   if(B.k<B.cams.length){ toast(`Scanning the set: camera ${B.k+1} of ${B.cams.length} · ${(B.n/1e6).toFixed(2)}M points`,1500); return; }
-  gl.deleteVertexArray(B.mesh.vao); gl.deleteBuffer(B.mesh.vb); gl.deleteBuffer(B.mesh.ib); gl.deleteFramebuffer(B.fb); gl.deleteTexture(B.t0); gl.deleteTexture(B.t1); gl.deleteRenderbuffer(B.d);
-  const n=B.n; SCAN.pts={n,P:B.P.slice(0,n*3),N:B.N.slice(0,n*4),C:B.C.slice(0,n*4),ID:B.ID.slice(0,n),R:B.R.slice(0,n)}; SCAN.bake=null; scanUpload(n,SCAN.pts.P,SCAN.pts.N,SCAN.pts.C,SCAN.pts.ID,SCAN.pts.R,false);
-  toast(`Set scanned: ${(n/1e6).toFixed(2)}M points from ${SCAN.cams.length} cameras in ${((performance.now()-B.t0)/1000).toFixed(1)} s`); scanReady(); }
+  if(B.fill&&gapPlan(B)) return;   // another camera aimed at what is still hidden
+  const n=B.n; SCAN.pts={n,P:B.P.subarray(0,n*3),N:B.N.subarray(0,n*4),C:B.C.subarray(0,n*4),ID:B.ID.subarray(0,n),R:B.R.subarray(0,n)}; SCAN.bake=null; SCAN.keep=B; B.fill=false; scanUpload(n,SCAN.pts.P,SCAN.pts.N,SCAN.pts.C,SCAN.pts.ID,SCAN.pts.R,false);
+  const g=B.gap; toast(B.first?`Set scanned: ${(n/1e6).toFixed(2)}M points from ${SCAN.cams.length} cameras in ${((performance.now()-B.t0)/1000).toFixed(1)} s`+(g?` · ${g.msg}`:''):g?g.msg:`Scan extended: ${(n/1e6).toFixed(2)}M points from ${SCAN.cams.length} cameras`,5000);
+  if(B.first){ B.first=false; scanReady(); } else { SCAN.st=new Uint8Array(1024*Math.max(1,Math.ceil(SCAN.src.prims.length/1024))); if(SCAN.stTex){ gl.deleteTexture(SCAN.stTex); SCAN.stTex=null; } stateSync(); SCAN.floor=null; buildPanels(); } SCAN.lastMsg=g?g.msg:''; B.gap=null; }
+/* ---------------------------------------------------------------------
+   FILLING GAPS, with a budget: the surfaces just behind what the shot camera sees (its rays' second hits) are the ones
+   that show when you orbit a little. Those nobody has seen yet are counted in coarse cells; a camera is aimed where it
+   sees the most of them, greedily, until what is left is small, the budget of cameras is spent, or a camera stops helping.
+   --------------------------------------------------------------------- */
+function gapPlan(B){ const sc=B.shot, w=480, h=270;
+  if(!B.gap){ const cam={pos:sc.pos,look:sc.look,tanY:sc.tanY,aspect:sc.aspect};
+    const [f0]=bakeShoot(B,cam,w,h,null), D=new Float32Array(w*h); for(let i=0;i<w*h;i++) D[i]=f0[i*4+3]>0.5?Math.hypot(f0[i*4]-sc.pos[0],f0[i*4+1]-sc.pos[1],f0[i*4+2]-sc.pos[2]):1e9;
+    if(!B.peelT){ B.peelT=gl.createTexture(); } gl.bindTexture(gl.TEXTURE_2D,B.peelT); gl.texImage2D(gl.TEXTURE_2D,0,gl.R32F,w,h,0,gl.RED,gl.FLOAT,D); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    const gAt=HMAP.h?hmapAt:B.src.ground||null; const [g0,g1]=bakeShoot(B,cam,w,h,B.peelT), G=[]; for(let i=0;i<w*h;i++){ if(g0[i*4+3]<0.5) continue; const x=g0[i*4], y=g0[i*4+1], z=g0[i*4+2]; if(Math.hypot(x-sc.pos[0],y-sc.pos[1],z-sc.pos[2])>SCAN.reach*1.1) continue; if(g1[i*4]*(x-sc.pos[0])+g1[i*4+1]*(y-sc.pos[1])+g1[i*4+2]*(z-sc.pos[2])>=0) continue;   /* a back face is the inside of something closed: nobody can see it */ if(gAt&&y<gAt(x,z)+0.05*(SCAN.src.k||1)) continue;   /* nor can anything buried under the ground */ G.push([x,y,z,g1[i*4],g1[i*4+1],g1[i*4+2]]); }
+    B.gap={G,used:0,tried:new Set(),hist:[],t0:performance.now(),max:6}; }
+  const g=B.gap, U=[]; for(const q of g.G){ const {band,cs}=cellOf(B,q[0],q[1],q[2]); let seen=false; for(let dx=-1;dx<=1&&!seen;dx++) for(let dy=-1;dy<=1&&!seen;dy++) for(let dz=-1;dz<=1&&!seen;dz++) if(cellHas(B,q[0]+dx*cs,q[1]+dy*cs,q[2]+dz*cs,band,cs)) seen=true; if(!seen) U.push(q); }
+  g.hist.push(U.length); const tot=Math.max(g.G.length,1), pct=v=>Math.round(100*(1-v/tot))+'%';
+  const stalled=g.hist.length>=3&&g.hist[g.hist.length-3]-U.length<tot*0.01;   // two cameras in a row barely helped
+  if(stalled){ g.msg=`Gaps: ${pct(U.length)} of what hides just behind the shot is seen; the rest is hidden from every side (tucked under or inside other things), so no more cameras`; return false; }
+  if(U.length<Math.max(150,tot*0.015)||g.used>=g.max||performance.now()-g.t0>20000){ g.msg=g.used?`Gaps filled with ${g.used} camera${g.used>1?'s':''}: what hides just behind the shot is ${pct(g.hist[0])} → ${pct(U.length)} seen`:`No gaps worth a camera: ${pct(U.length)} of what hides behind the shot is already seen`; return false; }
+  /* candidates around the region at three distances and two heights, each aimed at the hidden points it can see */
+  const rg=SCAN.region, C=rg.c, Rr=Math.max(Math.hypot(rg.e[0],rg.e[2]),20), gH=B.src.ground||(()=>C[1]); let best=null;
+  const cands=[]; for(const dist of [0.45,0.8,1.2]) for(const hy of [0.12,0.5]) for(let k=0;k<16;k++){ const key=dist+'|'+hy+'|'+k; if(g.tried.has(key)) continue; const a=k/16*Math.PI*2, x=C[0]+Math.sin(a)*Rr*dist, z=C[2]+Math.cos(a)*Rr*dist, pos=[x,Math.max(gH(x,z)+3*(SCAN.src.k||1)*4,C[1]+Rr*hy),z];
+    let n=0, c=[0,0,0]; const cand=[]; for(const q of U){ const v=[q[0]-pos[0],q[1]-pos[1],q[2]-pos[2]], d=Math.hypot(v[0],v[1],v[2]); if(d<1e-3||(v[0]*q[3]+v[1]*q[4]+v[2]*q[5])/d>-0.05) continue; cand.push(q); }   // facing it
+    if(!cand.length) continue; for(const q of cand){ c[0]+=q[0]; c[1]+=q[1]; c[2]+=q[2]; } c=c.map(v=>v/cand.length); const f=norm(sub(c,pos)); let maxA=0;
+    for(const q of cand){ const v=norm(sub(q.slice(0,3),pos)), ca=dot(v,f); if(ca>Math.cos(40*D2R_)){ n++; maxA=Math.max(maxA,Math.acos(Math.min(1,ca))); } }
+    cands.push({n,key,pos,look:c,tanY:clamp(Math.tan(maxA*1.08),Math.tan(12*D2R_),Math.tan(40*D2R_))}); }
+  /* the naive count ignores what blocks the view: the best few are checked by actually looking from them, at low resolution */
+  cands.sort((a,b)=>b.n-a.n); for(const cd of cands.slice(0,8)){ const w=192, h=108, [a0]=bakeShoot(B,{pos:cd.pos,look:cd.look,tanY:cd.tanY,aspect:w/h},w,h,null), K=camLook(cd.pos,cd.look); let vis=0;
+    for(const q of U){ const v=[q[0]-cd.pos[0],q[1]-cd.pos[1],q[2]-cd.pos[2]], z=dot(v,K.f); if(z<=0) continue; const x=dot(v,K.r)/(z*cd.tanY*w/h), y=dot(v,K.u)/(z*cd.tanY); if(Math.abs(x)>=1||Math.abs(y)>=1) continue;
+      const i=Math.floor((y*0.5+0.5)*h)*w+Math.floor((x*0.5+0.5)*w); if(a0[i*4+3]<0.5) continue; const dq=Math.hypot(v[0],v[1],v[2]), dh=Math.hypot(a0[i*4]-cd.pos[0],a0[i*4+1]-cd.pos[1],a0[i*4+2]-cd.pos[2]); if(Math.abs(dq-dh)<Math.max(0.02*dq,3*cellOf(B,q[0],q[1],q[2]).cs)) vis++; }
+    cd.vis=vis; g.tried.add(cd.key); if(!best||vis>best.vis) best=cd; }
+  if(!best||best.vis<40){ g.msg=`Gaps: ${pct(U.length)} of what hides behind the shot is seen; the rest can't be reached from around the set`; return false; }
+  g.used++; B.cams.push({name:'gap_'+g.used,pos:best.pos,look:best.look,tanY:best.tanY,aspect:16/9,w:640,h:360}); toast(`Filling gaps: camera ${g.used} aimed at ${best.vis} hidden points it can see`,1500); return true; }
+/* more cameras on a finished scan: the gap filler, a camera from the scene tree, or the current view */
+function scanMore(cams,fill){ const B=SCAN.keep; if(!B){ toast(SCAN.src?'This scan came from a file: new rays need the set itself, so add the camera to the Houdini bake':'Wait for the scan to finish'); return; } if(SCAN.bake) return;
+  for(const c of cams) B.cams.push({w:c.w||960,h:c.h||540,aspect:16/9,...c}); B.fill=!!fill; B.gap=null; SCAN.bake=B; SET.key=''; buildPanels(); }
+/* cameras in the scene: the shot camera, a couple of witness cameras, and any you added from the viewport */
+function addCamPrims(src){ const root=0, prims=src.prims; const P=(path,kind,parent)=>{ const id=prims.length; prims.push({id,path,name:path.slice(path.lastIndexOf('/')+1),kind,parent,kids:[],V:null,I:null,mat:0}); if(parent>=0) prims[parent].kids.push(id); return id; };
+  const cg=P('/set/cameras','assembly',root); const add=(name,c)=>{ const id=P('/set/cameras/'+name,'camera',cg); prims[id].cam={pos:c.pos.slice(),look:c.look.slice(),tanY:c.tanY||Math.tan(25*D2R_),aspect:c.aspect||16/9}; return id; };
+  add('shot_cam',src.shotCam); for(const [n,c] of src.witness||[]) add(n,c); for(const c of (SHOT&&SHOT.scanCams)||[]) add(c.name,c); }
+function extraCams(src){ const want=new Set((SHOT&&SHOT.scanWith)||[]); return src.prims.filter(p=>p.kind==='camera'&&(want.has(p.path)||p.path.includes('/user_cam'))).map(p=>({name:p.name,...p.cam,w:960,h:540})); }
+function scanFromCams(ids){ const cams=ids.map(prim).filter(p=>p&&p.kind==='camera'); if(!cams.length){ toast('Select a camera in the scene tree first'); return; } SHOT.scanWith=[...new Set([...(SHOT.scanWith||[]),...cams.map(p=>p.path)])]; autosave(); scanMore(cams.map(p=>({name:p.name,...p.cam}))); }
+function scanFromView(){ const B=camBasis(CAM), n=((SHOT.scanCams||[]).length+1), c={name:'user_cam_'+n,pos:B.pos.map(v=>+v.toPrecision(6)),look:add(B.pos,mul(B.f,Math.max(CAM.dist,1))).map(v=>+v.toPrecision(6)),tanY:B.tanY,aspect:16/9};
+  SHOT.scanCams=[...(SHOT.scanCams||[]),c]; autosave(); const prims=SCAN.src.prims, cg=prims.find(p=>p.path==='/set/cameras'); const id=prims.length; prims.push({id,path:'/set/cameras/'+c.name,name:c.name,kind:'camera',parent:cg.id,kids:[],V:null,I:null,mat:0,cam:c}); cg.kids.push(id); SCAN.pathIx.set('/set/cameras/'+c.name,id);
+  scanMore([c]); toast('Scanning from this view: '+c.name); }
 /* the points on the GPU: position, normal, colour (and gloss), object id, splat radius */
 function scanUpload(n,P,N,C,ID,R,partial){ const st=28, buf=new ArrayBuffer(n*st), f=new Float32Array(buf), b=new Int8Array(buf), u=new Uint8Array(buf), ui=new Uint32Array(buf);
   for(let i=0;i<n;i++){ const o=i*7; f[o]=P[i*3]; f[o+1]=P[i*3+1]; f[o+2]=P[i*3+2]; b[o*4+12]=N[i*4]; b[o*4+13]=N[i*4+1]; b[o*4+14]=N[i*4+2]; u[o*4+16]=C[i*4]; u[o*4+17]=C[i*4+1]; u[o*4+18]=C[i*4+2]; u[o*4+19]=C[i*4+3]; ui[o+5]=ID[i]; f[o+6]=R[i]; }
@@ -2190,7 +2244,7 @@ function scanUpload(n,P,N,C,ID,R,partial){ const st=28, buf=new ArrayBuffer(n*st
 /* after a bake or a load: object state, the collision ground, the shadow cascades */
 function scanReady(){ const src=SCAN.src; SCAN.pathIx=new Map(src.prims.map(p=>[p.path,p.id])); SCAN.col=new Set(((SHOT&&SHOT.collide)||[]).map(p=>SCAN.pathIx.get(p)).filter(i=>i!=null)); SCAN.sel.clear(); SCAN.hover=-1;
   SCAN.st=new Uint8Array(1024*Math.max(1,Math.ceil(src.prims.length/1024))); stateSync(); colBuild(true); if(UI.ws==='shot') buildPanels(); }
-function scanEnsure(){ if(!SCAN.src&&!SCAN.bake){ const S=SCENES[curScene()]||SCENES.village; SCAN.src=S.make(); HMAP.B=SCAN.src.hmapB.slice(); HMAP.h=null; if(HMAP.tex){ gl.deleteTexture(HMAP.tex); HMAP.tex=null; } bakeStart(SCAN.src); } }
+function scanEnsure(){ if(!SCAN.src&&!SCAN.bake){ const S=SCENES[curScene()]||SCENES.village; SCAN.src=S.make(); addCamPrims(SCAN.src); HMAP.B=SCAN.src.hmapB.slice(); HMAP.h=null; if(HMAP.tex){ gl.deleteTexture(HMAP.tex); HMAP.tex=null; } bakeStart(SCAN.src); } }
 
 /* ---------------------------------------------------------------------
    DRAWING THE SCAN: round splats sized by their radius, lit by the sun (with shadow cascades), the sky and the fog
@@ -2367,8 +2421,8 @@ function buildSetPanel(){ const el=$('#setBody'); if(!el||UI.ws!=='shot') return
   const tr=document.createElement('div'); tr.className='tree'; tr.style.cssText='max-height:300px;overflow:auto;border:1px solid var(--line,#2a2f38);border-radius:6px;padding:4px 0;font-size:12px';
   const row=(i,dep)=>{ const p=prim(i), s=colState(i), open=SCAN.open.has(i), d=document.createElement('div'); d.dataset.id=i;
     d.style.cssText=`display:flex;align-items:center;gap:4px;padding:2px 6px 2px ${6+dep*14}px;cursor:pointer;${SCAN.sel.has(i)?'background:rgba(255,200,80,0.16)':''}`;
-    d.innerHTML=`<span style="width:12px;opacity:.7">${p.kids.length?(open?'▾':'▸'):''}</span><input type="checkbox" title="Collides" style="margin:0" ${s===2?'checked':''}><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span><span style="opacity:.45;font-size:10px">${p.kids.length?p.kids.length:p.kind}</span>`;
-    const cb=d.querySelector('input'); cb.indeterminate=s===1; cb.onclick=e=>{ e.stopPropagation(); setCollide([i],s!==2); };
+    d.innerHTML=`<span style="width:12px;opacity:.7">${p.kids.length?(open?'▾':'▸'):''}</span>${p.kind==='camera'?'<span title="A camera: select it and press Scan from selected" style="width:13px;text-align:center;opacity:.8">◉</span>':'<input type="checkbox" title="Collides (or, for things that move, pushes the fog)" style="margin:0" '+(s===2?'checked':'')+'>'}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span><span style="opacity:.45;font-size:10px">${p.kids.length?p.kids.length:p.kind==='camera'?((SHOT.scanWith||[]).includes(p.path)||p.path.includes('/user_cam')||p.name==='shot_cam'?'camera · scanned':'camera'):p.kind}</span>`;
+    const cb=d.querySelector('input'); if(cb){ cb.indeterminate=s===1; cb.onclick=e=>{ e.stopPropagation(); setCollide([i],s!==2); }; }
     d.querySelector('span').onclick=e=>{ e.stopPropagation(); open?SCAN.open.delete(i):SCAN.open.add(i); buildSetPanel(); };
     d.onclick=e=>{ if(e.ctrlKey||e.metaKey) SCAN.sel.has(i)?SCAN.sel.delete(i):SCAN.sel.add(i); else { SCAN.sel.clear(); SCAN.sel.add(i); } stateSync(); buildSetPanel(); };
     d.onmouseenter=()=>{ SCAN.hover=i; stateSync(); }; d.onmouseleave=()=>{ SCAN.hover=-1; stateSync(); };
@@ -2377,14 +2431,18 @@ function buildSetPanel(){ const el=$('#setBody'); if(!el||UI.ws!=='shot') return
   const r3=document.createElement('div'); r3.className='chips'; r3.style.marginTop='6px';
   const b1=document.createElement('button'); b1.className='chip'; b1.textContent=`Add selected (${SCAN.sel.size})`; b1.disabled=!SCAN.sel.size; b1.title='The fog meets the objects selected in the tree (Ctrl-click to select several)'; b1.onclick=()=>setCollide([...SCAN.sel],true); r3.appendChild(b1);
   const b2=document.createElement('button'); b2.className='chip'; b2.textContent='Remove selected'; b2.disabled=!SCAN.sel.size; b2.onclick=()=>setCollide([...SCAN.sel],false); r3.appendChild(b2);
+  if([...SCAN.sel].some(i=>prim(i)&&prim(i).kind==='camera')){ const b4=document.createElement('button'); b4.className='chip'; b4.textContent='Scan from selected camera'; b4.title='Add this camera\'s view to the scan: only surface nobody has seen yet is added'; b4.onclick=()=>scanFromCams([...SCAN.sel]); r3.appendChild(b4); }
   const b3=document.createElement('button'); b3.className='chip'; b3.textContent='Clear all'; b3.disabled=!SCAN.col.size; b3.onclick=()=>setCollide([0],false); r3.appendChild(b3);
   el.appendChild(r3); buildMoverPanel(el);
   subH(el,'Scan file');
   const r4=document.createElement('div'); r4.className='chips'; r4.style.marginTop='6px';
+  const fg=document.createElement('button'); fg.className='chip'; fg.textContent='Fill gaps'; fg.title='Aim a few more cameras at what hides just behind the shot camera\'s view and nobody has seen yet. Stops after 6 cameras, or sooner when what is left is small or a camera stops helping'; fg.disabled=!SCAN.keep; fg.onclick=()=>scanMore([],true); r4.appendChild(fg);
+  const fv=document.createElement('button'); fv.className='chip'; fv.textContent='Scan from this view'; fv.title='Add a camera where the viewport is and scan from it: it joins the scene tree under cameras'; fv.disabled=!SCAN.keep; fv.onclick=scanFromView; r4.appendChild(fv);
   const sv=document.createElement('button'); sv.className='chip'; sv.textContent='Save scan file'; sv.title='The scan as a .bset file: the format a Houdini bake writes'; sv.onclick=scanSave; r4.appendChild(sv);
   const ld=document.createElement('button'); ld.className='chip'; ld.textContent='Load scan file…'; ld.title='Open a .bset scan baked from a set'; ld.onclick=scanLoadPick; r4.appendChild(ld);
   const rs=document.createElement('button'); rs.className='chip'; rs.textContent='Rescan'; rs.onclick=()=>{ scanReset(); scanEnsure(); buildSetPanel(); }; r4.appendChild(rs);
-  el.appendChild(r4); }
+  el.appendChild(r4);
+  const fa=document.createElement('label'); fa.style.cssText='display:flex;gap:8px;align-items:center;margin:6px 0'; fa.innerHTML=`<input type="checkbox" ${SHOT.fillGaps?'checked':''}><span class="note" style="margin:0">Fill gaps on every scan</span>`; fa.querySelector('input').onchange=e=>{ SHOT.fillGaps=e.target.checked; autosave(); }; el.appendChild(fa); }
 function revealInTree(i){ let p=prim(i); while(p&&p.parent>=0){ SCAN.open.add(p.parent); p=prim(p.parent); } SCAN.sel.clear(); SCAN.sel.add(i); stateSync(); buildSetPanel(); const r=$('#setBody .tree [data-id="'+i+'"]'); if(r) r.scrollIntoView({block:'nearest'}); }
 
 /* ---------------------------------------------------------------------
@@ -2394,7 +2452,7 @@ function revealInTree(i){ let p=prim(i); while(p&&p.parent>=0){ SCAN.open.add(p.
    --------------------------------------------------------------------- */
 function scanSave(){ const src=SCAN.src, pts=SCAN.pts; if(!src||!pts) return; const lv=src.prims.filter(p=>p.V); let nv=0, ni=0; for(const p of lv){ nv+=p.V.length/6; ni+=p.I.length; }
   const PV=new Float32Array(nv*3), PI=new Uint32Array(ni); let ov=0, oi=0; const rng={};
-  for(const p of lv){ const n=p.V.length/6; for(let k=0;k<n;k++){ PV[(ov+k)*3]=p.V[k*6]; PV[(ov+k)*3+1]=p.V[k*6+1]; PV[(ov+k)*3+2]=p.V[k*6+2]; } PI.set(p.I,oi); rng[p.id]=[ov,n,oi,p.I.length]; ov+=n; oi+=p.I.length; }
+  for(const p of lv){ const n=p.V.length/6; for(let k=0;k<n;k++){ PV[(ov+k)*3]=p.V[k*6]; PV[(ov+k)*3+1]=p.V[k*6+1]; PV[(ov+k)*3+2]=p.V[k*6+2]; } for(let k=0;k<p.I.length;k++) PI[oi+k]=p.I[k]+ov; rng[p.id]=[ov,n,oi,p.I.length]; ov+=n; oi+=p.I.length; }
   const arrs=[['P',pts.P],['N',pts.N],['C',pts.C],['ID',pts.ID],['R',pts.R],['proxyV',PV],['proxyI',PI]]; let off=0; const blocks=arrs.map(([name,a])=>{ const b={name,type:a.constructor.name,offset:off,length:a.length}; off+=Math.ceil(a.byteLength/4)*4; return b; });
   const head={format:'brume-set',version:1,name:src.name,units:'m',up:'y',shotCam:src.shotCam,cams:SCAN.cams,reach:SCAN.reach,region:SCAN.region,hmapB:HMAP.B,points:pts.n,
     prims:src.prims.map(p=>({path:p.path,kind:p.kind,...(rng[p.id]?{proxy:rng[p.id]}:{})})),blocks};
@@ -2412,7 +2470,7 @@ function scanLoad(u8){ if(String.fromCharCode(...u8.subarray(0,4))!=='BSET') thr
   head.prims.forEach((h,id)=>{ if(!h.proxy) return; const [v0,nv,i0,ni]=h.proxy, V=new Float32Array(nv*6); for(let k=0;k<nv;k++){ V[k*6]=A.proxyV[(v0+k)*3]; V[k*6+1]=A.proxyV[(v0+k)*3+1]; V[k*6+2]=A.proxyV[(v0+k)*3+2]; V[k*6+4]=1; }
     const I=new Uint32Array(ni); for(let k=0;k<ni;k++) I[k]=A.proxyI[i0+k]-v0; prims[id].V=V; prims[id].I=I; });
   if(prims[0]&&prims[0].parent>=0) throw new Error('the first prim must be the root');
-  SCAN.bake=null; SCAN.src={name:head.name||'Scanned set',prims,shotCam:head.shotCam,hmapB:head.hmapB}; SCAN.cams=head.cams||[]; SCAN.reach=head.reach||1000; SCAN.region=head.region||null; SCAN.floor=null; if(SCAN.colGL){ SCAN.colGL.vao=null; }
+  SCAN.bake=null; if(SCAN.keep){ bakeFree(SCAN.keep); SCAN.keep=null; } SCAN.src={name:head.name||'Scanned set',prims,shotCam:head.shotCam,hmapB:head.hmapB}; SCAN.cams=head.cams||[]; SCAN.reach=head.reach||1000; SCAN.region=head.region||null; SCAN.floor=null; if(SCAN.colGL){ SCAN.colGL.vao=null; }
   if(head.hmapB) HMAP.B=head.hmapB.slice(); SCAN.pts={n:head.points,P:A.P,N:A.N,C:A.C,ID:A.ID,R:A.R}; scanUpload(head.points,A.P,A.N,A.C,A.ID,A.R,false); SCAN.open=new Set([0]);
   if(SHOT) SHOT.collide=[]; scanReady(); setShotCam(); toast(`Loaded ${head.name||'the scan'}: ${(head.points/1e6).toFixed(2)}M points, ${prims.length} prims`); }
 /* =====================================================================
@@ -2501,7 +2559,7 @@ function motionSetSource(){ const prims=[], P=(path,kind,parent)=>{ const id=pri
   const acts=P('/set/actors','assembly',root), debris=P('/set/actors/debris','assembly',acts), movers=motionActors();
   movers.forEach((m,mi)=>{ const par=m.path.startsWith('/set/actors/debris/')?debris:acts, c=P(m.path,'component',par); m.comp=c; m.leafIds=m.leaves.map(([nm,col],li)=>{ const id=P(m.path+'/'+nm,'mesh',c); Object.assign(prims[id],{anim:true,mover:mi,li,col:hexLin(col),gloss:(m.gloss||[])[li]||0}); return id; }); prims[c].anim=true; });
   prims[acts].anim=true; prims[debris].anim=true;
-  return {name:'Motion test',k:0.12,prims,movers,shotCam:{...MOTION_CAM},hmapB:B,maskB:[-60,-60,120,120],ground:mGround}; }
+  return {name:'Motion test',k:0.12,prims,movers,shotCam:{...MOTION_CAM},hmapB:B,maskB:[-60,-60,120,120],ground:mGround,witness:[['crane_cam',{pos:[0,22,-62],look:[0,1,0]}],['side_cam',{pos:[-48,5,-6],look:[10,1,-10]}]]}; }
 
 /* ---------------------------------------------------------------------
    MOVERS: what the artist picked (scene parts, or a keyed sphere), evaluated at a scene time
