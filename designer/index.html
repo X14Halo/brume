@@ -3760,6 +3760,65 @@ async function doExportX(){ const st=$('#exStatus'), go=$('#exGo'); go.disabled=
 function fieldsSparse(F,[W,H,D]){ const n=W*H*D, keep=new Uint8Array(n); for(let z=0;z<D;z++) for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(z*H+y)*W+x; if(F.density[i]<=1e-5) continue;
     for(let dz=-2;dz<=2;dz++) for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const X=x+dx, Y=y+dy, Z=z+dz; if(X<0||Y<0||Z<0||X>=W||Y>=H||Z>=D) continue; keep[(Z*H+Y)*W+X]=1; } }
   for(let i=0;i<n;i++){ if(keep[i]) continue; F.billow[i]=0; F.gain[i]=0; for(let c=0;c<3;c++){ F.looka[i*3+c]=0; F.lookb[i*3+c]=0; F.rest[i*3+c]=0; F.rest2[i*3+c]=0; } } }
+/* =====================================================================
+   MOTION LOOKS, DETAIL SCALE AND THE SCALE GUIDE
+   ===================================================================== */
+/* forming: how long the fog drifts before it is the shape. Age is how far along; more turbulence churns it further (it used to just finish sooner) */
+function formT(S){ const tb=Math.max(S.turb,0.02), Uref=Math.sqrt(tb*0.4)*Math.max(S.eddy,1e-3)*0.6; return S.age*1.3*Math.max(S.eddy,1e-3)/Uref; }
+/* Sense of scale: every detail size together. Finer detail against the same mass reads as a bigger thing, coarser as a smaller one */
+const detK=rec=>Math.pow(3,-clamp(rec.det.scale||0,-1,1));
+const FX_KINDS=[['billow','Billows','Small rounded lobes'],['wisp','Wisps','Fine threads and veils'],['grain','Grain','Soft, even granular texture']];
+function fxOf(rec){ const f=rec.det.fx||{}; return {amt:f.amt||0,size:f.size||+(rec.det.size*0.18).toPrecision(3),kind:f.kind||'wisp'}; }
+function fineN(rec){ const fine=clamp(rec.det.fine||0,-1,1), W=[0.5,0.3,0.18,0.11,0.07]; let s0=0,s1=0; W.forEach((w,k)=>{ s0+=w; s1+=w*Math.pow(2,fine*(k-1.5)*0.9); }); return s0/s1; }
+function fineU(pr,rec){ u1f(pr,'uFine',clamp(rec.det.fine||0,-1,1)); u1f(pr,'uFineN',fineN(rec)); const F=fxOf(rec); u4v(pr,'uFx',[F.amt,F.size*detK(rec),Math.max(0,FX_KINDS.findIndex(k=>k[0]===F.kind)),0]); }
+/* ---------- arriving fog: the start shape's upwind part keeps being topped up, so a bank streams in instead of thinning out ---------- */
+function feedKeep(ctx,ar){ if(!(ar.sim.feed>0)){ return; } const d=ctx.dims; if(!ctx.feed||ctx.feed.w!==d[0]||ctx.feed.h!==d[1]||ctx.feed.d!==d[2]){ if(ctx.feed) gl.deleteTexture(ctx.feed); ctx.feed=tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT); } copyVol(ctx.den[0],ctx.feed,d); }
+function feedGeo(rec){ const A=rec.anim||{}, wsp=A.wind||0, wd=(A.windDir??70)*D2R, dir=[Math.sin(wd),-Math.cos(wd)]; const B=rec._sdom||rec.dom||[[-1,0,-1],[1,1,1]];
+  let mn=1e9,mx=-1e9; for(const x of [B[0][0],B[1][0]]) for(const z of [B[0][2],B[1][2]]){ const v=x*dir[0]+z*dir[1]; mn=Math.min(mn,v); mx=Math.max(mx,v); }
+  const ext=Math.max(mx-mn,1e-3); if(wsp<0.3) return {P:[dir[0],dir[1],1e7,1],w:ext*0.3,wind:0.4};   // no wind to speak of: the whole shape keeps welling up, like a spill
+  return {P:[dir[0],dir[1],mn,ext*0.35],w:ext*0.35,wind:wsp}; }
+function feedU(pr,ctx,rec){ const S=rec.sim, sm=ctx.sim||{}; const on=!sm.forming&&!sm.emit&&(S.feed||0)>0&&ctx.feed; const rt=Math.max(realTimeKF(rec),1e-4);
+  const e=clamp(S.evap||0,0,1); u1f(pr,'uEvap',sm.forming||e<=0?0:1/(20+600*(1-e)*(1-e))/rt);   /* how long a thin wisp lasts, in real seconds: about 10 minutes down to 20 s */
+  if(!on){ u1f(pr,'uFeedR',0); bind3(pr,11,'uFeed',ctx.den[0]); return; }
+  const G=feedGeo(rec); u4v(pr,'uFeedP',G.P); u1f(pr,'uFeedR',clamp(S.feed,0,2)*2*Math.max(G.wind,0.4)/Math.max(G.w,0.5)/rt); bind3(pr,11,'uFeed',ctx.feed); }
+/* ---------- motion looks: one click sets how it moves; the sliders fine-tune it ---------- */
+const MLOOKS=[
+  {id:'natural',label:'Natural',tip:'How this element really moves, at real speed',set:r=>{ const d=animDefaults(r); return {wind:d.wind,gust:d.gust,churn:d.churn,rise:d.rise,drain:d.drain,spill:d.spill,feed:d.feed,thinW:d.thinW,thinL:d.thinL,wisp:d.wisp,evap:d.evap,tl:d.tl,dm:{...d.dm}}; }},
+  {id:'rolling',label:'Rolling timelapse',tip:'Fog rolling across the landscape in a timelapse: a dense, heavy river that pours over and down the ground, its thin edges lifting off, breaking up and fading',
+    set:r=>({wind:4.5,gust:0.4,churn:1.5,rise:0,drain:slopedGround(r)?0.9:0,spill:0.45,feed:0.7,thinW:0.65,thinL:0.6,wisp:0.12,evap:0.55,tl:30,dm:{type:'stream',spd:0.35,fine:0.5,amt:0.8,dir:null}})},
+  {id:'spill',label:'Dry-ice spill',tip:'A heavy blanket that keeps welling up and slumping out along the ground, curling at its edge',
+    set:r=>({wind:0.6,gust:0.15,churn:1.2,rise:-0.05,drain:slopedGround(r)?1.2:0,spill:1,feed:0.7,thinW:0.3,thinL:0.4,wisp:0.04,evap:0.35,tl:4,dm:{type:'roll',spd:0.25,fine:0.4,amt:0.8,dir:null}})},
+  {id:'drift',label:'Slow drift',tip:'A bank drifting past on a light breeze, churning gently',
+    set:r=>({wind:2,gust:0.3,churn:1,rise:0,drain:slopedGround(r)?0.3:0,spill:0.2,feed:0.5,thinW:0.4,thinL:0.3,wisp:0.03,evap:0.25,tl:2,dm:{type:'stream',spd:0.3,fine:0.4,amt:0.8,dir:null}})},
+  {id:'rising',label:'Lifting & burning off',tip:'Morning fog lifting: the thin parts rise, break into wisps and evaporate while the core lingers',
+    set:r=>({wind:1.2,gust:0.3,churn:1.6,rise:0.08,drain:0,spill:0,feed:0,thinW:0.5,thinL:0.9,wisp:0.2,evap:0.7,tl:12,dm:{type:'swirl',spd:0.3,fine:0.5,amt:0.8,dir:null}})}];
+function applyMotionLook(id){ const L=MLOOKS.find(x=>x.id===id); if(!L) return; const A=REC.anim; const v=L.set(REC); const {dm,...rest}=v; Object.assign(A,rest); if(dm) A.dm={...(A.dm||{}),...dm}; A.body='sim'; A.mlook=id; delete A.lift;
+  if(REC.time&&REC.time.outT!=null){ REC.time={...REC.time,outT:null}; }   // the look's own speed: the timeline Speed follows it
+  pushUndo(); autosave(); markAnim(); buildPanels(); drawTimeline(); toast(L.label+': '+L.tip.charAt(0).toLowerCase()+L.tip.slice(1)); }
+const TL_SPEEDS=[[1,'Real time','The shot runs at the real speed of fog'],[2,'2×','Slightly sped up'],[4,'4×','Sped up'],[12,'12×','Clearly sped up'],[30,'30×','Timelapse: fog rolls and pours'],[90,'90×','Fast timelapse']];
+/* ---------- the scale guide: things you know the size of, as faint ghosts beside the fog ---------- */
+const REFS={person:{h:1.8,label:'person 1.8 m'},car:{h:1.5,w:4.5,label:'car 4.5 m'},house:{h:8,w:10,label:'house 8 m'},tree:{h:18,w:9,label:'tree 18 m'},tower:{h:150,w:35,label:'tower 150 m'},mount:{h:900,w:2400,label:'hill 900 m'}};
+const REF_KEYS=['auto','person','car','house','tree','tower','mount'];
+function refPick(H,W){ if(LOOK.refs&&LOOK.refs!=='auto') return [LOOK.refs]; const out=['person']; const big=Math.max(H,W*0.25);   // always a person; and something closer to the fog's own size
+  if(big>6) out.push(big<25?'house':big<60?'tree':big<500?'tower':'mount'); return out; }
+function refShape(k,h,w){ /* outlines in metres, x across (centred), y up */
+  if(k==='person') return [[[-0.22,0],[-0.17,0.9],[-0.25,0.95],[-0.25,1.45],[-0.12,1.52],[-0.1,1.58],[-0.12,1.72],[0,1.8],[0.12,1.72],[0.1,1.58],[0.12,1.52],[0.25,1.45],[0.25,0.95],[0.17,0.9],[0.22,0],[0.05,0],[0,0.82],[-0.05,0]]];
+  if(k==='car') return [[[-2.25,0.15],[-2.25,0.75],[-1.1,0.85],[-0.6,1.45],[0.9,1.45],[1.5,0.85],[2.25,0.75],[2.25,0.15]]];
+  if(k==='house') return [[[-5,0],[-5,5],[0,8],[5,5],[5,0]]];
+  if(k==='tree') return [[[-0.5,0],[-0.5,4],[-4.5,6],[-3.5,10],[-4,13],[-1.5,17],[0,18],[1.5,17],[4,13],[3.5,10],[4.5,6],[0.5,4],[0.5,0]]];
+  if(k==='tower') return [[[-17,0],[-17,128],[-11,134],[-11,142],[-2,145],[0,150],[2,145],[11,142],[11,134],[17,128],[17,0]]];
+  return [[[-1200,0],[-700,330],[-450,420],[-150,780],[0,900],[180,820],[420,520],[760,300],[1200,0]]]; }
+function drawRefs(BX){ if(!LOOK.figure) return; const [x0,y0,z0]=BX[0], [x1,y1,z1]=BX[1], W=x1-x0, H=y1-y0; const B=camBasis(CAM); let xs=x0-Math.max(W*0.04,0.6);
+  for(const k of refPick(H,Math.max(W,z1-z0))){ const R=REFS[k], sc=1; const shp=refShape(k); const ww=(R.w||0.5)*sc; const cx=xs-ww*0.5; const gy=hasGround(REC)?terrHJ(REC,cx,z1):y0;
+    const top=project([cx,gy+R.h,z1]), bot=project([cx,gy,z1]); xs-=ww*1.3+Math.max(W*0.02,0.4); if(!top||!bot||bot[1]-top[1]<5) continue;
+    octx.fillStyle='rgba(220,226,232,.20)'; octx.strokeStyle='rgba(235,240,245,.62)'; octx.lineWidth=1.2;
+    for(const poly of shp){ octx.beginPath(); let ok=true; poly.forEach(([px,py],i)=>{ const q=project(add([cx,gy,z1],add(mul(B.r,px*sc),[0,py*sc,0]))); if(!q){ ok=false; return; } i?octx.lineTo(q[0],q[1]):octx.moveTo(q[0],q[1]); }); if(!ok) continue; octx.closePath(); octx.fill(); octx.stroke(); }
+    octx.font='500 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(235,240,245,.75)'; octx.fillText(R.label,top[0]+6,top[1]+10); } }
+function cycleRefs(){ const i=REF_KEYS.indexOf(LOOK.refs||'auto'); if(!LOOK.figure){ LOOK.figure=true; LOOK.refs='auto'; } else if(i===REF_KEYS.length-1){ LOOK.figure=false; LOOK.refs='auto'; } else LOOK.refs=REF_KEYS[i+1];
+  saveLook(); refBtnShow(); toast(LOOK.figure?'Scale guide: '+(LOOK.refs==='auto'?'a person, and something nearer the fog\'s size':REFS[LOOK.refs].label):'Scale guide off'); }
+function refBtnShow(){ const b=$('#refBtn'); if(!b) return; b.setAttribute('aria-pressed',!!LOOK.figure); b.title='Scale guide: ghost figures beside the fog so you can read its size ('+(LOOK.figure?(LOOK.refs==='auto'?'auto':REFS[LOOK.refs].label):'off')+'). Click to cycle: auto, person, car, house, tree, tower, hill, off'; }
+
+$('#refBtn').onclick=cycleRefs; refBtnShow();
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
