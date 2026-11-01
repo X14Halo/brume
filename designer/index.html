@@ -495,7 +495,7 @@ float srcSD(vec2 xz){ vec2 q=xz-uSrcC.xz; float c=cos(uSrcS.z), s=sin(uSrcS.z); 
   if(uSrcShape==2) return length(vec2(max(abs(q.x)-h.x,0.),q.y))-h.y;
   return abs(length(q)-h.x)-h.y; }
 float srcEdge(){ float vx=min(uSize.x/uDims.x,min(uSize.y/uDims.y,uSize.z/uDims.z)); return max(uSrcS.w*(uSrcShape<2?min(uSrcS.x,uSrcS.y):uSrcS.y),vx*1.5); }
-vec3 curlAt(vec3 p,float s){ return textureLod(uCurl,p/s+uCurlOff+vec3(0.,uTime*0.06,0.),0.).xyz; }
+vec3 curlAt(vec3 p,float s){ return textureLod(uCurl,(p-uWind*uSimT*0.85)/s+uCurlOff+vec3(0.,uTime*0.06,0.),0.).xyz; }   /* the eddies are carried along by the wind (as in real air), so drifting fog keeps churning instead of sliding through still swirls */
 vec3 vel(vec3 p,vec3 u,sampler3D den){
   float d=textureLod(den,u,0.).r; float gh=uGround>0?terrH(p.xz):0.; float hy=uGround>0?p.y-gh:1e5;
   vec3 v=curlAt(p,uEddy)+0.55*curlAt(p+vec3(17.),uEddy*0.38)+0.75*curlAt(p+vec3(41.),uEddy*2.7);
@@ -1244,7 +1244,7 @@ const gridN=(rec,N)=>Math.round(N*roomK(rec));
 /* spend a fixed voxel budget on the box: a tighter box gets finer voxels (flat sheets get far finer ones than a cube would) */
 function budgetDims(size,N){ const B=N*N*N*0.4; let vox=Math.cbrt(size[0]*size[1]*size[2]/B); vox=Math.max(vox,Math.max(...size)/(N*2)); return size.map(s=>Math.max(12,Math.round(s/vox))); }
 const voxOf=rec=>{ if(!rec.dom) return rec.voxM||1; const S=domSize(rec); return Math.max(rec.voxM||1,Math.cbrt(S[0]*S[1]*S[2]/(rec.voxCap||24e6))); };   // Custom voxel size, held under a voxel budget (shot layers start with one)
-const recDims=(rec,N)=>N>=64&&rec.lod==='custom'&&rec.voxM>0?domSize(rec).map(s=>Math.max(8,Math.round(s/voxOf(rec)))):budgetDims(domSize(rec),N*Math.cbrt(clamp(rec.budgetK||1,1,3)));   // Custom: cubic voxels of a set size; the measuring runs stay coarse   // budgetK: a sculpt that grew the box keeps its voxel size (up to 3x the voxels)
+const recDims=(rec,N)=>{ const k=rec._simK||1; return N>=64&&rec.lod==='custom'&&rec.voxM>0?domSize(rec).map(s=>Math.max(8,Math.round(s/(voxOf(rec)/k)))):budgetDims(domSize(rec),Math.max(12,N*k)*Math.cbrt(clamp(rec.budgetK||1,1,3))); };   /* _simK: the animation can simulate on a coarser grid than the shape (Sim resolution) */   // Custom: cubic voxels of a set size; the measuring runs stay coarse   // budgetK: a sculpt that grew the box keeps its voxel size (up to 3x the voxels)
 function boxU(pr,rec){ u3v(pr,'uSize',domSize(rec)); u3v(pr,'uLo',domLo(rec)); u1f(pr,'uHgt',rec.size[1]); }
 /* the stand-in ground, the same function the JS side uses (terrHJ) */
 let DUMMY2=null; function dummy2D(){ if(!DUMMY2){ DUMMY2=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,DUMMY2); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(4)); } return DUMMY2; }
@@ -1340,7 +1340,7 @@ let SNAP={den:null,rc:null,rb:null,dims:null,dom:null,ok:false};
 /* the recipe as the animation sees it: the shape's own fog physics, with the animation's wind, churn and rise, in the animation box */
 function ARec(rec){ return ARecWith(rec,rec.anim||animDefaults(rec)); }
 function ARecWith(rec,A){
-  return {...rec,dom:rec.adom||rec.dom,strokes:[],flows:[...(A.flows||[]),...guideFlows(rec,A)],sim:{...rec.sim,wind:A.wind,windDir:A.windDir,gust:A.gust,gustL:A.gustL,churnK:A.churn??1,lift:clamp(riseOf(A)/2,-1,1),spread:(rec.sim.spread||0)*0.25,drain:A.drain||0}}; }
+  return {...rec,_simK:(A.body||'sim')==='sim'?SIMRES_K[A.simRes||'full']||1:1,dom:rec.adom||rec.dom,strokes:[],flows:[...(A.flows||[]),...guideFlows(rec,A)],sim:{...rec.sim,wind:A.wind,windDir:A.windDir,gust:A.gust,gustL:A.gustL,churnK:A.churn??1,lift:clamp(riseOf(A)/2,-1,1),spread:(rec.sim.spread||0)*0.25,drain:A.drain||0}}; }
 /* sculpt guidance: the way you pulled, combed and blew the shape carries on gently as it plays, so the motion follows your sculpt instead of fighting it */
 function guideFlows(rec,A){ const k=A.guide??1; if(k<=0.01) return []; const out=[]; const S=rec.strokes||[]; let from=0; S.forEach((st,i)=>{ if(st.op===11) from=i+1; });   // a frame taken as the start resets the guidance: only later sculpting guides the motion
   for(const st of S.slice(from)){ let P=null; if(st.op===8&&st.dabs[0]){ const d=st.dabs[0]; P=[[d[0],d[1],d[2]],[d[0]+d[3],d[1]+d[4],d[2]+d[5]]]; }
@@ -1983,7 +1983,7 @@ addEventListener('keydown',ev=>{
   if((ev.ctrlKey||ev.metaKey)&&k.toLowerCase()==='z'){ ev.preventDefault(); ev.shiftKey?redo():undo(); return; }
   if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
   const t=TOOLS.find(x=>x.key===k.toLowerCase()&&(!x.ws||x.ws===UI.ws)); if(t){ setTool(t.id); return; }
-  if(k===' '){ ev.preventDefault(); togglePlay(); return; }
+  if(k===' '){ ev.preventDefault(); if(ev.shiftKey) playFromStart(); else togglePlay(); return; }
   if(k==='['){ setBrushR(UI.brushR/1.15); return; } if(k===']'){ setBrushR(UI.brushR*1.15); return; }
   if(k==='h'||k==='H'){ setClean(!UI.clean); return; }
   if((k==='Delete'||k==='Backspace')&&UI.mode==='anim'&&UI.selInfl!=null&&REC.anim.flows[UI.selInfl]){ REC.anim.flows.splice(UI.selInfl,1); UI.selInfl=null; pushUndo(); markAnim(); buildPanels(); toast('Influencer removed'); return; }
@@ -2023,6 +2023,7 @@ const TL={el:null,track:null,drag:null};
 function tlMax(tm){ return Math.max(tm.outT*1.12,tm.inT+(tm.outT-tm.inT)*1.4,viewTime(REC)*1.05,0.5); }
 function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   <button class="vbtn" id="playBtn" aria-pressed="false" title="Play In to Out (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg></button>
+  <button class="vbtn" id="playStartBtn" title="Play from the start (In). Shift+Space" aria-label="Play from the start"><svg viewBox="0 0 12 12"><path d="M1.5 1.5h1.6v9H1.5z"/><path d="M4 1.5v9l7-4.5z"/></svg></button>
   <div class="tlinfo"><b id="tlFrame">frame 1</b><span id="tlTime"></span></div>
   <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"></div><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot. At the far left it is your shape; drag right to start later in the motion"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
   <label class="tlnum" title="Frames in the shot. Add frames to extend: same speed, the simulation keeps going">Frames<input type="number" id="tlN" min="2" max="100000" step="1"></label>
@@ -2033,7 +2034,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   
   <span class="tlspd" id="tlWords"></span>`;
   TL.track=$('#tlTrack');
-  $('#playBtn').onclick=togglePlay;
+  $('#playBtn').onclick=togglePlay; $('#playStartBtn').onclick=playFromStart;
   $('#tlN').onchange=ev=>{ const tm=timing(REC); const N=Math.max(2,Math.round(+ev.target.value||tm.frames)); setTime({frames:N,inT:tm.inT,outT:tm.inT+tm.speed*(N-1)/tm.fps}); toast(N>tm.frames?`Extended to ${N} frames at the same speed`:`${N} frames at the same speed`); };
   $('#tlFps').onchange=ev=>{ const tm=timing(REC); const f=clamp(+ev.target.value||tm.fps,1,120); setTime({fps:f,inT:tm.inT,outT:tm.inT+tm.speed*(tm.frames-1)/f}); };
   $('#tlSpd').onchange=ev=>{ const tm=timing(REC); const k=clamp(+ev.target.value||tm.speedRT,0.001,1000); setTime({inT:tm.inT,outT:tm.inT+k*tm.rt*(tm.frames-1)/tm.fps}); };
@@ -2059,6 +2060,9 @@ function drawTimeline(){ if(!TL.track) return; const tm=timing(REC), mx=tlMax(tm
   for(const [id,v] of [['tlN',tm.frames],['tlFps',tm.fps],['tlSpd',+tm.speedRT.toPrecision(3)]]){ const e=$('#'+id); if(document.activeElement!==e) e.value=v; }
   $('#tlHold').setAttribute('aria-pressed',tm.hold); $('#tlReset').disabled=tm.follow&&REC.time?.outT==null;
   $('#tlWords').textContent=speedWords(tm.speedRT)+(tm.follow?' · frame 1 is your shape':' · frame 1 is your shape after '+fmT(tm.inT)); }
+
+/* play from In, wherever the playhead is */
+function playFromStart(){ if(UI.mode!=='anim') setMode('anim'); setViewT(timing(REC).inT); if(!UI.playing) togglePlay(); else { lastAdv=0; resetAccum(); } }
 /* =====================================================================
    SHOT — the test scene: a village on a valley floor, hills and a mountain range,
    seen through a shot camera. Fog is painted into the set as layers: pick a type,
@@ -3003,6 +3007,8 @@ const GENTLE_KINDS=[['breathe','Breathe','Swells and thins in slow patches, with
 const DM_KINDS=[['pinned','Pinned','The detail only rides with the fog'],['boil','Boil','Each size of detail drifts past the others, so the wisps slowly change shape'],['swirl','Swirl','Small eddies turn the detail over in place'],['roll','Roll','The detail turns over along a direction, like the top of a rolling bank'],['stream','Stream','The detail is combed along a direction, like a breeze across the surface']];
 const DM_IDX={pinned:0,boil:1,swirl:2,roll:3,stream:4}, BM_IDX={breathe:1,roll:2,sway:3};
 const GENTLE_DEF={type:'breathe',amt:0.35,per:10,dir:null,spd:0.3}, DM_DEF={type:'boil',spd:0.12,fine:0.3,amt:0.6,dir:null};
+/* Sim resolution in Animate: the motion is simulated on a coarser grid (voxels along each side x this), the detail is drawn on top at full resolution either way */
+const SIMRES_K={light:0.5,medium:0.72,full:1};
 const simBody=rec=>((rec&&rec.anim&&rec.anim.body)||'sim')==='sim';
 const animOf=rec=>rec.anim||{};
 function gentleOf(rec){ const A=animOf(rec); return {...GENTLE_DEF,...(A.gm||{})}; }
@@ -3625,11 +3631,12 @@ albedo ${meta.shader.albedo}, albedo colour ${meta.shader.albedo_colour}, eccent
 ${meta.shader.fade_near_camera_m?`Fade near camera: ${meta.shader.fade_near_camera_m} m (a camera-distance ramp on density in the material).
 `:''}`; }
 /* ---------- the Export window ---------- */
-const EXP={mode:'frame',every:1,what:'baked',N:160,res:432};
+const EXP={mode:'frame',every:1,what:'baked',N:160,res:432,full:true};
 function openExportX(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); EXP.N=LODS[lodOf(REC)].exp; if(UI.mode!=='anim') EXP.mode='frame';
   m.innerHTML=`<p>For Houdini and Solaris: the fog as <b>OpenVDB</b> files, a <b>USD layer</b> with its shading, and a script that sets up the SOPs and a <b>Karma material</b> in /stage. Unzip into <code>$HIP/brume/</code>.</p>
     <div class="row wide"><label>Export</label><div class="chips" id="exMode"></div></div>
     <div class="row wide" id="exEveryRow"><label>Every</label><div class="chips" id="exEvery"></div></div>
+    <div class="row wide" id="exFullRow"><label>Simulate</label><div class="chips" id="exFull"></div></div>
     <div class="row wide"><label>Detail</label><div class="chips" id="exWhat"></div></div>
     <div class="row wide"><label id="exResL">Resolution</label><div class="chips" id="exRes"></div></div>
     <p id="exInfo" style="font-family:var(--f-mono);font-size:12px"></p>
@@ -3638,7 +3645,7 @@ function openExportX(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); 
   const chipRow=(id,opts,get,set)=>{ const c=$('#'+id); c.innerHTML=''; for(const [v,t,title] of opts){ const b=document.createElement('button'); b.className='chip'; b.textContent=t; if(title) b.title=title; b.setAttribute('aria-pressed',get()===v); b.onclick=()=>{ set(v); draw(); }; c.appendChild(b); } };
   const draw=()=>{ const tm=timing(REC), vr=VRec(), box=rbox(MAIN,vr), DS=[0,1,2].map(i=>box[1][i]-box[0][i]); const nF=EXP.mode==='seq'?Math.ceil(tm.frames/EXP.every):1;
     chipRow('exMode',UI.mode==='anim'?[['frame','This frame','The moment under the playhead'],['seq',`Sequence · ${tm.frames} frames`,'Every frame from In to Out']]:[['frame','The shape','The still volume. For a moving sequence, switch to Animate']],()=>EXP.mode,v=>EXP.mode=v);
-    $('#exEveryRow').hidden=EXP.mode!=='seq'; chipRow('exEvery',[[1,'frame'],[2,'2nd'],[4,'4th']],()=>EXP.every,v=>EXP.every=v);
+    $('#exEveryRow').hidden=EXP.mode!=='seq'; const lowRes=UI.mode==='anim'&&simBody(REC)&&(REC.anim.simRes||'full')!=='full'; $('#exFullRow').hidden=!lowRes; chipRow('exFull',[[true,'At Full','Simulate again at the shape\'s full resolution for the export (slower, every wisp simulated)'],[false,'As previewed','Export the simulation at the Sim resolution you are previewing']],()=>EXP.full,v=>EXP.full=v); chipRow('exEvery',[[1,'frame'],[2,'2nd'],[4,'4th']],()=>EXP.every,v=>EXP.every=v);
     chipRow('exWhat',[['baked','Baked in','The fog exactly as you see it, detail and all, at the resolution you pick: what you see is what renders'],['fields','Rebuilt in Houdini','Small files: the coarse fog, its two rest fields and the noise. A Volume Wrangle rebuilds the same detail, moving the same way, at any resolution you set in Houdini']],()=>EXP.what,v=>EXP.what=v);
     if(EXP.what==='baked'){ $('#exResL').textContent='Detail level'; chipRow('exRes',LODS.map(L=>[L.exp,L.label,L.exp+' voxels along the fog']),()=>EXP.N,v=>EXP.N=v); }
     else { $('#exResL').textContent='Rebuild at'; chipRow('exRes',[[288,'288'],[432,'432'],[640,'640'],[960,'960']],()=>EXP.res,v=>EXP.res=v); }
@@ -3653,7 +3660,9 @@ async function doExportX(){ const st=$('#exStatus'), go=$('#exGo'); go.disabled=
     exporting=true; const parts=[]; let zerr=null; const zip=new fflate.Zip((err,dat)=>{ if(err) zerr=err; else parts.push(dat); });
     const addFile=(nm,u8,store)=>{ const z=store?new fflate.ZipPassThrough(nm):new fflate.ZipDeflate(nm,{level:6}); zip.add(z); z.push(u8,true); };
     const frs=[]; if(EXP.mode==='seq'){ for(let f=tm.start;f<=tm.start+tm.frames-1;f+=EXP.every) frs.push(f); if(frs[frs.length-1]!==tm.start+tm.frames-1) frs.push(tm.start+tm.frames-1); }
-    const boxes={}, ext=[[1e9,1e9,1e9],[-1e9,-1e9,-1e9]]; let mx=0, lastDims=null; const iS=1/sigmaOf(REC);
+    const A_=REC.anim, keepRes=A_.simRes; if(EXP.full&&MAIN.phase==='anim'&&simBody(REC)&&(A_.simRes||'full')!=='full'){ A_.simRes='full'; animReset(MAIN,REC,0); }   /* export at full resolution: simulate again from frame 1 */
+    let lastDims=null; try{
+    const boxes={}, ext=[[1e9,1e9,1e9],[-1e9,-1e9,-1e9]]; let mx=0; const iS=1/sigmaOf(REC);
     const one=async(t,f,label)=>{ await simTo(t,()=>{ st.textContent=label+' · simulating'; }); const vr=VRec(), box=rbox(MAIN,vr); boxes[f]=box.map(a=>a.map(v=>+v.toPrecision(6))); for(let i=0;i<3;i++){ ext[0][i]=Math.min(ext[0][i],box[0][i]); ext[1][i]=Math.max(ext[1][i],box[1][i]); }
       const file=(dir)=>`${name}/${dir}/${name}${f!=null&&frs.length?'.'+String(f).padStart(4,'0'):''}.vdb`;
       if(!fields){ const b=await bake(MAIN,vr,EXP.N,p=>{ st.textContent=label+' · baking '+Math.round(p*100)+'%'; },box); const d=b.data; for(let i=0;i<d.length;i++){ let v=d[i]*iS; if(v<1e-4) v=0; d[i]=v; if(v>mx) mx=v; } lastDims=b.dims;
@@ -3674,7 +3683,7 @@ async function doExportX(){ const st=$('#exStatus'), go=$('#exGo'); go.disabled=
     addFile(name+'/meta.json',enc.encode(JSON.stringify(meta,null,1))); addFile(name+'/'+name+'.usda',enc.encode(usdLayer(meta))); addFile(name+'/load_in_houdini.py',enc.encode(houdiniScript(meta)));
     addFile(name+'/README.txt',enc.encode(exportReadme(meta))); addFile(name+'/recipe.brume.json',enc.encode(JSON.stringify({brume:'designer-recipe',look:LOOK,...REC})));
     if(UI.ws==='shot'&&SHOT){ addFile(slug(SHOT.name)+'_shot.usda',enc.encode(usdShot(SHOT.name,shotEls()))); }
-    zip.end(); if(zerr) throw zerr; exporting=false; if(MAIN.phase==='anim') dirty.anim=true;
+    zip.end(); if(zerr) throw zerr; } finally { A_.simRes=keepRes; } exporting=false; if(MAIN.phase==='anim') dirty.anim=true;
     st.textContent=''; const ok=await offerFile(name+'_brume.zip',new Blob(parts,{type:'application/zip'}),'application/zip'); st.textContent=ok?`Saved ${name}_brume.zip · ${frs.length?frs.length+' frames · ':''}${lastDims.join(' × ')} voxels${fields?' (fields)':''}`:'Not saved.'; }
   catch(e){ console.error(e); st.textContent='Export failed: '+e.message; }
   exporting=false; if(MAIN.phase==='anim') dirty.anim=true; go.disabled=false; }
@@ -3839,6 +3848,9 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
   note(ab,'Your shape is <b>frame 1</b>. These only change how it moves from there; the shape itself stays as you sculpted it.');
   buildMotion(ab,A); if(!simBody(REC)) return;
   subH(ab,'Simulation');
+  { const dimsAt=k=>{ try{ const r={...ARec(REC),_simK:SIMRES_K[k]}; const d=recDims(r,MAIN.N); return d; }catch(e){ return null; } };
+    refreshers.push(chips(ab,'Sim resolution',[['full','Full','Every voxel of the shape simulates (the default)'],['medium','Medium','About a quarter of the work: most of the motion, faster'],['light','Light','About a sixteenth of the work: the big motion, quickly, for blocking it in. The fine wisps are still drawn on top, riding on it']],()=>A.simRes||'full',v=>{ A.simRes=v; pushUndo(); autosave(); markAnim(); buildPanels(); }));
+    const d=dimsAt(A.simRes||'full'), f=dimsAt('full'); if(d&&f) note(ab,`Simulating ${d.join('×')} (${(d[0]*d[1]*d[2]/1e6).toFixed(2)}M voxels) of the shape's ${f.join('×')}. The detail you see is drawn on top at full quality either way. Lighter while you set up the motion, then Full; Export simulates at Full unless you say otherwise.`); }
   refreshers.push(slider(ab,S_('Wind',0,25,()=>A.wind,v=>A.wind=+v.toFixed(1),v=>v.toFixed(1)+' m/s · '+windWords(v),markAnim,false,'Real wind speed during the shot. Or drag in the view with the Wind tool (7)')));
   refreshers.push(slider(ab,S_('Toward',0,360,()=>A.windDir,v=>A.windDir=v,v=>v.toFixed(0)+'°',markAnim)));
   refreshers.push(slider(ab,S_('Gusts',0,1,()=>A.gust,v=>A.gust=v,v=>v<0.05?'steady':v<0.35?'light':v<0.7?'gusty':'squally',markAnim,false,'Gusts and lulls roll through with the wind; it veers a little and slows near the ground')));
