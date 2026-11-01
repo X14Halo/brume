@@ -93,7 +93,9 @@ body.clean #hint, body.clean #hud, body.clean #modeBadge, body.clean .simbar{dis
 .tlinfo{display:flex;flex-direction:column;gap:1px;min-width:118px;font-variant-numeric:tabular-nums}
 .tlinfo b{font:600 12px var(--f-mono);color:var(--fg)} .tlinfo span{font:11px var(--f-mono);color:var(--faint)}
 .track{position:relative;flex:1 1 220px;min-width:160px;height:26px;border-radius:4px;background:var(--well);border:1px solid var(--line);cursor:pointer;touch-action:none}
-.track .pre{position:absolute;left:0;top:0;bottom:0;background:repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.03) 5px 10px);border-radius:4px 0 0 4px}
+.track .pre{position:absolute;left:0;top:0;bottom:0;background:repeating-linear-gradient(135deg,rgba(239,178,77,.05) 0 5px,rgba(239,178,77,.16) 5px 10px);border-right:1px dashed rgba(239,178,77,.6);border-radius:4px 0 0 4px;overflow:hidden}
+.track .pre span{position:absolute;left:5px;top:6px;font:600 9px var(--f-mono);letter-spacing:.08em;color:rgba(239,178,77,.95);white-space:nowrap}
+.track canvas.cache{position:absolute;left:0;right:0;bottom:1px;height:3px;width:100%;pointer-events:none}
 .track .rng{position:absolute;top:4px;bottom:4px;background:rgba(166,203,221,.22);border:1px solid rgba(166,203,221,.55);border-radius:3px}
 .track .h{position:absolute;top:-3px;bottom:-3px;width:8px;margin-left:-4px;background:var(--mist);border-radius:2px;cursor:ew-resize}
 .track .h.out{background:var(--mist)} .track .ph{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--sun);pointer-events:none}
@@ -674,7 +676,7 @@ void main(){ vec3 u=vU(), p=u2p(u)+(uIn==1?vec3(0.):uBOff);   /* an instance's l
 const FS_RENDER=HEAD+DENS_GLSL+SCENE_ALB_GLSL+`
 uniform sampler3D uLV; uniform vec3 uCam,uCR,uCU,uCF; uniform vec2 uRes; uniform float uTanY, uFrame, uBlend; uniform int uSteps, uFinal, uBg, uLkShow, uPass, uUseSetD; uniform vec3 uLkC[3]; uniform sampler2D uSetD;
 uniform vec3 uL, uSunC, uSkyC, uAlbC, uGlowC, uExtC; uniform float uG, uAlb, uFloorAlb, uGrid, uFar; uniform int uBounce; uniform sampler2D uPrev;   // shading as in the lighting pipeline: extinction colour, albedo, eccentricity, bounces
-uniform vec3 uRB0, uRB1; uniform float uNear, uPowder, uMSGlow;   // where the fog can be this frame (drift and gentle motion included) · fade near camera · cloud lighting: dark edges, inner glow
+uniform vec3 uRB0, uRB1; uniform float uNear, uPowder, uMSGlow; uniform int uFast;   // where the fog can be this frame (drift and gentle motion included) · fade near camera · cloud lighting: dark edges, inner glow
 uniform int uEnvOn; uniform sampler2D uEnv; uniform float uEnvRot, uEnvK;   // an HDRI behind it all
 out vec4 o;
 float hash13(vec3 p){ uvec3 q=uvec3(ivec3(p))*uvec3(1597334673u,3812015801u,2798796415u); uint n=(q.x^q.y^q.z)*1597334673u; n^=n>>16; n*=2246822519u; n^=n>>13; return float(n)*(1.0/4294967296.0); }
@@ -749,7 +751,7 @@ void main(){
       vec4 lv=lvAt(p); float tau=uSigma*lv.r; float gv=lv.b;
       // local self-shadowing with the full detail, on top of the cached grid shadow
       float sl=uDet*0.35, corr=0.;
-      for(int k=0;k<3;k++){ if(k==2&&uFinal==0) break; float s=sl*(k==0?0.6:k==1?1.8:4.); vec3 q=p+uL*s; corr+=(dens(q,1)-densGrid(q))*(k==0?1.2:k==1?1.6:3.)*sl; }
+      for(int k=0;k<3;k++){ if(uFast==1||k==2&&uFinal==0) break; float s=sl*(k==0?0.6:k==1?1.8:4.); vec3 q=p+uL*s; corr+=(dens(q,1)-densGrid(q))*(k==0?1.2:k==1?1.6:3.)*sl; }
       tau=max(tau+corr,0.);
       // multiple scattering needs optical depth around the point: thin wisps are lit almost purely by single scattering
       float msW=1.-exp(-uSigma*(lv.r*0.5+lv.g)*0.8);
@@ -1062,7 +1064,7 @@ function animDefaults(r){ const s=r.sim, t=r.template, ly=r.layer&&r.layer.type,
     ground:[1.6,1.4,0.35,0.5,'boil',0.3],hang_:[2.5,1.4,0.4,0,'boil',0.35],cloud_:[5,1.5,0.5,0,'roll',0.7]};
   const k=ly?({ground:'ground',valley:'valley',hang:'hang_',cloud:'cloud_',cap:'cloud_',haze:'haze'}[ly]||'ground'):t; const m=M[k]||(cat==='cloud'?M.cloud:cat==='atmos'?M.haze:M.bank);
   const rise={wisps:0.5,steam:0.6,spray:0.3,glowmist:0.2}[t]||0;
-  return {wind:Math.max(s.wind,m[0]),windDir:s.windDir??70,gust:m[2],gustL:s.gustL||s.eddy*3,churn:m[1],rise,lift:0,hold:false,flows:[],body:'sim',gm:{type:'breathe',amt:0.5,per:8,dir:null,spd:0.4},dm:{type:m[4],spd:m[5],fine:0.4,amt:0.8,dir:null},loop:false,drain:m[3]}; }   /* by default it simulates: churn, drift and drain the way that element does */
+  return {wind:Math.max(s.wind,m[0]),windDir:s.windDir??70,gust:m[2],gustL:s.gustL||s.eddy*3,churn:m[1],rise,lift:0,hold:false,flows:[],body:'sim',gm:{type:'breathe',amt:0.75,per:8,dir:null,spd:0.4},dm:{type:m[4],spd:m[5],fine:0.4,amt:0.8,dir:null},loop:false,drain:m[3]}; }   /* by default it simulates: churn, drift and drain the way that element does */
 /* primitives for each starting shape, in metres, laid out from the seed */
 function templatePrims(rec){ const P=templatePrims0(rec), o=rec.off; const base=!o?P:P.map(q=>{ const r=q.slice(); for(let i=0;i<3;i++) r[i]+=o[i]; if(q[3]===1) for(let i=0;i<3;i++) r[8+i]+=o[i]; return r; }); rec._npt=base.length; return [...base,...(typeof blockPrims==='function'?blockPrims(rec):[])].slice(0,64); }   /* the type's own shape, then your blocking shapes (already where they stand) */   // a Designer volume placed in the shot: built around the origin, shifted to where it stands
 function templatePrims0(rec){
@@ -1500,8 +1502,10 @@ function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps,pass=0,acc=null){
   u3v(pr,'uAlbC',hexLin(D.albC||'#ffffff').map(v=>v*(D.alb??0.9))); u3v(pr,'uGlowC',hexLin(D.emitC||'#8fd3ff').map(v=>v*(D.emit||0)*1.2));
   u1f(pr,'uFar',cam.dist*10+Math.max(...domSize(rec))*3+(rec.gnd?rec.gnd.L*4:0));
   if(ctx.inst&&ctx.instBox){ const A=ctx.instBox; u3v(pr,'uLB0',A[0]); u3v(pr,'uLBS',[0,1,2].map(i=>A[1][i]-A[0][i])); }
+  u1i(pr,'uFast',FAST&&(ctx===MAIN||pass===1)?1:0); if(FAST) u1i(pr,'uOct',Math.min(3,LODS[lodOf(rec)].oct));   /* moving: fewer octaves, no fine self-shadowing */
   u1f(pr,'uNear',D.near||0); u1f(pr,'uPowder',LOOK.powder||0); u1f(pr,'uMSGlow',LOOK.glow||0); envU(pr);
-  if(REGION.on&&!REGION.full&&w>8&&A.fullOK&&(ctx===MAIN||pass===1)){ const pr2=use('copy2'); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr2,'uSrc',6); fullscreen(); gl.useProgram(pr.p); gl.enable(gl.SCISSOR_TEST); const R=REGION; gl.scissor(Math.floor(R.x0*w),Math.floor(R.y0*h),Math.ceil((R.x1-R.x0)*w)+1,Math.ceil((R.y1-R.y0)*h)+1); fullscreen(); gl.disable(gl.SCISSOR_TEST); }   /* close-up: only the region is rendered; the rest of the frame keeps the last full image */
+  if(!REGION.on&&REFINE.on&&REFINE.nb>1&&blend<0.999&&A.fullOK&&(ctx===MAIN||pass===1)){ const pr2=use('copy2'); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr2,'uSrc',6); fullscreen(); gl.useProgram(pr.p); gl.enable(gl.SCISSOR_TEST); const y0=Math.floor(REFINE.b/REFINE.nb*h), y1=Math.ceil((REFINE.b+1)/REFINE.nb*h); gl.scissor(0,y0,w,y1-y0); fullscreen(); gl.disable(gl.SCISSOR_TEST); }   /* refining: one band of the frame this time */
+  else if(REGION.on&&!REGION.full&&w>8&&A.fullOK&&(ctx===MAIN||pass===1)){ const pr2=use('copy2'); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr2,'uSrc',6); fullscreen(); gl.useProgram(pr.p); gl.enable(gl.SCISSOR_TEST); const R=REGION; gl.scissor(Math.floor(R.x0*w),Math.floor(R.y0*h),Math.ceil((R.x1-R.x0)*w)+1,Math.ceil((R.y1-R.y0)*h)+1); fullscreen(); gl.disable(gl.SCISSOR_TEST); }   /* close-up: only the region is rendered; the rest of the frame keeps the last full image */
   else { fullscreen(); A.fullOK=true; } A.cur=dst; gl.bindFramebuffer(gl.FRAMEBUFFER,null); }
 function displayPass(ctx,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,w,h); const pr=use('disp'); bindTex(0,gl.TEXTURE_2D,ctx.acc.tex[ctx.acc.cur]); u1i(pr,'uA',0); u1f(pr,'uExpo',Math.pow(2,LOOK.expo)); u2f(pr,'uRes',w,h); u2f(pr,'uSrc',ctx.acc.w,ctx.acc.h); fullscreen(); }
 /* where a brush lands: first solid fog along the ray */
@@ -1651,10 +1655,10 @@ function frame(now){
     if(MAIN.phase==='anim'){ const vt=viewTime(REC);
       if(dirty.anim){ dirty.anim=false; ckClear(); if(animAuto()){ startAFit(); } else { REC.adom=REC.adom||animDom(REC); animReset(MAIN,REC,vt); dirty.light=true; S=MAIN.sim; } }
       else if(S.still){ if(Math.abs(vt-S.t)>1e-7){ S.t=S.target=vt; } }
-      else if(vt<S.t-1e-6){ if(!ckSeek(MAIN,REC,vt)) animReset(MAIN,REC,vt); dirty.light=true; S=MAIN.sim; } else if(vt>S.target+1e-6) simExtend(MAIN,vt);   // back to frame 1 is instant: it is the shape; further back than that, from the nearest kept frame
+      else if(vt<S.t-1e-6){ if(!ckSeek(MAIN,REC,vt)) animReset(MAIN,REC,vt); dirty.light=true; S=MAIN.sim; } else if(vt>S.target+1e-6){ if(ckLoadAt(MAIN,REC,vt)){ dirty.light=true; resetAccum(); S=MAIN.sim; } else simExtend(MAIN,vt); }   // kept frames load straight from the cache; back to frame 1 is instant: it is the shape; further back than that, from the nearest kept frame
       if(S.still&&S.lt!==S.t){ S.lt=S.t; if(gentleOn(MAIN,REC)) dirty.light=true; resetAccum(); }   // gentle motion: the light follows the moving shape; the detail moves by itself
       const ar=ARec(REC);
-      if(!AFIT.on&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,ar); ckKeep(MAIN,ar); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; }
+      if(!AFIT.on&&S.step<S.steps){ const t0=performance.now(); let n=0; do{ simStep(MAIN,ar); n++; }while(S.step<S.steps&&performance.now()-t0<(IS_MOBILE?10:14)&&n<12); simmed=true; const cv=CK.ver; ckKeep(MAIN,ar); if(CK.ver!==cv&&(CK.ver%4===0||!UI.playing)) drawTimeline(); }
       if(UI.playing&&S.step>=S.steps) playAdvance(now);
       if(S.step>=S.steps&&!S.checked&&!UI.playing&&!S.still){ S.checked=true; animWallGrow(); }
     }
@@ -1664,15 +1668,21 @@ function frame(now){
     const moving=interacting||brushing||simmed||UI.playing, reg=REGION.on&&(UI.playing||simmed)&&!interacting&&!brushing, fin=!moving||reg;   // at rest: every detail octave and detailed self-shadowing; Detail level sets the voxels. A close-up region gets them while it plays
     REGION.full=!reg;   // nothing playing (or you are moving the view): the whole frame; playing: only the close-up
     const rs=Math.min(UI.res||1024,glMaxTex)/Math.max(cw,ch);   // the viewport resolution: long edge in pixels
-    const sc=moving&&!reg?Math.min(IS_MOBILE?0.4:0.5,rs):rs; const vw=Math.max(16,Math.round(cw*sc)), vh=Math.max(16,Math.round(ch*sc));
+    if(moving&&!reg){ if(ftAvg>40) UI.moveK=Math.max(0.2,(UI.moveK||0.45)*0.9); else if(ftAvg<22) UI.moveK=Math.min(IS_MOBILE?0.4:0.55,(UI.moveK||0.45)*1.03); }   /* while you orbit or it plays: as coarse as it takes to stay smooth, sharp again when you stop */
+    const sc=moving&&!reg?Math.min(UI.moveK||0.45,rs):rs; const vw=Math.max(16,Math.round(cw*sc)), vh=Math.max(16,Math.round(ch*sc));
+    FAST=moving&&!reg;
     const target=UI.res>=4096?320:UI.res>=2048?256:192;
     // at rest the image refines over many cheap frames (each one jittered), so the view and the UI stay responsive; the step count adapts to how fast this GPU is
     if(!moving&&frames>2&&frames<target){ restK=clamp(restK*(ftAvg>40?0.85:ftAvg<24?1.04:1),0.2,1); }
+    /* at rest the refining is spread over bands of the frame, so each screen refresh stays short and the panels stay snappy */
+    if(moving||frames===0){ REFINE.nb=REFINE.nb0||2; REFINE.b=0; } else if(REFINE.b===0){ if(ftAvg>22&&REFINE.nb<8) REFINE.nb*=2; else if(ftAvg<12&&REFINE.nb>1) REFINE.nb/=2; REFINE.nb0=REFINE.nb; }
+    REFINE.on=!moving&&frames>0; REFINE.wrap=!REFINE.on||REFINE.b===REFINE.nb-1;
     const ra=reg?clamp((REGION.x1-REGION.x0)*(REGION.y1-REGION.y0),0.02,1):1, pxK=clamp(Math.sqrt(0.8e6/(vw*vh*ra)),0.35,reg?2:1.2);
-    const stp=Math.max(16,Math.round((moving&&!reg?72:110*pxK*(reg?1:restK))*roomK(VR)));
+    const stp=Math.max(16,Math.round((moving&&!reg?52:frames===0&&!reg?64:110*pxK*(reg?1:restK))*roomK(VR)));   /* the first still frame comes quickly, then it refines */
     if(UI.ws==='shot'){ rtOf(REC).lightVer=LIGHTVER; frames=shotRender(vw,vh,moving,fin,target,stp); displayPass({acc:COMPACC},cw,ch); }   // the shot: the set and every layer together
-    else { if(frames<target||moving){ const blend=moving?1:1/(frames+1); renderPass(MAIN,VR,CAM,vw,vh,blend,fin,frames,stp); frames++; }
+    else { if(frames<target||moving){ const blend=moving?1:1/(frames+1); renderPass(MAIN,VR,CAM,vw,vh,blend,fin&&frames>0,frames,stp); if(REFINE.wrap) frames++; }
       displayPass(MAIN,cw,ch); }
+    if(REFINE.on) REFINE.b=(REFINE.b+1)%REFINE.nb;
     if(capture){ const c=capture; capture=null; try{ c(glc); }catch(e){ console.error(e); } }
     drawOverlay();
     if(now-hudT>200){ hudT=now; updateHud(vw,vh,fin,target); }
@@ -2025,7 +2035,8 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   <button class="vbtn" id="playBtn" aria-pressed="false" title="Play In to Out (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg></button>
   <button class="vbtn" id="playStartBtn" title="Play from the start (In). Shift+Space" aria-label="Play from the start"><svg viewBox="0 0 12 12"><path d="M1.5 1.5h1.6v9H1.5z"/><path d="M4 1.5v9l7-4.5z"/></svg></button>
   <div class="tlinfo"><b id="tlFrame">frame 1</b><span id="tlTime"></span></div>
-  <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"></div><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot. At the far left it is your shape; drag right to start later in the motion"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
+  <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"><span id="tlPreL"></span></div><canvas class="cache" id="tlCache" height="3"></canvas><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot. At the far left it is your shape; drag right to start later in the motion"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
+  <label class="tlnum" title="Pre-roll: frames simulated from your shape before frame 1, so the fog is already moving when the shot starts. The shaded part of the bar">Pre-roll<input type="number" id="tlPreN" min="0" max="100000" step="1"></label>
   <label class="tlnum" title="Frames in the shot. Add frames to extend: same speed, the simulation keeps going">Frames<input type="number" id="tlN" min="2" max="100000" step="1"></label>
   <label class="tlnum" title="Frames per second">fps<input type="number" id="tlFps" min="1" max="120" step="1"></label>
   <label class="tlnum" title="1 is real time; below 1 is slow motion, above 1 is sped up">Speed<input type="number" id="tlSpd" min="0.001" max="100" step="any"></label>
@@ -2035,6 +2046,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   <span class="tlspd" id="tlWords"></span>`;
   TL.track=$('#tlTrack');
   $('#playBtn').onclick=togglePlay; $('#playStartBtn').onclick=playFromStart;
+  $('#tlPreN').onchange=ev=>{ const tm=timing(REC); const n=Math.max(0,Math.round(+ev.target.value||0)); const inT=n*tm.speed/tm.fps; setTime({inT:+inT.toFixed(5),outT:+(inT+(tm.outT-tm.inT)).toFixed(5)}); UI.viewT=inT; toast(n?`${n} frames of pre-roll: frame 1 starts that far into the motion`:'No pre-roll: frame 1 is your shape'); };
   $('#tlN').onchange=ev=>{ const tm=timing(REC); const N=Math.max(2,Math.round(+ev.target.value||tm.frames)); setTime({frames:N,inT:tm.inT,outT:tm.inT+tm.speed*(N-1)/tm.fps}); toast(N>tm.frames?`Extended to ${N} frames at the same speed`:`${N} frames at the same speed`); };
   $('#tlFps').onchange=ev=>{ const tm=timing(REC); const f=clamp(+ev.target.value||tm.fps,1,120); setTime({fps:f,inT:tm.inT,outT:tm.inT+tm.speed*(tm.frames-1)/f}); };
   $('#tlSpd').onchange=ev=>{ const tm=timing(REC); const k=clamp(+ev.target.value||tm.speedRT,0.001,1000); setTime({inT:tm.inT,outT:tm.inT+k*tm.rt*(tm.frames-1)/tm.fps}); };
@@ -2055,7 +2067,8 @@ function drawTimeline(){ if(!TL.track) return; const tm=timing(REC), mx=tlMax(tm
   $('#tlIn').style.left=x(tm.inT); $('#tlOut').style.left=x(tm.outT); $('#tlPh').style.left=x(vt);
   $('#tlRng').style.left=x(tm.inT); $('#tlRng').style.width=(clamp((tm.outT-tm.inT)/mx,0,1)*100)+'%'; $('#tlPre').style.width=x(tm.inT);
   const f=frameOf(tm,vt); const inRange=vt>=tm.inT-1e-6&&vt<=tm.outT+1e-6;
-  $('#tlFrame').textContent=inRange?`frame ${Math.round(f)} / ${tm.start+tm.frames-1}`:vt<tm.inT?'pre-roll':'after Out';
+  const preN=Math.round(tm.inT/Math.max(tm.speed,1e-9)*tm.fps); $('#tlPreL').textContent=preN?'PRE-ROLL '+preN:''; { const e=$('#tlPreN'); if(document.activeElement!==e) e.value=preN; }
+  $('#tlFrame').textContent=inRange?`frame ${Math.round(f)} / ${tm.start+tm.frames-1}`:vt<tm.inT?`pre-roll ${Math.round(f)-tm.start}`:'after Out'; drawCacheBar(tm,mx);
   $('#tlTime').textContent=`sim ${fmT(vt)} · shot ${fmT((tm.frames-1)/tm.fps)}`;
   for(const [id,v] of [['tlN',tm.frames],['tlFps',tm.fps],['tlSpd',+tm.speedRT.toPrecision(3)]]){ const e=$('#'+id); if(document.activeElement!==e) e.value=v; }
   $('#tlHold').setAttribute('aria-pressed',tm.hold); $('#tlReset').disabled=tm.follow&&REC.time?.outT==null;
@@ -2063,6 +2076,9 @@ function drawTimeline(){ if(!TL.track) return; const tm=timing(REC), mx=tlMax(tm
 
 /* play from In, wherever the playhead is */
 function playFromStart(){ if(UI.mode!=='anim') setMode('anim'); setViewT(timing(REC).inT); if(!UI.playing) togglePlay(); else { lastAdv=0; resetAccum(); } }
+/* the frames kept as they played: a line under the bar, like a cache line */
+function drawCacheBar(tm,mx){ const c=$('#tlCache'); if(!c) return; const w=Math.max(1,Math.round(c.clientWidth||200)); if(c.width!==w) c.width=w; const g=c.getContext('2d'); g.clearRect(0,0,w,3); if(typeof CK==='undefined'||!CK.list.length||CK.eid!==(REC&&REC.eid)) return;
+  g.fillStyle='rgba(120,190,255,.9)'; const fw=Math.max(1,w*tm.speed/tm.fps/mx); for(const e of CK.list){ const x=e.t/mx*w; g.fillRect(Math.floor(x-fw/2),0,Math.ceil(fw),3); } }
 /* =====================================================================
    SHOT — the test scene: a village on a valley floor, hills and a mountain range,
    seen through a shot camera. Fog is painted into the set as layers: pick a type,
@@ -2140,7 +2156,7 @@ function shotRender(vw,vh,moving,fin,target,steps){ const act=REC; const list=[]
   const rs=Math.min(UI.res||1024,glMaxTex)/Math.max(cw,ch), fw=Math.max(16,Math.round(cw*rs)), fh=Math.max(16,Math.round(ch*rs));   /* the set: at the fog's own resolution while you move, full resolution at rest, drawn only when something changed */
   setRender(moving?vw:fw,moving?vh:fh,fogs.slice(0,4).map(f=>f.setRec?{...f,rec:f.setRec}:f));
   SET_DEPTH=SET.dist;
-  for(const f of fogs){ const rt=f.rt; if(rt.frames<target||moving){ renderPass(f.ctx,f.rec,CAM,vw,vh,moving?1:1/(rt.frames+1),fin,rt.frames,steps,1); rt.frames++; }
+  for(const f of fogs){ const rt=f.rt; if(rt.frames<target||moving){ renderPass(f.ctx,f.rec,CAM,vw,vh,moving?1:1/(rt.frames+1),fin&&rt.frames>0,rt.frames,steps,1); if(REFINE.wrap) rt.frames++; }
     const B=camBasis(CAM), c=domCenter(f.rec); list.push({acc:f.ctx.acc,d:len(sub(c,B.pos))}); }
   SET_DEPTH=null;
   list.sort((a,b)=>b.d-a.d); ensureAcc({acc:COMPACC},vw,vh); gl.bindFramebuffer(gl.FRAMEBUFFER,COMPACC.fb[0]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,vw,vh);
@@ -2947,7 +2963,7 @@ const STEPS={
       say:()=>'Optional. Sculpt the starting shape with the brushes (Add, Erase, Pull, Comb…), then tune <b>Forming</b>, <b>Detail</b> and <b>Shading</b>. Pick the layer to work on in Shot layers.',
       done:()=>false},
     {id:'anim',label:'Animate',title:'5 · Animate',mode:'anim',tool:'orbit',secs:['animSec','movSec','layerSec','colSec','lightSec'],tools:['orbit','collide',...ANIM_TOOLS,'box'],
-      say:()=>'Press <b>Play</b> (space). Pick how it moves: <b>Gentle</b> breathes, rolls or sways the whole layer with no simulation; set how its <b>detail moves</b>; <b>Loop</b> for background fog. <b>Simulate</b> for wind, influencers, and things that push it (pick movers with <b>Pick</b>, K).',
+      say:()=>'Press <b>Play</b> (space). Pick how it moves: <b>Simulate</b> churns and drifts it the way that fog really moves (the default); <b>Simple</b> breathes, rolls or drifts the whole layer with no simulation; set how its <b>detail moves</b>; <b>Loop</b> for background fog. Wind, influencers and things that push it (pick movers with <b>Pick</b>, K) need Simulate.',
       done:()=>false}],
   designer:[
     {id:'start',label:'Start',title:'1 · Pick a starting point',mode:'shape',tool:'orbit',secs:['startSec','sizeSec','formSec','emitSec','lodSec'],tools:['orbit','shape','blocker','box','source'],
@@ -2957,7 +2973,7 @@ const STEPS={
     {id:'sculpt',label:'Sculpt',title:'3 · Sculpt',mode:'shape',tool:'add',secs:['looksSec','simSec','detSec'],tools:['orbit','shape',...SHAPE_BRUSH_TOOLS,'blocker','box'],
       say:()=>'Paint, erase, pull and comb the shape with the brushes. <b>Paint look</b> mixes a second look into parts of it.',done:()=>false},
     {id:'anim',label:'Animate',title:'4 · Animate',mode:'anim',tool:'orbit',secs:['animSec','lightSec'],tools:['orbit',...ANIM_TOOLS.filter(t=>t!=='sphere'),'box'],
-      say:()=>'Press <b>Play</b> (space). Pick how it moves in the <b>Animation</b> panel: <b>Gentle</b> (breathe, roll, sway, drift) with no simulation, how the <b>detail moves</b>, and <b>Loop</b>. <b>Simulate</b> for wind, rise and influencers. Set the frame range on the timeline.',done:()=>false},
+      say:()=>'Press <b>Play</b> (space). Pick how it moves in the <b>Animation</b> panel: <b>Simulate</b> (the default: wind, churn, rise, influencers) or <b>Simple</b> (breathe, roll, drift, no simulation), how the <b>detail moves</b>, and <b>Loop</b>. Set the frame range on the timeline.',done:()=>false},
     {id:'save',label:'Save',title:'5 · Save & export',mode:'shape',tool:'orbit',secs:['shelfSec','lightSec'],tools:['orbit'],
       say:()=>'Save it to the <b>Shelf</b> (it can then be placed into the Shot), or <b>Export</b> it (top right) as VDB for the pipeline.',done:()=>false}]};
 const stepList=()=>STEPS[UI.ws==='shot'?'shot':'designer'];
@@ -3001,17 +3017,17 @@ function placeAssetAt(p){ const src=UI.placeAsset; UI.placeAsset=null; if(shotEl
    MOTION & DETAIL — how the fog moves when it is not simulated, how its detail moves on its own,
    the split detail controls, blockers, the close-up region, and the HDRI
    ===================================================================== */
-/* the body: Still (only the detail moves), Gentle (breathe, roll, sway or drift: no simulation, loops, scrubs instantly) or Simulate (wind, influencers, colliders, movers) */
-const BODY_KINDS=[['still','Still','The shape stays where it is; only its detail moves'],['gentle','Gentle','A slow breathe, roll, sway or drift of the whole shape, with no simulation: it loops and scrubs instantly'],['sim','Simulate','The full simulation: wind, rise, churn, drain, influencers, colliders and movers']];
-const GENTLE_KINDS=[['breathe','Breathe','Swells and thins in slow patches, with a slight heave'],['roll','Roll','The surface turns over and over along a direction, like a rolling fog bank'],['sway','Sway','Drifts a little way and back, unevenly across its width'],['drift','Drift','Slides slowly along a direction (does not loop)']];
+/* the body: Still (only the detail moves), Simple (breathe, roll or drift: no simulation, loops, scrubs instantly) or Simulate (wind, influencers, colliders, movers) */
+const BODY_KINDS=[['sim','Simulate','The full simulation: wind, rise, churn, drain, influencers, colliders and movers'],['gentle','Simple','A breathe, roll or drift of the whole shape, with no simulation: it loops and scrubs instantly'],['still','Still','The shape stays where it is; only its detail moves']];
+const GENTLE_KINDS=[['breathe','Breathe','Swells and thins in slow patches, with a slight heave'],['roll','Roll','The surface turns over and over along a direction, like a rolling fog bank'],['drift','Drift','Slides slowly along a direction (does not loop)']];
 const DM_KINDS=[['pinned','Pinned','The detail only rides with the fog'],['boil','Boil','Each size of detail drifts past the others, so the wisps slowly change shape'],['swirl','Swirl','Small eddies turn the detail over in place'],['roll','Roll','The detail turns over along a direction, like the top of a rolling bank'],['stream','Stream','The detail is combed along a direction, like a breeze across the surface']];
 const DM_IDX={pinned:0,boil:1,swirl:2,roll:3,stream:4}, BM_IDX={breathe:1,roll:2,sway:3};
-const GENTLE_DEF={type:'breathe',amt:0.35,per:10,dir:null,spd:0.3}, DM_DEF={type:'boil',spd:0.12,fine:0.3,amt:0.6,dir:null};
+const GENTLE_DEF={type:'breathe',amt:0.75,per:10,dir:null,spd:0.3}, DM_DEF={type:'boil',spd:0.12,fine:0.3,amt:0.6,dir:null};
 /* Sim resolution in Animate: the motion is simulated on a coarser grid (voxels along each side x this), the detail is drawn on top at full resolution either way */
 const SIMRES_K={light:0.5,medium:0.72,full:1};
 const simBody=rec=>((rec&&rec.anim&&rec.anim.body)||'sim')==='sim';
 const animOf=rec=>rec.anim||{};
-function gentleOf(rec){ const A=animOf(rec); return {...GENTLE_DEF,...(A.gm||{})}; }
+function gentleOf(rec){ const A=animOf(rec), G={...GENTLE_DEF,...(A.gm||{})}; if(G.type==='sway') G.type='breathe'; return G; }   /* Sway is gone: older recipes breathe instead */
 function dmOf(rec){ const A=animOf(rec); return {...DM_DEF,...(A.dm||{})}; }
 /* a direction on the ground from a compass angle; none set: the way the animation's wind blows */
 function dirOfAng(a,rec){ const d=(a==null?(animOf(rec).windDir??70):a)*D2R; return [Math.sin(d),0,-Math.cos(d)]; }
@@ -3042,6 +3058,8 @@ const BK0=new Float32Array(32), BK1=new Float32Array(32);
 function blkU(pr,rec){ const L=blockersOf(rec).slice(0,8); BK0.fill(0); BK1.fill(0); L.forEach((b,i)=>{ BK0.set([b.c[0],b.c[1],b.c[2],b.t==='sphere'?0:1],i*4); BK1.set(b.t==='sphere'?[b.r,0,0,0]:[b.s[0],b.s[1],b.s[2],(b.yaw||0)*D2R],i*4); });
   u1i(pr,'uNBK',L.length); if(L.length){ gl.uniform4fv(U(pr,'uBK0[0]'),BK0); gl.uniform4fv(U(pr,'uBK1[0]'),BK1); } }
 /* close-up: a region of the frame that plays at full quality, the rest held */
+/* refining at rest, a band of the frame at a time; FAST: you are moving, so draw the quick way */
+const REFINE={on:false,nb:2,nb0:2,b:0,wrap:true}; let FAST=false;
 const REGION={on:false,x0:0.3,y0:0.3,x1:0.7,y1:0.7,full:false,arm:false};
 /* the HDRI: background, ambient colour, and (optionally) where the sun is */
 const ENV={tex:null,on:false,name:'',rot:0,k:1,amb:null,w:0,h:0};
@@ -3049,25 +3067,31 @@ function envU(pr){ const on=ENV.on&&ENV.tex?1:0; u1i(pr,'uEnvOn',on); bindTex(11
 /* scrubbing a simulation back: start from the nearest kept frame before it, not from frame 1 */
 const CK={list:[],bytes:0,key:''};
 function ckClear(){ for(const c of CK.list) for(const t of [c.den,c.rc,c.rb]) gl.deleteTexture(t); CK.list=[]; CK.bytes=0; }
-function ckEvery(rec){ const tm=timing(rec); return Math.max(8,Math.round(tm.frames/14))*tm.speed/tm.fps; }   /* about fourteen kept frames over a shot, never closer than every 8th frame */
-function ckKeep(ctx,rec){ if(ctx!==MAIN||ctx.phase!=='anim'||!ctx.dims) return; const S=ctx.sim, iv=ckEvery(rec); if(S.t<iv*0.5) return;
-  const k=Math.floor(S.t/iv+1e-6), last=CK.list.length?CK.list[CK.list.length-1]:null; if(last&&Math.floor(last.t/iv+1e-6)>=k) return;
-  if(CK.owner!==ctx||CK.eid!==REC.eid||CK.dims!==ctx.dims.join()) { ckClear(); CK.owner=ctx; CK.eid=REC.eid; CK.dims=ctx.dims.join(); }
-  const d=ctx.dims, bytes=d[0]*d[1]*d[2]*8*3; if(CK.bytes+bytes>420*1048576){ if(CK.list.length<2) return; const drop=CK.list.splice(1,1)[0]; for(const t of [drop.den,drop.rc,drop.rb]) gl.deleteTexture(t); CK.bytes-=bytes; }   // over the memory budget: keep fewer, spread out
-  const c={t:S.t,den:T3(d),rc:T3(d),rb:T3(d),sim:{...S}}; copyVol(ctx.den[0],c.den,d); copyVol(ctx.rc[0],c.rc,d); copyVol(ctx.rb[0],c.rb,d); CK.list.push(c); CK.bytes+=bytes; }
-function ckSeek(ctx,rec,vt){ if(CK.owner!==ctx||CK.eid!==REC.eid||!ctx.dims||CK.dims!==ctx.dims.join()) return false; let best=null; for(const c of CK.list) if(c.t<=vt+1e-6&&(!best||c.t>best.t)) best=c; if(!best) return false;
-  const d=ctx.dims; copyVol(best.den,ctx.den[0],d); copyVol(best.rc,ctx.rc[0],d); copyVol(best.rb,ctx.rb[0],d); ctx.sim={...best.sim};
-  simExtend(ctx,vt); return true; }
+/* every frame the simulation lands on is kept (as it plays or scrubs), so playing or scrubbing back is a copy, not a re-simulation. Within a memory budget;
+   past it, every 8th frame is still kept, to start from */
+const CK_BUDGET=700*1048576;
+function ckFrame(rec,t){ const tm=timing(rec), f=frameOf(tm,t); return Math.abs(f-Math.round(f))<2e-3?Math.round(f):null; }
+function ckKeep(ctx,rec){ if(ctx!==MAIN||ctx.phase!=='anim'||!ctx.dims||ctx.sim.still) return; const S=ctx.sim; if(S.step<S.steps) return; const f=ckFrame(REC,S.t); if(f==null) return;
+  if(CK.owner!==ctx||CK.eid!==REC.eid||CK.dims!==ctx.dims.join()){ ckClear(); CK.owner=ctx; CK.eid=REC.eid; CK.dims=ctx.dims.join(); }
+  if(CK.list.some(c=>c.f===f)) return; const d=ctx.dims, bytes=d[0]*d[1]*d[2]*24;
+  while(CK.bytes+bytes>CK_BUDGET){ const i=CK.list.findIndex(c=>c.f%8!==0); if(i<0) return; const x=CK.list.splice(i,1)[0]; for(const t of [x.den,x.rc,x.rb]) gl.deleteTexture(t); CK.bytes-=bytes; }   /* full: give up an in-between frame (every 8th stays) */
+  const c={f,t:S.t,den:T3(d),rc:T3(d),rb:T3(d),sim:{...S}}; copyVol(ctx.den[0],c.den,d); copyVol(ctx.rc[0],c.rc,d); copyVol(ctx.rb[0],c.rb,d); CK.list.push(c); CK.list.sort((a,b)=>a.t-b.t); CK.bytes+=bytes; CK.ver=(CK.ver||0)+1; }
+function ckLoad(ctx,c){ const d=ctx.dims; copyVol(c.den,ctx.den[0],d); copyVol(c.rc,ctx.rc[0],d); copyVol(c.rb,ctx.rb[0],d); ctx.sim={...c.sim}; }
+const ckOK=ctx=>CK.owner===ctx&&CK.eid===REC.eid&&ctx.dims&&CK.dims===ctx.dims.join();
+/* exactly this frame, if it was kept */
+function ckLoadAt(ctx,rec,vt){ if(!ckOK(ctx)) return false; const f=ckFrame(rec,vt); if(f==null) return false; const c=CK.list.find(x=>x.f===f); if(!c) return false; ckLoad(ctx,c); return true; }
+/* going back: this frame if kept, else the nearest kept frame before it, simulated on from there */
+function ckSeek(ctx,rec,vt){ if(!ckOK(ctx)) return false; let best=null; for(const c of CK.list) if(c.t<=vt+1e-6&&(!best||c.t>best.t)) best=c; if(!best) return false; ckLoad(ctx,best); simExtend(ctx,vt); return true; }
 /* ---------- the Animation panel's top: how the shape moves, and how its detail moves ---------- */
 function slopedGround(rec){ const t=rec.gnd&&rec.gnd.t; return ['slope','peak','valley','bowl','scene'].includes(t); }
-function setBody(k){ const A=REC.anim; if((A.body||'sim')===k) return; A.body=k; REC.adom=null; REC.afix=false; pushUndo(); autosave(); markAnim(); buildPanels(); toast({still:'Still: only the detail moves',gentle:'Gentle: the shape moves by itself, no simulation. It scrubs instantly and can loop',sim:'Simulate: wind, influencers, colliders and movers'}[k]); }
+function setBody(k){ const A=REC.anim; if((A.body||'sim')===k) return; A.body=k; REC.adom=null; REC.afix=false; pushUndo(); autosave(); markAnim(); buildPanels(); toast({still:'Still: only the detail moves',gentle:'Simple: the shape breathes, rolls or drifts by itself, no simulation. It scrubs instantly and can loop',sim:'Simulate: wind, influencers, colliders and movers'}[k]); }
 /* a heading: the way the wind blows, or one you set */
 function dirRow(p,o,key){ const row=document.createElement('div'); row.className='row wide'; row.innerHTML='<label>Direction</label>'; const c=document.createElement('div'); c.className='chips'; row.appendChild(c); p.appendChild(row);
   const draw=()=>{ c.innerHTML=''; for(const [v,t] of [[true,'With the wind'],[false,'Set']]){ const b=document.createElement('button'); b.className='chip'; b.textContent=t; b.setAttribute('aria-pressed',(o[key]==null)===v); b.onclick=()=>{ o[key]=v?null:Math.round(animOf(REC).windDir??70); pushUndo(); autosave(); markAnim(); buildPanels(); }; c.appendChild(b); } }; draw();
   if(o[key]!=null) refreshers.push(slider(p,S_('Toward',0,360,()=>o[key],v=>o[key]=Math.round(v),v=>v.toFixed(0)+'°',markAnim))); return draw; }
 function buildMotion(ab,A){ const b=A.body||'sim';
   subH(ab,'How it moves'); refreshers.push(chips(ab,'',BODY_KINDS,()=>A.body||'sim',v=>setBody(v)));
-  if(b==='gentle'){ const G=A.gm=A.gm||{...GENTLE_DEF};
+  if(b==='gentle'){ const G=A.gm=A.gm||{...GENTLE_DEF}; if(G.type==='sway') G.type='breathe';
     refreshers.push(chips(ab,'',GENTLE_KINDS,()=>G.type,v=>{ G.type=v; pushUndo(); autosave(); markAnim(); buildPanels(); }));
     if(G.type==='drift') refreshers.push(slider(ab,S_('Speed',0.01,5,()=>G.spd,v=>G.spd=+v.toPrecision(3),v=>v.toFixed(v<1?2:1)+' m/s',markAnim,true,'How fast the whole shape slides along')));
     else { refreshers.push(slider(ab,S_('Amount',0,1,()=>G.amt,v=>G.amt=+v.toFixed(3),v=>v<0.04?'barely':v<0.25?'subtle':v<0.6?'gentle':'strong',markAnim,false,G.type==='breathe'?'How much it swells and thins':G.type==='roll'?'How far the surface turns over':'How far it sways')));
@@ -3084,7 +3108,7 @@ function buildMotion(ab,A){ const b=A.body||'sim';
   subH(ab,'Loop'); { const row=document.createElement('div'); row.className='row wide'; const lb=document.createElement('button'); lb.className='chip'; lb.textContent=A.loop?'Loops':'Loop'; lb.setAttribute('aria-pressed',!!A.loop);
     const can=b!=='sim'&&!(b==='gentle'&&(A.gm||{}).type==='drift'); lb.disabled=!can; lb.title='The last frame flows straight into the first: every motion is rounded to whole cycles over the shot';
     lb.onclick=()=>{ A.loop=!A.loop; pushUndo(); autosave(); markAnim(); buildPanels(); toast(A.loop?'Loops: frame '+(timing(REC).frames+1)+' would be frame 1 again':'Loop off'); }; row.appendChild(lb); ab.appendChild(row);
-    note(ab,can?'Background fog that repeats seamlessly: everything is rounded to whole cycles across In to Out.':b==='sim'?'A simulation does not repeat; for a loop use Still or Gentle.':'Drift slides one way, so it cannot loop; Sway goes and comes back.'); if(!can&&A.loop) A.loop=false; }
+    note(ab,can?'Background fog that repeats seamlessly: everything is rounded to whole cycles across In to Out.':b==='sim'?'A simulation does not repeat; for a loop use Still or Simple.':'Drift slides one way, so it cannot loop.'); if(!can&&A.loop) A.loop=false; }
   if(b!=='sim'){ const hasMov=UI.ws==='shot'&&typeof movList==='function'&&movList().length, hasFl=(A.flows||[]).length; note(ab,(hasMov||hasFl?'<b>'+(hasMov?'Movers':'')+(hasMov&&hasFl?' and ':'')+(hasFl?'influencers':'')+' only act in Simulate.</b> ':'')+'Wind, influencers, colliders and movers are under <b>Simulate</b>.'); } }
 /* drawing a force or picking a mover: that needs the simulation */
 function needSim(why){ if(simBody(REC)) return; REC.anim.body='sim'; REC.adom=null; markAnim(); buildPanels(); toast((why||'That')+' needs the simulation: switched to Simulate'); }
