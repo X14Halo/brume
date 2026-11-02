@@ -52,7 +52,7 @@ body[data-ws=shot] .ws-designer, body:not([data-ws=shot]) .ws-shot{display:none!
 .lookrow .lksel span{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lookrow.on .lksel{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun) inset}
 .lookrow select{min-width:0;background:var(--well);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px;font:12px var(--f-ui)}
-#cleanBtn[aria-pressed=true],#regionBtn[aria-pressed=true],#refBtn[aria-pressed=true],#abBtn[aria-pressed=true],#pbBtn[aria-pressed=true]{background:var(--sun);color:#1b1408}
+#cleanBtn[aria-pressed=true],#regionBtn[aria-pressed=true],#refBtn[aria-pressed=true],#abBtn[aria-pressed=true],#soloBtn[aria-pressed=true],#pbBtn[aria-pressed=true]{background:var(--sun);color:#1b1408}
 body.clean #hint, body.clean #hud, body.clean #modeBadge, body.clean .simbar{display:none!important}
 #vres button[aria-pressed=true]{background:var(--sun);color:#1b1408}
 .name-in{background:transparent;border:1px solid transparent;border-radius:4px;padding:4px 7px;font:500 14px var(--f-ui);width:min(260px,30vw);min-width:0}
@@ -241,6 +241,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <div id="vtop">
       <div class="seg"><button id="cleanBtn" aria-pressed="false" title="Hide handles (H): only the volume, no box, brush, paths or labels" aria-label="Hide handles"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg></button></div>
       <div class="seg" id="undoSeg" role="group" aria-label="Undo and redo"><button id="undoBtn" title="Undo (Ctrl Z)" aria-label="Undo"><svg viewBox="0 0 16 16"><path d="M5 3L2 6l3 3"/><path d="M2 6h7.5a4 4 0 0 1 0 8H7"/></svg></button><button id="redoBtn" title="Redo (Ctrl Shift Z)" aria-label="Redo"><svg viewBox="0 0 16 16"><path d="M11 3l3 3-3 3"/><path d="M14 6H6.5a4 4 0 0 0 0 8H9"/></svg></button></div>
+      <div class="seg ws-shot"><button id="soloBtn" aria-pressed="false" title="Solo: only the picked volume, on the dark surround, with the same camera and sun. Click again for the whole set" aria-label="Solo"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2"/></svg></button></div>
       <div class="seg"><button id="abBtn" aria-pressed="false" title="A/B: hold what you see now, change anything, then drag the line across the view to compare. Click again to clear" aria-label="A/B compare"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M8 1v14"/><path d="M3.5 10l1.5-5 1.5 5M4 8.6h2"/></svg></button></div>
       <div class="seg"><button id="refBtn" aria-pressed="true" aria-label="Scale guide"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round"><circle cx="4" cy="4.2" r="1.4"/><path d="M4 6.2v4.3M2.6 15l1.4-4.5 1.4 4.5M2.3 7.6h3.4"/><path d="M8.5 15V5.5l3-2.5 3 2.5V15z"/></svg></button></div>
       <div class="seg"><button id="regionBtn" aria-pressed="false" title="Close-up: drag a box over the part you want to judge. While it plays, that part renders at full quality and the rest of the frame holds still" aria-label="Close-up region"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6"><path d="M1.5 5V1.5H5M11 1.5h3.5V5M14.5 11v3.5H11M5 14.5H1.5V11"/><rect x="5" y="5" width="6" height="6" rx="1"/></svg></button></div>
@@ -382,6 +383,7 @@ const FS_GEN=HEAD+VOX_GLSL+TERR_GLSL+BLK_GLSL+`
 uniform int uNP, uNPT; uniform vec4 uP0[NP], uP1[NP], uP2[NP]; uniform vec2 uRotY; uniform vec3 uRotC;
 uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft, uFl; uniform vec3 uSeedOff; uniform int uProfile;
 uniform int uForm; uniform vec4 uF0, uF1; uniform vec2 uWdir, uFOff;
+uniform float uCling, uSlopeB, uSlopeR, uClingD; uniform vec3 uSunL;   /* where it settles: clings to shade (out of the sun), pools in hollows and thins on ridges */
 uniform sampler2D uMask; uniform vec4 uMaskB; uniform vec4 uLr[4]; uniform int uNL;   // shot: painted layers (mask channel per layer) · rule: kind, a, b, c
 out vec4 o;
 float sdPrim(vec3 p,int i){ vec4 a=uP0[i], b=uP1[i], c=uP2[i]; int ty=int(a.w+0.5);
@@ -428,6 +430,12 @@ void main(){
   if(uGround>0) m*=smoothstep(-uSoft*0.5,uSoft*0.5,hy);                         // nothing inside the ground
   if(uNBK>0) m*=smoothstep(-uSoft*0.5,uSoft*0.5,blkSD(p));                        // nor inside a blocker
   vec3 fw=2./uDims; m*=smoothstep(0.,fw.x,u.x)*smoothstep(0.,fw.x,1.-u.x)*smoothstep(0.,fw.y,1.-u.y)*smoothstep(0.,fw.z,u.z)*smoothstep(0.,fw.z,1.-u.z)*(uFl>0.5?1.:smoothstep(0.,fw.y,u.y));   // a thin fade at the walls, in voxels
+  if(uGround>0&&(uCling>0.||uSlopeB>0.)){ float kk=1.; vec2 tg=terrG(p.xz);
+    if(uSlopeB>0.){ float Rs=max(uSlopeR,1e-3); float hm=0.25*(terrH(p.xz+vec2(Rs,0.))+terrH(p.xz-vec2(Rs,0.))+terrH(p.xz+vec2(0.,Rs))+terrH(p.xz-vec2(0.,Rs))); float conc=(hm-gh)/Rs, sl=length(tg);
+      kk*=mix(1.,clamp(1.+conc*3.-max(sl-0.15,0.)*1.8,0.15,1.7),uSlopeB); }   // hollows hold it, steep ground and ridges shed it
+    if(uCling>0.){ float sh=0.; vec3 q=vec3(p.x,gh+0.5,p.z); for(int i=1;i<=14;i++){ vec3 s=q+uSunL*(float(i)*uClingD/14.); if(terrH(s.xz)>s.y){ sh=1.; break; } }
+      vec3 nn=normalize(vec3(-tg.x,1.,-tg.y)); float shade=max(sh,1.-smoothstep(0.05,0.35,dot(nn,uSunL))); kk*=mix(1.,mix(0.2,1.25,shade),uCling); }   // shade keeps it, sunlit ground burns it off
+    m*=kk; }
   m=clamp(m,0.,1.); float ls=lw.x+lw.y+lw.z+lw.w; vec3 wk=ls>1e-4?lw.yzw/ls:vec3(0.);   // layers 2-4 carry their own looks
   o=vec4(m,wk*m);
 }`;
@@ -850,9 +858,11 @@ void main(){ vec3 e=vec3(gl_FragCoord.xy/uEDims.xy,uEZ); vec3 p0=uEB0+e*uESz; o0
   if(uEmit==1) d*=ageFade(rcs.a/max(dg.r,1e-3)); if(terrOn()&&p.y<terrH(p.xz)) d=0.;
   o0.x=d; o1.w=clamp(ca.x+uBTop*wb*(hf-0.5)*2.,0.,1.); o2=vec4(ca.y,ca.z,ca.w,cb.x); o3=vec4(cb.y,cb.z,mix(1.,uDGain,wb),0.); }`;
 const FS_TILE=HEAD+`uniform sampler3D uT; uniform float uZ, uL; out vec4 o; void main(){ o=texelFetch(uT,ivec3(ivec2(gl_FragCoord.xy),int(uZ)),int(uL)); }`;   // a noise tile, one mip level, read back for export
-const FS_COMP=HEAD+`uniform sampler2D uB, uE0, uE1, uE2, uE3; uniform int uNE; uniform vec2 uRes; out vec4 o;
+const FS_COMP=HEAD+`uniform sampler2D uB, uE0, uE1, uE2, uE3, uSD; uniform int uNE; uniform vec2 uRes; uniform vec3 uSlab; out vec4 o;
 void main(){ vec2 uv=gl_FragCoord.xy/uRes; vec3 c=texture(uB,uv).rgb; vec4 e;
   if(uNE>0){ e=texture(uE0,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>1){ e=texture(uE1,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>2){ e=texture(uE2,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>3){ e=texture(uE3,uv); c=e.rgb+(1.-e.a)*c; }
+  if(uSlab.z>0.5){ float d=texture(uSD,uv).r; float w=fwidth(d)*1.5+uSlab.y*0.002; float inS=step(uSlab.x,d)*step(d,uSlab.y); float edge=max(1.-abs(d-uSlab.x)/w,0.)+max(1.-abs(d-uSlab.y)/w,0.);   /* the depth slab: the set inside it is tinted, its near and far edges drawn */
+    c=mix(c,c*0.55+vec3(0.10,0.42,0.55)*0.6,inS*0.6); c=mix(c,vec3(0.55,0.88,1.),clamp(edge,0.,1.)*0.8); }
   o=vec4(c,1.); }`;   // the shot: the set, then each fog layer over it from the farthest to the nearest
 const FS_DISP=HEAD+`uniform sampler2D uA; uniform float uExpo; uniform vec2 uRes, uSrc; out vec4 o;
 vec3 aces(vec3 c){ const mat3 I=mat3(0.59719,0.07600,0.02840, 0.35458,0.90834,0.13383, 0.04823,0.01566,0.83777); const mat3 O=mat3(1.60475,-0.10208,-0.00327, -0.53108,1.10813,-0.07276, -0.07367,-0.00605,1.07602);
@@ -935,6 +945,8 @@ const LIB={
   seaclouds:{cat:'fog',label:'Sea of clouds',icon:IC.bank,desc:'A valley filled with a smooth, heavy sea of fog under the peaks, pouring along the valley and spilling through the gaps in long, rolling waves: the classic mountain timelapse.',use:'Mountain and valley timelapses, sunrise above the clouds, fog pouring through passes.',needs:'Valley or hills, a little wind',
     size:[700,70,520],ground:{t:'valley',relief:260},form:{type:'fill',level:0.38},prims:'none',
     sim:{age:0.45,turb:0.35,lift:-0.3,calm:0.6,strat:0.85,spread:0.3,wind:0.25,windDir:90,gust:0.25,diss:0.02},det:{billow:0.7,amt:0.6,edge:0.55,brk:0.08,curl:0.15,btop:0.5},den:{d:0.45}},
+  painted:{cat:'hidden',label:'Painted mist',icon:IC.bank,desc:'Mist painted into a slab of depth in the shot.',use:'',needs:'',size:[60,20,60],ground:{t:'flat'},prims:'none',profile:0,
+    sim:{age:0.35,turb:0.35,lift:-0.05,calm:0.4,strat:0.6,spread:0.1,wind:0.05,gust:0.2,diss:0.01},det:{billow:0.3,amt:0.5,edge:0.85,brk:0.2,curl:0.35},den:{d:0.22}},
   rolling:{cat:'fog',label:'Rolling fog',icon:IC.bank,desc:'The timelapse look: a dense, heavy river of fog rolling over the brow of a hill and pouring down it like dry ice, its thin edges lifting off, breaking up into wisps and fading.',use:'Landscape timelapses, fog pouring over hills and ridges, marine layer rolling in.',needs:'Ground, wind',
     size:[420,45,280],ground:{t:'slope',relief:70},prims:'roll',profile:0,
     sim:{age:0.55,turb:0.5,lift:-0.25,calm:0.5,strat:0.6,spread:0.35,wind:0.3,windDir:270,gust:0.35,diss:0.03,drain:0.6},det:{billow:0.55,amt:0.7,edge:0.6,brk:0.22,curl:0.4},den:{d:0.5}},
@@ -1355,6 +1367,7 @@ function genMass(ctx,rec,extra){
   const md=Math.max(...rec.size), mn=Math.min(...rec.size);
   const rough=TEMPLATES[rec.template].rough??1; bind3(pr,0,'uNT',T.noise); u1f(pr,'uNoiseAmp',mn*0.35*rough); u1f(pr,'uNoiseScale',md*0.45); u1f(pr,'uSoft',Math.max(mn*0.08,voxSize(ctx,rec)*1.5));
   const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile??0); u1f(pr,'uFl',floorIn(rec)?1:0); boxU(pr,rec); terrU(pr,rec);
+  u1f(pr,'uCling',hasGround(rec)?clamp(rec.sim.cling||0,0,1):0); u1f(pr,'uSlopeB',hasGround(rec)?clamp(rec.sim.slopeB||0,0,1):0); u1f(pr,'uSlopeR',Math.max(rec.sim.eddy*0.8,0.5)); u1f(pr,'uClingD',Math.min(Math.max(...rec.size)*1.5,3000)); u3v(pr,'uSunL',sunDir());
   const fa=formAbs(rec); u1i(pr,'uForm',rec.template==='shot'?20:fa?fa.id:0); u2f(pr,'uFOff',rec.off?rec.off[0]:0,rec.off?rec.off[2]:0); u4v(pr,'uF0',fa?fa.F0:[1,0,0,0]); u4v(pr,'uF1',fa?[fa.half[0],fa.half[1],fa.edge,0]:[1,1,1,0]);
   const wd=rec.sim.windDir*D2R; u2f(pr,'uWdir',Math.sin(wd),-Math.cos(wd));
   if(rec.template==='shot'&&typeof shotGenU==='function') shotGenU(pr,rec); else { u1i(pr,'uNL',0); bindTex(7,gl.TEXTURE_2D,dummy2D()); u1i(pr,'uMask',7); }   // a 2D sampler must never share a unit with the 3D ones
@@ -1572,6 +1585,7 @@ function renderPass(ctx,rec,cam,w,h,blend,final,frameNo,steps,pass=0,acc=null){
   u3v(pr,'uAlbC',hexLin(D.albC||'#ffffff').map(v=>v*(D.alb??0.9))); u3v(pr,'uGlowC',hexLin(D.emitC||'#8fd3ff').map(v=>v*(D.emit||0)*1.2));
   u1f(pr,'uFar',cam.dist*10+Math.max(...domSize(rec))*3+(rec.gnd?rec.gnd.L*4:0));
   if(ctx.inst&&ctx.instBox){ const A=ctx.instBox; u3v(pr,'uLB0',A[0]); u3v(pr,'uLBS',[0,1,2].map(i=>A[1][i]-A[0][i])); }
+  if(typeof soloOn==='function'&&soloOn()&&ctx===MAIN&&pass===0){ u1i(pr,'uBg',LOOK.bg); u1i(pr,'uGround',0); u1i(pr,'uShowMask',0); }   /* Solo: the volume alone on the dark surround */
   u1i(pr,'uFast',FAST&&(ctx===MAIN||pass===1)?1:0); if(FAST) u1i(pr,'uOct',Math.min(3,LODS[lodOf(rec)].oct));   /* moving: fewer octaves, no fine self-shadowing */
   u1f(pr,'uNear',D.near||0); u1f(pr,'uPowder',LOOK.powder||0); u1f(pr,'uMSGlow',LOOK.glow||0); envU(pr);
   if(!REGION.on&&REFINE.on&&REFINE.nb>1&&blend<0.999&&A.fullOK&&(ctx===MAIN||pass===1)){ const pr2=use('copy2'); bindTex(6,gl.TEXTURE_2D,A.tex[src]); u1i(pr2,'uSrc',6); fullscreen(); gl.useProgram(pr.p); gl.enable(gl.SCISSOR_TEST); const y0=Math.floor(REFINE.b/REFINE.nb*h), y1=Math.ceil((REFINE.b+1)/REFINE.nb*h); gl.scissor(0,y0,w,y1-y0); fullscreen(); gl.disable(gl.SCISSOR_TEST); }   /* refining: one band of the frame this time */
@@ -1750,9 +1764,11 @@ function frame(now){
     REFINE.on=!moving&&frames>0; REFINE.wrap=!REFINE.on||REFINE.b===REFINE.nb-1;
     const ra=reg?clamp((REGION.x1-REGION.x0)*(REGION.y1-REGION.y0),0.02,1):1, pxK=clamp(Math.sqrt(0.8e6/(vw*vh*ra)),0.35,reg?2:1.2);
     const stp=Math.max(16,Math.round((moving&&!reg?52:frames===0&&!reg?64:110*pxK*(reg?1:restK))*roomK(VR)));   /* the first still frame comes quickly, then it refines */
-    if(UI.ws==='shot'){ rtOf(REC).lightVer=LIGHTVER; frames=shotRender(vw,vh,moving,fin,target,stp); displayPass({acc:COMPACC},cw,ch); }   // the shot: the set and every layer together
+    pipTick(now);
+    if(UI.ws==='shot'&&!soloOn()){ rtOf(REC).lightVer=LIGHTVER; frames=shotRender(vw,vh,moving,fin,target,stp); displayPass({acc:COMPACC},cw,ch); }   // the shot: the set and every layer together
     else { if(frames<target||moving){ const blend=moving?1:1/(frames+1); renderPass(MAIN,VR,CAM,vw,vh,blend,fin&&frames>0,frames,stp); if(REFINE.wrap) frames++; }
       displayPass(MAIN,cw,ch); }
+    streamFrame();   /* paused in Motion: the air made visible */
     if(REFINE.on) REFINE.b=(REFINE.b+1)%REFINE.nb;
     if(capture){ const c=capture; capture=null; try{ c(glc); }catch(e){ console.error(e); } }
     drawOverlay();
@@ -1864,7 +1880,7 @@ function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase=
   if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
 function drawOverlay(){
-  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
+  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(!UI.clean){ drawShotCam(); drawFlood(); drawSlabStroke(); } try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
   if(!REC.dom) return; const BX=drag&&drag.mode==='boxface'?drag.nd:MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; const W=BX[1][0]-BX[0][0], H=BX[1][1]-BX[0][1], D=BX[1][2]-BX[0][2], [x0,y0,z0]=BX[0], [x1,y1,z1]=BX[1];
   // the box: the simulation's room. It flashes when it grows to fit the fog
   const fl=clamp(1-(performance.now()-roomFlash)/900,0,1); if(fl>0) poke();
@@ -1974,6 +1990,7 @@ ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
   if(pointers.size===2){ const [a,b]=[...pointers.values()]; if(drag&&drag.mode==='brush') endStroke(); drag={mode:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; return; }
   if(AB.img&&ev.button===0&&Math.abs(mx-AB.x*cssW)<12){ drag={mode:'ab'}; return; }   // the A/B line
+  if(ev.button===0&&pipHit(mx,my)){ setShotCam(); resetAccum(); toast('Back at the shot camera'); return; }   // the inset: back to the shot camera
   if(ev.button===0&&compassHit(mx,my)){ drag={mode:'compass',lx:mx,ly:my}; compassMove(mx,my); return; }   // the shot wind
   if(ev.button===0&&ev.shiftKey&&!ev.altKey&&(UI.tool==='orbit'||UI.tool==='light')){ const d=sunStart(mx,my); if(d){ drag={...d,lx:mx,ly:my}; return; } }   // the sun behind the fog you point at
   if(REGION.arm&&ev.button===0&&!ev.altKey){ drag={mode:'region',x0:mx,y0:my,x1:mx,y1:my}; return; }   // close-up: drag the box
@@ -1981,6 +1998,8 @@ ov.addEventListener('pointerdown',ev=>{
   if(!ev.altKey&&ev.button===0&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f>=0){ const B=MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; drag={mode:'boxface',f,b0:B.map(a=>a.slice()),nd:B.map(a=>a.slice()),o:boxFaces(B)[f],lx:mx,ly:my}; return; } }   // grab a side of the box
   if(ev.altKey||UI.tool==='orbit'||UI.tool==='box'||ev.button!==0){ ev.preventDefault(); const m=ev.button===1?'track':ev.button===2?'dolly':((ev.buttons&4)?'dolly':'tumble'); drag={mode:m,x:mx,y:my}; return; }
   if(UI.tool==='collide'){ collideClick(mx,my,ev); return; }
+  if(UI.tool==='flood'){ const d=floodStart(mx,my); if(d) drag=d; return; }   // press in a hollow, drag up
+  if(UI.tool==='slab'){ drag=slabStart(mx,my); return; }   // paint into the depth slab
   if(['shape','blocker','move'].includes(UI.tool)){ if(UI.ws==='shot'&&REC&&REC.blank&&UI.tool!=='blocker'){ toast('Add a fog layer first: pick a type under Layers'); return; } const d=xDown(mx,my,ev); if(d) drag=d; return; }
   if(UI.tool==='sphere'){ const d=sphereDown(mx,my,ev); if(d) drag=d; return; }   // the shot: pick what the fog meets
   if(UI.ws==='shot'&&REC&&REC.blank&&UI.tool!=='place'){ toast('Add a fog layer first: pick a type under Layers'); return; }   // the empty shot: nothing to shape yet
@@ -2002,7 +2021,10 @@ ov.addEventListener('pointerdown',ev=>{
 ov.addEventListener('pointermove',ev=>{
   const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
   if(drag&&drag.mode==='ab'){ AB.x=clamp(mx/cssW,0.02,0.98); return; }
+  hoverXY=[mx,my];
   if(drag&&drag.mode==='compass'){ drag.lx=mx; drag.ly=my; compassMove(mx,my); return; }
+  if(drag&&drag.mode==='flood'){ drag.lx=mx; drag.ly=my; floodMove(mx,my); return; }
+  if(drag&&drag.mode==='slab'){ drag.lx=mx; drag.ly=my; slabMove(mx,my); return; }
   if(drag&&drag.mode==='sun'){ drag.lx=mx; drag.ly=my; sunMove(mx,my); refreshPanels(); return; }
   if(!drag&&AB.img) ov.style.cursor=Math.abs(mx-AB.x*cssW)<12?'ew-resize':(UI.tool==='orbit'?'grab':'crosshair');
   if(!drag&&ready&&UI.mode==='anim'&&INFL_TOOLS.includes(UI.tool)){ const h=pickHandle(mx,my); if(JSON.stringify(h)!==JSON.stringify(hoverH)){ hoverH=h; ov.style.cursor=h?'move':UI.tool==='edit'?'default':'crosshair'; } }
@@ -2044,7 +2066,7 @@ ov.addEventListener('pointermove',ev=>{
     const w=add(mul(r,dx),mul(f,-dy)); REC.anim.windDir=+(((Math.atan2(w[0],-w[2])/D2R)+360)%360).toFixed(1); REC.anim.wind=+(clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1)*20).toFixed(1); if(followsShot(REC)){ const W=shotWind(); W.dir=REC.anim.windDir; W.spd=+(REC.anim.wind/altK(REC)/(REC.anim.windK??1)).toFixed(1); syncShotWind(); } drag.label=`wind ${REC.anim.wind.toFixed(1)} m/s · ${windWords(REC.anim.wind)} · toward ${REC.anim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='compass'){ syncShotWind(true); pushUndo(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='flood'){ const d=drag; drag=d; floodEnd(); drag=null; resetAccum(); return; } if(drag.mode==='slab'){ slabEnd(); drag=null; resetAccum(); return; } if(drag.mode==='compass'){ syncShotWind(true); pushUndo(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
   if(drag.mode==='region'){ const d=drag, x0=Math.min(d.x0,d.x1)/cssW, x1=Math.max(d.x0,d.x1)/cssW, y0=1-Math.max(d.y0,d.y1)/cssH, y1=1-Math.min(d.y0,d.y1)/cssH; REGION.arm=false;
     if(x1-x0>0.03&&y1-y0>0.03){ Object.assign(REGION,{on:true,x0:clamp(x0,0,1),x1:clamp(x1,0,1),y0:clamp(y0,0,1),y1:clamp(y1,0,1)}); toast('Close-up: while it plays, this part renders at full quality. Click the button again to turn it off'); } else REGION.on=false;
     $('#regionBtn').setAttribute('aria-pressed',REGION.on); ov.style.cursor=UI.tool==='orbit'?'grab':'crosshair'; drag=null; resetAccum(); return; }
@@ -2067,7 +2089,7 @@ function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=fals
 ov.addEventListener('pointerup',endPointer); ov.addEventListener('pointercancel',endPointer); ov.addEventListener('lostpointercapture',endPointer);
 addEventListener('blur',()=>{ if(drag&&drag.mode==='brush'){ endStroke(); drag=null; } pointers.clear(); brushing=false; });
 ov.addEventListener('pointerleave',()=>{ if(!drag) hover=null; });
-ov.addEventListener('wheel',ev=>{ ev.preventDefault(); dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
+ov.addEventListener('wheel',ev=>{ ev.preventDefault(); if(UI.ws==='shot'&&UI.tool==='slab'&&!ev.altKey){ slabWheel(ev); return; } dolly(Math.exp(ev.deltaY*0.0012)); },{passive:false});
 const typing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'&&a.type!=='range'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'); };
 addEventListener('keydown',ev=>{
   if(ev.key==='Alt') ev.preventDefault(); if(typing()) return; const k=ev.key;
@@ -2076,6 +2098,7 @@ addEventListener('keydown',ev=>{
   if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
   const t=TOOLS.find(x=>x.key===k.toLowerCase()&&(!x.ws||x.ws===UI.ws)); if(t){ setTool(t.id); return; }
   if(k===' '){ ev.preventDefault(); if(ev.shiftKey) playFromStart(); else togglePlay(); return; }
+  if(UI.tool==='slab'&&(k==='['||k===']')){ UI.slabPx=clamp((UI.slabPx||40)*(k===']'?1.15:1/1.15),6,400); poke(); return; }
   if(k==='['){ setBrushR(UI.brushR/1.15); return; } if(k===']'){ setBrushR(UI.brushR*1.15); return; }
   if(k==='h'||k==='H'){ setClean(!UI.clean); return; }
   if((k==='Delete'||k==='Backspace')&&UI.mode==='anim'&&UI.selInfl!=null&&REC.anim.flows[UI.selInfl]){ REC.anim.flows.splice(UI.selInfl,1); UI.selInfl=null; pushUndo(); markAnim(); buildPanels(); toast('Influencer removed'); return; }
@@ -2244,7 +2267,7 @@ function shotRender(vw,vh,moving,fin,target,steps){ const act=REC; const list=[]
   SET_DEPTH=null;
   list.sort((a,b)=>b.d-a.d); ensureAcc({acc:COMPACC},vw,vh);   /* far to near, four volumes per pass, each pass over the last */
   let src=SET.col, cur=0; for(let g=0;g===0||g<list.length;g+=4){ gl.bindFramebuffer(gl.FRAMEBUFFER,COMPACC.fb[cur]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,vw,vh);
-    const pr=use('comp'); bindTex(0,gl.TEXTURE_2D,src); u1i(pr,'uB',0); const part=list.slice(g,g+4); part.forEach((e,i)=>{ bindTex(1+i,gl.TEXTURE_2D,e.acc.tex[e.acc.cur]); u1i(pr,'uE'+i,1+i); }); u1i(pr,'uNE',part.length); u2f(pr,'uRes',vw,vh); fullscreen(); src=COMPACC.tex[cur]; COMPACC.cur=cur; cur^=1; }
+    const pr=use('comp'); bindTex(0,gl.TEXTURE_2D,src); u1i(pr,'uB',0); const part=list.slice(g,g+4); part.forEach((e,i)=>{ bindTex(1+i,gl.TEXTURE_2D,e.acc.tex[e.acc.cur]); u1i(pr,'uE'+i,1+i); }); u1i(pr,'uNE',part.length); if(g+4>=list.length) slabU(pr); else { u3v(pr,'uSlab',[0,0,0]); bindTex(5,gl.TEXTURE_2D,dummy2D()); u1i(pr,'uSD',5); } u2f(pr,'uRes',vw,vh); fullscreen(); src=COMPACC.tex[cur]; COMPACC.cur=cur; cur^=1; }
   gl.bindFramebuffer(gl.FRAMEBUFFER,null); return Math.min(target,...fogs.map(f=>f.rt.frames)); }
 /* ---------- the shot recipe ---------- */
 const MAXVOL=8;   /* volumes per shot (instances count too) */
@@ -2277,7 +2300,7 @@ function buildLayers(){ const el=$('#layerBody'); if(!el||!SHOT) return; el.inne
   { const V=designerVolumes(); subH(el,'From your Shelf'); if(!V.length) note(el,'Volumes you save to the Designer\'s Shelf show up here, to place on the set too.'); else { const g2=document.createElement('div'); g2.className='chips';
       for(const v of V.slice(0,10)){ const b=document.createElement('button'); b.className='chip'; b.textContent=v.name; b.title='Place it: then click on the set where it should stand'; b.setAttribute('aria-pressed',!!(UI.placeAsset&&UI.placeAsset.name===v.rec.name)); b.disabled=shotEls().length>=MAXVOL; b.onclick=()=>armAsset(v); g2.appendChild(b); }
       el.appendChild(g2); } }
-  const row=document.createElement('div'); row.className='row wide'; row.style.marginTop='8px'; const sh=document.createElement('button'); sh.className='chip'; sh.textContent='Show painted areas'; sh.title='Outline where each layer is painted on the set'; sh.setAttribute('aria-pressed',!!UI.showPaint); sh.onclick=()=>{ UI.showPaint=!UI.showPaint; SET.key=''; resetAccum(); buildPanels(); }; row.appendChild(sh);
+  const row=document.createElement('div'); row.className='row wide'; row.style.marginTop='8px'; const sh=document.createElement('button'); sh.className='chip'; sh.textContent='Show painted areas'; if(!shotEls().some(r=>r.layer&&r.layer.type!=='asset'&&!r.inst)) sh.hidden=true; sh.title='Outline where each layer is painted on the set'; sh.setAttribute('aria-pressed',!!UI.showPaint); sh.onclick=()=>{ UI.showPaint=!UI.showPaint; SET.key=''; resetAccum(); buildPanels(); }; row.appendChild(sh);
   const cb=document.createElement('button'); cb.className='chip'; cb.textContent='Shot camera'; cb.onclick=setShotCam; row.appendChild(cb); el.appendChild(row); }
 /* ---------- painting layers onto the set ---------- */
 function placeStart(mx,my,ev){ if(UI.placeAsset){ const g=shotGround(mx,my); if(g) placeAssetAt(g); else toast('Click on the set'); return null; } if(!REC.blank&&REC.layer&&REC.layer.type==='asset'){ toast('Press + Add fog to place another, or use Move (W) to move this one'); return null; } if(REC.blank){ toast('Press + Add fog under Fog in this shot, pick a type, then click on the set'); return null; } if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
@@ -2512,7 +2535,8 @@ function scanLevels(){ const pts=SCAN.pts; if(!pts||!pts.n) return; for(const L 
   SCAN.ver++; SET.sm.key=''; SET.key=''; }
 const setLevel=()=>{ if(UI.setShow==null) UI.setShow=SETSHOW0||'light'; const m={full:0,light:1,lightest:2}[UI.setShow]??1; return SCAN.lv&&SCAN.lv[m]&&SCAN.lv[m].n?SCAN.lv[m]:SCAN.lv&&SCAN.lv[0]; };
 /* after a bake or a load: object state, the collision ground, the shadow cascades */
-function scanReady(){ const src=SCAN.src; SCAN.pathIx=new Map(src.prims.map(p=>[p.path,p.id])); SCAN.col=new Set(((SHOT&&SHOT.collide)||[]).map(p=>SCAN.pathIx.get(p)).filter(i=>i!=null)); SCAN.sel.clear(); SCAN.hover=-1;
+function autoColliders(src){ const keep=/village|props|build|house|wall|barn|church|street|bridge|tower|roof|shed/i, skip=/tree|forest|fence|camera|actor|lake|water|ground|terrain|debris|leaf|grass|cloud/i; return src.prims.filter(p=>p.V&&keep.test(p.path)&&!skip.test(p.path)).map(p=>p.path); }   /* by default the fog meets the buildings and props in the scan; Pick changes it */
+function scanReady(){ const src=SCAN.src; SCAN.pathIx=new Map(src.prims.map(p=>[p.path,p.id])); if(SHOT&&SHOT.collide==null){ SHOT.collide=autoColliders(src); if(SHOT.collide.length) setTimeout(()=>toast('The buildings and props collide automatically: Pick (K) to change what the fog meets'),800); } SCAN.col=new Set(((SHOT&&SHOT.collide)||[]).map(p=>SCAN.pathIx.get(p)).filter(i=>i!=null)); SCAN.sel.clear(); SCAN.hover=-1;
   SCAN.st=new Uint8Array(1024*Math.max(1,Math.ceil(src.prims.length/1024))); stateSync(); colBuild(true); if(UI.ws==='shot') buildPanels(); }
 function scanEnsure(){ if(!SCAN.src&&!SCAN.bake){ const S=SCENES[curScene()]||SCENES.village; SCAN.src=S.make(); addCamPrims(SCAN.src); HMAP.B=SCAN.src.hmapB.slice(); HMAP.h=null; if(HMAP.tex){ gl.deleteTexture(HMAP.tex); HMAP.tex=null; } bakeStart(SCAN.src); } }
 
@@ -2754,7 +2778,7 @@ function scanLoad(u8){ if(String.fromCharCode(...u8.subarray(0,4))!=='BSET') thr
   if(prims[0]&&prims[0].parent>=0) throw new Error('the first prim must be the root');
   SCAN.bake=null; if(SCAN.keep){ bakeFree(SCAN.keep); SCAN.keep=null; } SCAN.src={name:head.name||'Scanned set',prims,shotCam:head.shotCam,hmapB:head.hmapB}; SCAN.cams=head.cams||[]; SCAN.reach=head.reach||1000; SCAN.region=head.region||null; SCAN.floor=null; if(SCAN.colGL){ SCAN.colGL.vao=null; }
   if(head.hmapB) HMAP.B=head.hmapB.slice(); SCAN.pts={n:head.points,P:A.P,N:A.N,C:A.C,ID:A.ID,R:A.R}; scanUpload(head.points,A.P,A.N,A.C,A.ID,A.R,false); SCAN.open=new Set([0]);
-  if(SHOT) SHOT.collide=[]; scanReady(); setShotCam(); toast(`Loaded ${head.name||'the scan'}: ${(head.points/1e6).toFixed(2)}M points, ${prims.length} prims`); }
+  if(SHOT) SHOT.collide=null; scanReady(); setShotCam(); toast(`Loaded ${head.name||'the scan'}: ${(head.points/1e6).toFixed(2)}M points, ${prims.length} prims`); }
 /* =====================================================================
    SCENES AND MOVERS. The shot can be the village or a motion test: a meadow with a walker, a galloping horse,
    a car on the road, tumbling planks and a windmill. What moves is baked as it would be from Houdini: a named
@@ -3072,7 +3096,7 @@ function setStep(id,quiet){ const L=stepList(), s=L.find(x=>x.id===id); if(!s) r
   if(UI.mode!==s.mode) setMode(s.mode); if(!s.tools.includes(UI.tool)) setTool(s.tool,true); applySteps(); buildRail(); if(!quiet) $('#insp').scrollTop=0; }
 /* the panels a step shows; the brush panel keeps its own rule (it appears with a brush) */
 const STEP_SECS=['lodSec','layerSec','setSec','colSec','movSec','animSec','startSec','sizeSec','formSec','emitSec','simSec','detSec','looksSec','denSec','lightSec','shelfSec'];
-function applySteps(){ const s=curStep(); for(const id of STEP_SECS){ const e=document.getElementById(id); if(!e) continue; const k=s.secs.indexOf(id); e.classList.toggle('stepoff',k<0); e.style.order=k<0?100:1+k; } const st=$('#steps'); if(st) st.style.order=-1; const bs=$('#brushSec'); if(bs) bs.style.order=0; buildSteps(); }   /* the step's panels, in the order you use them; a brush's panel on top */
+function applySteps(){ const s=curStep(); const blank=UI.ws==='shot'&&(!REC||REC.blank); for(const id of STEP_SECS){ const e=document.getElementById(id); if(!e) continue; const k=blank&&['startSec','sizeSec','formSec','emitSec','simSec','looksSec','detSec','denSec','lodSec'].includes(id)?-1:s.secs.indexOf(id); e.classList.toggle('stepoff',k<0); e.style.order=k<0?100:1+k; } const st=$('#steps'); if(st) st.style.order=-1; const bs=$('#brushSec'); if(bs) bs.style.order=0; buildSteps(); }   /* the step's panels, in the order you use them; a brush's panel on top */
 function buildSteps(){ const el=$('#steps'); if(!el) return; if(!UI.guide&&typeof buildTabs==='function'){ buildTabs(el); return; } const L=stepList(), s=curStep(), i=L.indexOf(s); el.innerHTML='';
   const row=document.createElement('div'); row.className='row';
   L.forEach((x,k)=>{ const b=document.createElement('button'); b.className='st'+(x.done()&&x!==s?' done':''); if(x===s) b.setAttribute('aria-current','step'); b.innerHTML=`<b>${x.done()&&x!==s&&k<i?'✓':k+1}</b>${x.label}`; b.title=x.title; b.onclick=()=>setStep(x.id); row.appendChild(b); });
@@ -4082,6 +4106,102 @@ function buildShotWind(ab,A){ const W=shotWind(); if(!W) return; syncShotWind();
   refreshers.push(slider(ab,SW('Gusts',0,1,()=>W.gust,v=>W.gust=+v.toFixed(2),v=>v<0.05?'steady':v<0.35?'light':v<0.7?'gusty':'squally')));
   refreshers.push(chips(ab,'This volume',[[false,'Follows the shot wind'],[true,'Its own wind']],()=>A.ownWind===true,v=>{ A.ownWind=v; if(!v) syncShotWind(); pushUndo(); autosave(); markAnim(); buildPanels(); }));
   if(A.ownWind!==true) refreshers.push(slider(ab,S_('Wind here',0,3,()=>A.windK??1,v=>{ A.windK=+v.toFixed(2); syncShotWind(); },v=>pct(v)+' of the shot wind · '+(A.wind||0).toFixed(1)+' m/s with height',()=>{},false,'Shelter or expose this volume: behind a hill, in a street canyon, out in the open'))); }
+/* =====================================================================
+   THE SET: Solo, the shot camera inset, Flood, and painting in a depth slab
+   ===================================================================== */
+/* Solo: the set falls away to the dark void, the camera and sun stay where they are, only the picked volume shows */
+function toggleSolo(on){ UI.solo=on==null?!UI.solo:on; const b=$('#soloBtn'); if(b) b.setAttribute('aria-pressed',!!UI.solo); frames=0; resetAccum(); toast(UI.solo?'Solo: only this volume, on the dark surround. Same camera and sun':'The whole set again'); }
+const soloOn=()=>UI.ws==='shot'&&UI.solo&&REC&&!REC.blank;
+
+/* ---------- the shot camera: its frustum in the view, and an inset of what it last saw ---------- */
+function shotCamSrc(){ return SCAN.src&&SCAN.src.shotCam?SCAN.src.shotCam:(SCENES[curScene()]||SCENES.village).cam(); }
+function atShotCam(){ const c=shotCamSrc(); const B=camBasis(CAM); return len(sub(B.pos,c.pos))<Math.max(len(sub(c.pos,c.look))*0.002,0.05)&&Math.abs(CAM.tanY-(c.tanY||Math.tan(21*D2R)))<1e-4; }
+const PIP={img:null,t:0,x:0,y:0,w:0,h:0};
+function pipTick(now){ if(UI.ws!=='shot'||!ready) return; if(atShotCam()){ if(!interacting&&!brushing&&frames>=12&&now-PIP.t>2500&&!capture){ PIP.t=now; capture=c=>{ const w=240, h=Math.round(w*c.height/c.width); const cv=PIP.img&&PIP.img.width===w&&PIP.img.height===h?PIP.img:document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(c,0,0,w,h); PIP.img=cv; }; } } }
+function drawShotCam(){ if(UI.ws!=='shot'||UI.clean||atShotCam()) { PIP.w=0; return; } const c=shotCamSrc(); const f=norm(sub(c.look,c.pos)), r=norm(cross(f,[0,1,0])), u=cross(r,f), ty=c.tanY||Math.tan(21*D2R), tx=ty*cssW/cssH; const D=Math.min(len(sub(c.look,c.pos))*0.25,CAM.dist*0.4);
+  const C=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>add(c.pos,mul(add(f,add(mul(r,a*tx),mul(u,b*ty))),D)));
+  octx.strokeStyle='rgba(239,178,77,.8)'; octx.lineWidth=1.3; for(const p of C) line3(c.pos,p); for(let i=0;i<4;i++) line3(C[i],C[(i+1)%4]); const q=project(c.pos); if(q){ octx.font='600 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(239,178,77,.95)'; octx.fillText('SHOT CAMERA',q[0]+6,q[1]-6); }
+  if(PIP.img){ const w=Math.min(240,cssW*0.28), h=w*PIP.img.height/PIP.img.width, x=cssW-w-10, y=48; Object.assign(PIP,{x,y,w,h}); octx.fillStyle='rgba(16,19,24,.8)'; octx.fillRect(x-2,y-2,w+4,h+20); octx.drawImage(PIP.img,x,y,w,h); octx.strokeStyle='rgba(239,178,77,.9)'; octx.strokeRect(x-0.5,y-0.5,w+1,h+1);
+    octx.font='600 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(220,226,232,.85)'; octx.fillText('SHOT CAMERA · click to go back',x+4,y+h+13); } else PIP.w=0; }
+const pipHit=(mx,my)=>PIP.w>0&&mx>=PIP.x&&mx<=PIP.x+PIP.w&&my>=PIP.y&&my<=PIP.y+PIP.h+18;
+
+/* ---------- Flood: press in a hollow, drag up, and see where the water line meets the ground; let go and it fills to there ---------- */
+const FLOOD={N:72};
+function floodGrid(p0,R){ const N=FLOOD.N, h=new Float32Array(N*N); for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const x=p0[0]-R+(i+0.5)/N*2*R, z=p0[2]-R+(j+0.5)/N*2*R; h[j*N+i]=sceneHJ(x,z); } return h; }
+function floodRegion(G,lv){ const N=FLOOD.N, seen=new Uint8Array(N*N), c=(N>>1)*N+(N>>1); if(G[c]>=lv) return null; const st=[c]; seen[c]=1; let i0=N,i1=-1,j0=N,j1=-1,mn=1e9,n=0,edge=false;
+  while(st.length){ const k=st.pop(), i=k%N, j=(k/N)|0; n++; i0=Math.min(i0,i); i1=Math.max(i1,i); j0=Math.min(j0,j); j1=Math.max(j1,j); mn=Math.min(mn,G[k]); if(i===0||j===0||i===N-1||j===N-1) edge=true;
+    for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){ const a=i+di, b=j+dj; if(a<0||b<0||a>=N||b>=N) continue; const q=b*N+a; if(!seen[q]&&G[q]<lv){ seen[q]=1; st.push(q); } } }
+  return {i0,i1,j0,j1,mn,n,edge,seen}; }
+function floodStart(mx,my){ const g=shotGround(mx,my); if(!g){ toast('Press on the ground in a hollow, a valley or a street'); return null; } const R=clamp(len(sub(g,camBasis(CAM).pos))*0.6,40,4000);
+  return {mode:'flood',p0:g,R,G:floodGrid(g,R),sy:my,lv:g[1]+0.5,lx:mx,ly:my}; }
+function floodMove(mx,my){ const B=camBasis(CAM), d=len(sub(drag.p0,B.pos)), mpp=d*B.tanY*2/cssH; drag.lv=drag.p0[1]+Math.max(0.3,(drag.sy-my)*mpp*0.25); drag.reg=floodRegion(drag.G,drag.lv);
+  drag.label=`fills to ${fmLen(drag.lv-(drag.reg?drag.reg.mn:drag.p0[1]))} deep`+(drag.reg&&drag.reg.edge?' · spills beyond: lower it, or zoom out':''); poke(); }
+function drawFlood(){ if(!drag||drag.mode!=='flood') return; const N=FLOOD.N, R=drag.R, p0=drag.p0, G=drag.G, lv=drag.lv, X=i=>p0[0]-R+(i+0.5)/N*2*R, Z=j=>p0[2]-R+(j+0.5)/N*2*R; const reg=drag.reg;
+  octx.fillStyle='rgba(120,200,255,.16)'; if(reg) for(let j=reg.j0;j<=reg.j1;j++) for(let i=reg.i0;i<=reg.i1;i++){ if(!reg.seen[j*N+i]) continue; const q=project([X(i),lv,Z(j)]); if(q){ const s=Math.max(2,R*2/N/q[2]*(cssH/2)/camBasis(CAM).tanY); octx.fillRect(q[0]-s/2,q[1]-s/2,s,s*0.6); } }
+  octx.strokeStyle='rgba(140,220,255,.95)'; octx.lineWidth=1.6; octx.beginPath();   /* the water line where it meets the ground: marching squares */
+  for(let j=0;j<N-1;j++) for(let i=0;i<N-1;i++){ const a=G[j*N+i]-lv, b=G[j*N+i+1]-lv, c=G[(j+1)*N+i+1]-lv, d=G[(j+1)*N+i]-lv; const pts=[]; const e=(u,v,p,q)=>{ if((u<0)!==(v<0)){ const t=u/(u-v); pts.push([p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t]); } };
+    e(a,b,[i,j],[i+1,j]); e(b,c,[i+1,j],[i+1,j+1]); e(c,d,[i+1,j+1],[i,j+1]); e(d,a,[i,j+1],[i,j]); if(pts.length>=2){ const A=project([X(pts[0][0]),lv,Z(pts[0][1])]), B2=project([X(pts[1][0]),lv,Z(pts[1][1])]); if(A&&B2){ octx.moveTo(A[0],A[1]); octx.lineTo(B2[0],B2[1]); } } }
+  octx.stroke(); }
+function sizeRecipe(r,size){ const k=Math.min(...size)/Math.max(Math.min(...r.size),1e-3); r.size=size.map(v=>+v.toPrecision(4)); const mn=Math.min(...size), md=Math.max(...size); r.sim.eddy=+Math.max(mn*0.55,md*0.14).toPrecision(3); r.det.size=+(r.sim.eddy*0.42).toPrecision(3); r.det.brkSize=+(md*0.35).toPrecision(3); r.sim.gustL=+(r.sim.eddy*3).toPrecision(3); r.den.extD=+(r.den.extD*k).toPrecision(3); }
+function floodEnd(){ const D=drag, reg=D.reg; if(!reg||reg.n<3){ toast('Drag up from the ground to raise the water line'); return; } if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); return; }
+  const N=FLOOD.N, R=D.R, cell=2*R/N, x0=D.p0[0]-R+reg.i0*cell, x1=D.p0[0]-R+(reg.i1+1)*cell, z0=D.p0[2]-R+reg.j0*cell, z1=D.p0[2]-R+(reg.j1+1)*cell;
+  const W=Math.max(x1-x0,cell*2)*1.08, Dd=Math.max(z1-z0,cell*2)*1.08, cx=(x0+x1)/2, cz=(z0+z1)/2, H=Math.max(D.lv-reg.mn,0.5);
+  const r=makeRecipe('valley',H<12?'close':'mid'); r.name='Flooded fog'; sizeRecipe(r,[W,H*1.3,Dd]); const tr=terrRange({gnd:{t:'scene'}},cx-W/2,cx+W/2,cz-Dd/2,cz+Dd/2);
+  r.form={type:'fill',level:+clamp((D.lv-tr.min)/Math.max(tr.max-tr.min,1e-3),0.02,0.98).toFixed(4)}; r.anim=animDefaults(r); r.anim.heavy=Math.max(r.anim.heavy||0,0.7);
+  UI.placeAsset=r; placeAssetAt([cx,sceneHJ(cx,cz),cz]); toast('Filled to '+fmLen(H)+' deep: it forms there, poking out where the ground is higher'); }
+
+/* ---------- Depth slab: scroll to set how far away, paint over the picture, and the fog fills that slab of depth ---------- */
+const SLAB={near:0,far:0,on:false,pts:[]};
+function slabInit(){ if(SLAB.far>0) return; const c=shotCamSrc(); const d=len(sub(c.look,camBasis(CAM).pos)); SLAB.near=+(d*0.35).toPrecision(3); SLAB.far=+(d*0.55).toPrecision(3); }
+function slabWheel(ev){ slabInit(); const th=SLAB.far-SLAB.near; if(ev.shiftKey){ const k=Math.exp(ev.deltaY*0.0015), mid=(SLAB.near+SLAB.far)/2, h=clamp(th*k,1,1e5)/2; SLAB.near=Math.max(0.5,mid-h); SLAB.far=mid+h; }
+  else { const k=Math.exp(ev.deltaY*0.0012); SLAB.near=Math.max(0.5,SLAB.near*k); SLAB.far=SLAB.near+th*k; } UI.slabMsg=`depth slab ${fmLen(SLAB.near)} to ${fmLen(SLAB.far)}`; toast(UI.slabMsg); resetAccum(); poke(); }
+const slabShown=()=>UI.ws==='shot'&&UI.tool==='slab'&&!UI.clean;
+function slabU(pr){ u3v(pr,'uSlab',slabShown()?[SLAB.near,SLAB.far,1]:[0,0,0]); bindTex(5,gl.TEXTURE_2D,SET.dist||dummy2D()); u1i(pr,'uSD',5); }
+function slabStart(mx,my){ slabInit(); return {mode:'slab',pts:[[mx,my]],lx:mx,ly:my}; }
+function slabMove(mx,my){ const P=drag.pts, l=P[P.length-1]; if(Math.hypot(mx-l[0],my-l[1])>(UI.slabPx||40)*0.35) P.push([mx,my]); poke(); }
+function drawSlabStroke(){ if(!slabShown()) return; const r=UI.slabPx||40; octx.strokeStyle='rgba(120,220,255,.85)'; octx.fillStyle='rgba(120,220,255,.18)';
+  if(drag&&drag.mode==='slab'){ for(const [x,y] of drag.pts){ octx.beginPath(); octx.arc(x,y,r,0,Math.PI*2); octx.fill(); } }
+  if(hoverXY){ octx.lineWidth=1.4; octx.beginPath(); octx.arc(hoverXY[0],hoverXY[1],r,0,Math.PI*2); octx.stroke(); octx.font='600 10px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(140,225,255,.95)'; octx.fillText(`${fmLen(SLAB.near)} – ${fmLen(SLAB.far)} · scroll: nearer/further · Shift+scroll: thicker`,hoverXY[0]+r+6,hoverXY[1]+4); } }
+function slabEnd(){ const P=drag.pts; if(P.length<1) return; if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); return; }
+  const B=camBasis(CAM), K=3, rpx=UI.slabPx||40, step=Math.max(1,Math.ceil(P.length/11)), pts=P.filter((_,i)=>i%step===0||i===P.length-1);
+  const blocks=[], all=[]; for(let k=0;k<K;k++){ const t=SLAB.near+(SLAB.far-SLAB.near)*(k+0.5)/K; const wr=t*B.tanY*2/cssH*rpx; const r=Math.max(wr,(SLAB.far-SLAB.near)/(2*K)*0.9);
+    const chain=pts.map(([x,y])=>{ const {ro,rd}=mouseRay(x,y); const zf=t/Math.max(dot(rd,B.f),1e-3); let p=add(ro,mul(rd,zf)); const g=sceneHJ(p[0],p[2]); if(p[1]<g+r*0.4) p=[p[0],g+r*0.4,p[2]]; return p; });   // the bottom rests on the ground
+    chain.forEach(p=>all.push(p)); blocks.push(chain.length>1?{t:'capsule',pts:chain,r,r1:r,w:0.9}:{t:'sphere',pts:[chain[0]],s:[r,r,r],w:0.9}); }
+  const lo=[0,1,2].map(i=>Math.min(...all.map(p=>p[i]))), hi=[0,1,2].map(i=>Math.max(...all.map(p=>p[i]))), c=[(lo[0]+hi[0])/2,0,(lo[2]+hi[2])/2]; c[1]=sceneHJ(c[0],c[2]); const rmax=Math.max(...blocks.map(b=>b.r||b.s[0]));
+  const q=v=>+v.toPrecision(6); for(const b of blocks) b.pts=b.pts.map(p=>[q(p[0]-c[0]),q(p[1]-c[1]),q(p[2]-c[2])]);
+  const r=makeRecipe('painted','mid'); r.name='Painted mist'; sizeRecipe(r,[hi[0]-lo[0]+rmax*2,hi[1]-lo[1]+rmax*2,hi[2]-lo[2]+rmax*2]); r.blocks=blocks; r.anim=animDefaults(r); UI.placeAsset=r; placeAssetAt(c);
+  toast('Mist painted between '+fmLen(SLAB.near)+' and '+fmLen(SLAB.far)+' from the camera. Sculpt it, or paint another slab'); }
+let hoverXY=null;
+$('#soloBtn').onclick=()=>toggleSolo();
+/* =====================================================================
+   THE AIR, MADE VISIBLE: faint streamlines carried by the same flow the fog simulates, while it is paused
+   ===================================================================== */
+const FS_PART=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler2D uPS; uniform sampler3D uD; uniform float uPDt, uSeed; out vec4 o;
+vec3 hh(vec2 p){ vec3 q=fract(vec3(p.xyx)*vec3(.1031,.1030,.0973)); q+=dot(q,q.yxz+33.33); return fract((q.xxy+q.yxx)*q.zyx); }
+bool outB(vec3 p){ vec3 u=p2u(p); return any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.))); }
+void main(){ ivec2 c=ivec2(gl_FragCoord.xy); vec4 h=texelFetch(uPS,ivec2(c.x,0),0);
+  bool dead=h.w<=0.||outB(h.xyz); vec3 np; float nl;
+  if(dead){ float best=-1.; np=uLo+uSize*0.5; for(int k=0;k<5;k++){ vec3 r=hh(vec2(float(c.x)+0.37*float(k),uSeed+float(k)*17.)); vec3 cand=uLo+r*uSize; float d=textureLod(uD,r,0.).r+r.x*0.02; if(uGround>0&&cand.y<terrH(cand.xz)) d=-1.; if(d>best){ best=d; np=cand; } }   /* born where there is fog, mostly */
+    nl=30.+90.*hh(vec2(float(c.x),uSeed*1.7)).x; }
+  else { vec3 v=vel(h.xyz,p2u(h.xyz),uD); np=h.xyz+v*uPDt; if(uGround>0){ float g=terrH(np.xz); if(np.y<g) np.y=g; } nl=h.w-1.; }
+  o=c.y==0?vec4(np,nl):(dead?vec4(np,0.):vec4(texelFetch(uPS,ivec2(c.x,c.y-1),0).xyz,0.)); }`;
+const VS_PART=`#version 300 es
+uniform highp sampler2D uPS; uniform vec3 uCam,uCR,uCU,uCF; uniform float uTanY,uAsp; uniform int uK; out float vA;
+void main(){ int seg=gl_VertexID/2, e=gl_VertexID%2; int i=seg/(uK-1), k=seg%(uK-1)+e; vec4 p=texelFetch(uPS,ivec2(i,k),0); vec4 h=texelFetch(uPS,ivec2(i,0),0); vec3 v=p.xyz-uCam; float z=dot(v,uCF);
+  vA=(1.-float(k)/float(uK-1))*clamp(h.w/12.,0.,1.); if(z<0.05){ gl_Position=vec4(2.,2.,2.,1.); return; } gl_Position=vec4(dot(v,uCR)/(uTanY*uAsp),dot(v,uCU)/uTanY,0.,z); }`;
+const FS_PARTD=`#version 300 es
+precision highp float; in float vA; out vec4 o; void main(){ o=vec4(0.72,0.90,1.0,1.)*vA*0.55; }`;
+const STREAM={N:640,K:14,tex:[],fb:[],cur:0,prog:null,draw:null,seed:1,ok:false,vao:null,checked:false};
+UI.streams=true;
+function streamInit(){ if(STREAM.ok) return true; try{ mkProg('part',FS_PART); STREAM.draw=glProg(VS_PART,FS_PARTD); STREAM.vao=gl.createVertexArray(); for(let i=0;i<2;i++){ const t=tex2D(STREAM.N,STREAM.K,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); STREAM.tex.push(t); STREAM.fb.push(f); } gl.bindFramebuffer(gl.FRAMEBUFFER,null); STREAM.ok=true; return true; }catch(e){ console.warn('streamlines off',e); STREAM.ok=false; UI.streams=false; return false; } }
+const streamsOn=()=>UI.streams!==false&&UI.mode==='anim'&&MAIN.phase==='anim'&&!UI.playing&&!UI.clean&&!AFIT.on&&!(typeof PB!=='undefined'&&PB.on)&&!(REC&&REC.blank)&&(REC.anim.body||'sim')==='sim'&&!exporting;
+function streamStep(){ if(!streamsOn()||!streamInit()||!PR.part||!progDone(PR.part)) return false; if(!STREAM.checked){ STREAM.checked=true; if(!gl.getProgramParameter(PR.part.p,gl.LINK_STATUS)){ console.warn('streamlines off: '+gl.getShaderInfoLog(PR.part.f)); UI.streams=false; return false; } } const ar=ARec(REC); const pr=use('part'); velUniforms(pr,MAIN,ar);
+  bind3(pr,1,'uD',MAIN.den[0]); bindTex(7,gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); u1i(pr,'uPS',7); u3v(pr,'uDims',MAIN.dims); u1f(pr,'uPDt',(MAIN.sim.dt||0.05)*0.7); u1f(pr,'uSeed',(STREAM.seed=(STREAM.seed+1)%997));
+  gl.bindFramebuffer(gl.FRAMEBUFFER,STREAM.fb[1-STREAM.cur]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,STREAM.N,STREAM.K); fullscreen(); gl.bindFramebuffer(gl.FRAMEBUFFER,null); STREAM.cur=1-STREAM.cur; return true; }
+function streamDraw(){ if(!streamsOn()||!STREAM.ok) return; const P=STREAM.draw; gl.useProgram(P); const B=camBasis(CAM); const U2=n=>gl.getUniformLocation(P,n);
+  gl.activeTexture(gl.TEXTURE0+7); gl.bindTexture(gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); gl.uniform1i(U2('uPS'),7); gl.uniform3fv(U2('uCam'),B.pos); gl.uniform3fv(U2('uCR'),B.r); gl.uniform3fv(U2('uCU'),B.u); gl.uniform3fv(U2('uCF'),B.f); gl.uniform1f(U2('uTanY'),B.tanY); gl.uniform1f(U2('uAsp'),cw/ch); gl.uniform1i(U2('uK'),STREAM.K);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,cw,ch); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(STREAM.vao); gl.drawArrays(gl.LINES,0,STREAM.N*(STREAM.K-1)*2); gl.bindVertexArray(null); gl.disable(gl.BLEND); }
+function streamFrame(){ if(streamStep()) streamDraw(); }
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
@@ -4105,6 +4225,8 @@ const ICONS={
   tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
   wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
   sphere:'<circle cx="12" cy="12" r="6"/><path d="M3 19c3-3 6-4 9-4" stroke-dasharray="2 2"/>',
+  flood:'<path d="M3 15c3-2 6 2 9 0s6-2 9 0"/><path d="M3 19c3-2 6 2 9 0s6-2 9 0"/><path d="M12 3v8M9 8l3 3 3-3"/>',
+  slab:'<path d="M4 7l8-3 8 3-8 3z"/><path d="M4 12l8 3 8-3" stroke-dasharray="2 2"/><path d="M4 17l8 3 8-3"/>',
   air:'<path d="M3 8c4-3 7 3 11 0s5-2 7-1"/><path d="M3 13c4-3 7 3 11 0s5-2 7-1"/><path d="M3 18c4-3 7 3 11 0"/>',
   inflow:'<path d="M3 19V9h6v10z"/><path d="M9 14h4c3 0 3-4 6-4M9 17h5c3 0 4-2 7-2"/>',
   attract:'<circle cx="12" cy="12" r="2"/><path d="M12 3a9 9 0 0 1 9 9M21 12a9 9 0 0 1-9 9M12 21a9 9 0 0 1-9-9M3 12a9 9 0 0 1 9-9" stroke-dasharray="3 3"/><path d="M18 6l-3 3M6 18l3-3"/>',
@@ -4136,6 +4258,8 @@ const TOOLS=[
   {id:'lift',m:'anim',key:'u',name:'Lift',hint:'Press where the fog should rise and drag out to size it: one mark is placed when you let go (Ctrl makes it sink). Its arrow shows the push: drag the arrow\'s tip to point it any way, the centre dot to move it, the ring dot to resize it.'},
   {id:'calm',m:'anim',key:'c',name:'Calm',hint:'Press where the fog should hold still and drag out to size it: one calm pocket is placed when you let go. The wind and churn leave it alone. Drag the centre dot to move it and the ring dot to resize it.'},
   {id:'thin',m:'anim',key:'t',name:'Thin',hint:'Press where the fog should thin out and evaporate as it plays, and drag out to size it: one mark is placed when you let go (Ctrl makes it thicken and fill in instead). Strength is in the panel. Drag the centre dot to move it and the ring dot to resize it.'},
+  {id:'flood',m:'shape',ws:'shot',key:'y',name:'Flood',hint:'Press on the ground in a hollow, a valley or a street and drag up: the water line shows where the fog will meet the ground and what pokes out. Let go and it fills to there, as a heavy valley fog you can shape and animate.'},
+  {id:'slab',m:'shape',ws:'shot',key:'n',name:'Depth slab',hint:'Paint mist between two distances from the camera: scroll to move the slab nearer or further (the set inside it is tinted), Shift+scroll to make it thicker, then paint over the picture. The fog fills that slab under your strokes and rests on the ground. [ ] sizes the brush.'},
   {id:'air',m:'anim',key:'r',name:'Air',hint:'Paint the air: drag a stream where the wind should carry the fog (a quick flick is strong, a slow drag gentle). Shift+drag lifts it, Ctrl+drag makes still, dead air (the lee of a building). Drag the dots afterwards to adjust it.'},
   {id:'inflow',m:'anim',key:'i',name:'Fog source',hint:'A box on the ground that keeps making fog and pours it out of one side, like a mass of fog rolling in. Press on the ground where it sits and drag out its width; it faces the way the wind blows (or toward your fog with no wind). Set its height, depth, how fast it fills and how hard it pushes in the panel. Run it to see where the fog naturally goes, then keep the frame you like.'},
   {id:'attract',m:'anim',key:'a',name:'Attract',hint:'A black hole for fog: press where it should pull and drag out to size it. Fog that comes near is drawn in and, at the core, consumed (Consume in the panel). Ctrl makes a blast that blows it outward instead. Spin turns it into a drain. Drag the centre dot to move it and the ring dot to resize it.'},
@@ -4150,7 +4274,7 @@ const TOOLS=[
 ];
 function buildRail(){ const r=$('#rail'); r.innerHTML=''; const ST=stepTools(); const TV=TOOLS.filter(t=>(t.m==='both'||t.m===UI.mode)&&(!t.ws||t.ws===UI.ws)&&(t.id==='orbit'||ST.includes(t.id))); TV.forEach((t,i)=>{ if(i>0&&TV[i-1]&&(TV[i-1].m==='both')!==(t.m==='both')){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="lb">${SHORT[t.id]||t.name.split(' ')[0]}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
-const SHORT={shape:'Shapes',blocker:'Block',move:'Move',orbit:'Orbit',place:'Place',collide:'Pick',sphere:'Sphere',add:'Add',erase:'Erase',smooth:'Smooth',pull:'Pull',smear:'Comb',tear:'Tear',fill:'Fill',look:'Looks',blow:'Blow',wind:'Wind',flow:'Path',lift:'Lift',calm:'Calm',thin:'Thin',attract:'Attract',inflow:'Source',air:'Air',swirl:'Vortex',edit:'Edit',box:'Box',light:'Light',source:'Source'};
+const SHORT={shape:'Shapes',blocker:'Block',move:'Move',orbit:'Orbit',place:'Place',collide:'Pick',sphere:'Sphere',add:'Add',erase:'Erase',smooth:'Smooth',pull:'Pull',smear:'Comb',tear:'Tear',fill:'Fill',look:'Looks',blow:'Blow',wind:'Wind',flow:'Path',lift:'Lift',calm:'Calm',thin:'Thin',attract:'Attract',inflow:'Source',air:'Air',flood:'Flood',slab:'Slab',swirl:'Vortex',edit:'Edit',box:'Box',light:'Light',source:'Source'};
 function setTool(id,fromStep){ if(UI.ws==='shot'&&UI.instSel!=null&&!['move','orbit','light','box'].includes(id)){ if(['place','collide','blocker'].includes(id)) UI.instSel=null; else makeOwn(UI.instSel); }   /* any shaping tool on an instance makes it its own */ if(!fromStep&&typeof stepForTool==='function'){ const s=stepForTool(id); if(s&&s.id!==UI.step){ UI.step=s.id; try{ localStorage.setItem('brume.step.'+UI.ws,s.id); }catch(e){} if(UI.mode!==s.mode) setMode(s.mode); applySteps(); } } const t=TOOLS.find(x=>x.id===id); if(t&&t.m!=='both'&&t.m!==UI.mode) setMode(t.m); UI.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='orbit'?'grab':'crosshair'; hover=null; buildBrushRow(); }
 function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(BRUSHES[UI.tool]!=null?`<span>brush <b style="font-family:var(--f-mono)">${fmLen(UI.brushR)}</b> · [ ] to size</span>`:''); }
 function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.005,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
@@ -4245,6 +4369,7 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
   buildMotion(ab,A); if(!simBody(REC)) return;
   if(UI.ws==='shot') buildShotWind(ab,A);
   subH(ab,'Weather'); refreshers.push(weatherPad(ab,A)); note(ab,'Drag the dot: calm and smooth to turbulent and gusty, heavy fog that pours and pools to buoyant fog that lifts and burns off. Every control is under Advanced.');
+  refreshers.push(chips(ab,'Show the air',[[true,'On','While paused, faint streamlines show where the air carries the fog: the wind, your Air strokes, vortices, sources and the ground'],[false,'Off']],()=>UI.streams!==false,v=>{ UI.streams=v; poke(); }));
   const adv=document.createElement('details'); adv.className='adv'; adv.innerHTML='<summary>Advanced · every control</summary>'; if(UI.advOpen) adv.open=true; adv.ontoggle=()=>{ UI.advOpen=adv.open; }; ab.appendChild(adv);
   subH(adv,'Simulation');
   { const dimsAt=k=>{ try{ const r={...ARec(REC),_simK:SIMRES_K[k]}; const d=recDims(r,MAIN.N); return d; }catch(e){ return null; } };
@@ -4346,6 +4471,8 @@ function buildPanels(){ applySteps(); if(UI.ws==='shot'){ buildLayers(); buildSe
   refreshers.push(slider(mb,S_('Calm core',0,1,()=>REC.sim.calm,v=>REC.sim.calm=v,pct,markSimU,false,'Keeps the inside dense and quiet while the edges churn')));
   if(REC.floor) refreshers.push(slider(mb,S_('Spread on ground',0,1,()=>REC.sim.spread,v=>REC.sim.spread=v,pct,markSimU,false,'Fog piled on the ground slumps outward')));
   if(slopedGround(REC)) refreshers.push(slider(mb,S_('Drain downhill',0,3,()=>REC.sim.drain||0,v=>REC.sim.drain=+v.toFixed(2),v=>v<0.02?'off':v.toFixed(2)+' m/s',markSimU,false,'As it forms, the fog creeps down the slopes and pools in the low ground')));
+  if(hasGround(REC)){ refreshers.push(slider(mb,S_('Clings to shade',0,1,()=>REC.sim.cling||0,v=>REC.sim.cling=+v.toFixed(2),v=>v<0.02?'off':pct(v),markSimU,false,'Where the sun reaches the ground (with the sun as it is set now), the fog burns off; it lingers in the shade of hills, buildings and north-facing slopes. Change the sun, then nudge this to form it again')));
+    refreshers.push(slider(mb,S_('Pools in hollows',0,1,()=>REC.sim.slopeB||0,v=>REC.sim.slopeB=+v.toFixed(2),v=>v<0.02?'off':pct(v),markSimU,false,'Thicker in dips and hollows, thinner on steep ground and ridges, the way cold air settles: no simulation needed'))); }
   refreshers.push(slider(mb,S_('Wind while forming',0,25,()=>REC.sim.wind,v=>REC.sim.wind=+v.toFixed(1),v=>v.toFixed(1)+' m/s · '+windWords(v),markSimU,false,'Wind that shapes the fog as it forms: streaks a bank out, bends a plume. To make it move in the shot, use Animate')));
   refreshers.push(slider(mb,S_('Toward',0,360,()=>REC.sim.windDir,v=>REC.sim.windDir=v,v=>v.toFixed(0)+'°',markSimU)));
   refreshers.push(slider(mb,S_('Dissipate',0,1,()=>REC.sim.diss,v=>REC.sim.diss=v,pct,markSimU,false,'Fog evaporates as it ages')));
