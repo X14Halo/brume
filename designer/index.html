@@ -86,6 +86,7 @@ body.clean #hint, body.clean #hud, body.clean #modeBadge, body.clean .simbar{dis
 .wpad .area i{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--sun);box-shadow:0 0 0 3px rgba(239,178,77,.25);z-index:1}
 .wpad .wl{position:absolute;font:500 10px var(--f-ui);color:var(--faint);text-align:center;line-height:1.25}
 .wpad .wl.t{top:0;left:0;right:0}.wpad .wl.b{bottom:0;left:0;right:0}.wpad .wl.l{left:0;top:50%;transform:translateY(-50%);width:50px}.wpad .wl.r{right:0;top:50%;transform:translateY(-50%);width:50px}
+#pourBar{position:absolute;left:50%;top:52px;transform:translateX(-50%);z-index:5;display:flex;gap:8px;align-items:center;padding:6px 8px 6px 12px;border:1px solid rgba(140,225,255,.6);border-radius:8px;background:rgba(16,19,24,.88);font:600 11px var(--f-mono);color:#9fe2ff}
 details.adv{border:1px solid var(--line);border-radius:8px;padding:2px 8px 6px;margin:6px 0}
 details.adv>summary{cursor:pointer;font:600 11px var(--f-ui);color:var(--muted);padding:6px 0}
 
@@ -384,7 +385,8 @@ const FS_GEN=HEAD+VOX_GLSL+TERR_GLSL+BLK_GLSL+`
 uniform int uNP, uNPT; uniform vec4 uP0[NP], uP1[NP], uP2[NP]; uniform vec2 uRotY; uniform vec3 uRotC;
 uniform sampler3D uNT; uniform float uNoiseAmp, uNoiseScale, uSoft, uFl; uniform vec3 uSeedOff; uniform int uProfile;
 uniform int uForm; uniform vec4 uF0, uF1; uniform vec2 uWdir, uFOff;
-uniform float uCling, uSlopeB, uSlopeR, uClingD; uniform vec3 uSunL;   /* where it settles: clings to shade (out of the sun), pools in hollows and thins on ridges */
+uniform float uCling, uSlopeB, uSlopeR, uClingD; uniform vec3 uSunL;
+uniform sampler2D uRvM; uniform vec4 uRvB; uniform vec2 uReach;   /* how high off the ground it reaches (m, 0 = no limit) and how soft that top is */   /* painted reveal: where on the ground the ready-made flowing fog is shown (a soft 2D mask over these bounds) */   /* where it settles: clings to shade (out of the sun), pools in hollows and thins on ridges */
 uniform sampler2D uMask; uniform vec4 uMaskB; uniform vec4 uLr[4]; uniform int uNL;   // shot: painted layers (mask channel per layer) · rule: kind, a, b, c
 out vec4 o;
 float sdPrim(vec3 p,int i){ vec4 a=uP0[i], b=uP1[i], c=uP2[i]; int ty=int(a.w+0.5);
@@ -409,7 +411,13 @@ void main(){
   vec2 rq=(p.xz-uFOff)/max(uF1.xy,vec2(1e-3)); float Lf=max(uF1.x,uF1.y);   /* the footprint: an organic, rounded patch with a wide soft edge, never a square cut-out */
   float wob=textureLod(uNT,vec3((p.xz-uFOff)/(Lf*0.9)+uSeedOff.xz*0.01,0.37),0.).r*0.7+textureLod(uNT,vec3((p.xz-uFOff)/(Lf*0.35)+uSeedOff.zx*0.01,0.71),0.).a*0.3;
   float rr=length(rq)/1.1*(1.+(wob-0.5)*0.5)+disp*0.6/Lf; float rgn=1.-smoothstep(0.5,1.,rr); rgn*=rgn*(3.-2.*rgn);
-  if(uForm==1){ float T=uF0.x; float R=max(T*5.,uF0.z); float hm=0.25*(terrH(p.xz+vec2(R,0))+terrH(p.xz-vec2(R,0))+terrH(p.xz+vec2(0,R))+terrH(p.xz-vec2(0,R)));
+  if(uForm==8){ vec2 mu=(p.xz-uRvB.xy)/uRvB.zw; float msk=all(greaterThanEqual(mu,vec2(0.)))&&all(lessThanEqual(mu,vec2(1.)))?textureLod(uRvM,mu,0.).a:0.; rgn=smoothstep(0.02,0.9,msk);
+    vec2 wd=uWdir, sd=vec2(-wd.y,wd.x); vec2 q=vec2(dot(p.xz,wd),dot(p.xz,sd)); float Ls=max(uF0.w,1.);   /* a field that looks already simulated: streaks and rolls laid along the wind, filling the low ground to a level */
+    float s1=textureLod(uNT,vec3(q.x/(Ls*4.),q.y/(Ls*1.1),p.y/(Ls*0.9))+uSeedOff,0.).r, s2=textureLod(uNT,vec3(q.x/(Ls*1.6),q.y/(Ls*0.5),p.y/(Ls*0.45))+uSeedOff.zxy,0.).a;
+    vec2 tg=terrG(p.xz); float lee=max(-dot(tg,wd),0.), ridge=max(dot(tg,wd),0.);   // it pours down the lee of hills and thins on the slopes it climbs
+    float lv=uF0.x+(s1-0.5)*uF0.y*2.6+(s2-0.5)*uF0.y*1.2+lee*uF0.z*0.6-ridge*uF0.z*0.25, e=uF0.y;
+    mf=smoothstep(lv+e,lv-e,p.y+disp*0.35)*(0.72+0.28*smoothstep(lv,lv-e*5.,p.y))*smoothstep(-e*0.2,e*0.6,hy+uF0.z*0.02); }
+  else if(uForm==1){ float T=uF0.x; float R=max(T*5.,uF0.z); float hm=0.25*(terrH(p.xz+vec2(R,0))+terrH(p.xz-vec2(R,0))+terrH(p.xz+vec2(0,R))+terrH(p.xz-vec2(0,R)));
     float low=clamp((hm-terrH(p.xz))/T,-1.,3.); float Te=T*(1.+uF0.y*max(low,0.)*0.8)*(1.-0.35*uF0.y*max(-low,0.));
     float h=hy+disp*0.5; mf=smoothstep(Te,Te*0.25,h)*exp(-max(h,0.)/Te*0.9)*1.15; }
   else if(uForm==2){ float lv=uF0.x+disp*0.4, e=uF0.y; mf=smoothstep(lv+e,lv-e,p.y)*(0.75+0.25*smoothstep(lv,lv-e*6.,p.y)); }
@@ -439,6 +447,7 @@ void main(){
     if(uCling>0.){ float sh=0.; vec3 q=vec3(p.x,gh+0.5,p.z); for(int i=1;i<=14;i++){ vec3 s=q+uSunL*(float(i)*uClingD/14.); if(terrH(s.xz)>s.y){ sh=1.; break; } }
       vec3 nn=normalize(vec3(-tg.x,1.,-tg.y)); float shade=max(sh,1.-smoothstep(0.05,0.35,dot(nn,uSunL))); kk*=mix(1.,mix(0.2,1.25,shade),uCling); }   // shade keeps it, sunlit ground burns it off
     m*=kk; }
+  if(uGround>0&&uReach.x>0.){ float tp=uReach.x, sf=clamp(uReach.y,0.,1.); float h2=hy+disp*0.25*sf; m*=1.-smoothstep(tp*(1.-0.85*sf),tp*(1.+0.9*sf),h2); m*=mix(1.,exp(-max(h2,0.)/max(tp*(0.35+0.9*sf),1e-3)),0.35*sf); }   /* reaches up to a height above the ground: a crisp top, or a long soft fade into the air */
   m=clamp(m,0.,1.); float ls=lw.x+lw.y+lw.z+lw.w; vec3 wk=ls>1e-4?lw.yzw/ls:vec3(0.);   // layers 2-4 carry their own looks
   o=vec4(m,wk*m);
 }`;
@@ -472,6 +481,11 @@ void main(){
   else { float n=textureLod(uNT,p/(uR*0.45)+vec3(0.37,0.11,0.73),0.).r; m=m*(1.-s*smoothstep(0.4,0.62,n)); } // tear
   m=clamp(m,0.,1.); o=vec4(m,w*m);
 }`;
+/* Reaches up to: once the fog has formed, it is trimmed to a height above the ground under it, with a crisp or a soft, uneven top */
+const FS_REACH=HEAD+VOX_GLSL+TERR_GLSL+`uniform sampler3D uD, uNT; uniform vec2 uReach; out vec4 o;
+void main(){ vec3 u=vU(), p=u2p(u); vec4 d=textureLod(uD,u,0.); float hy=uGround>0?p.y-terrH(p.xz):p.y-uLo.y; float tp=max(uReach.x,1e-3), sf=clamp(uReach.y,0.,1.);
+  float n=textureLod(uNT,p/(tp*3.+1.)+vec3(0.31,0.17,0.53),0.).r-0.5; float h2=hy+n*tp*0.6*sf;
+  float k=(1.-smoothstep(tp*(1.-0.85*sf),tp*(1.+0.9*sf),h2))*mix(1.,exp(-max(h2,0.)/(tp*(0.35+0.9*sf))),0.35*sf); o=d*k; }`;
 const FS_COPY=HEAD+VOX_GLSL+`uniform sampler3D uSrc; out vec4 o; void main(){ o=textureLod(uSrc,vU(),0.); }`;
 const FS_COPY2=HEAD+`uniform sampler2D uSrc; out vec4 o; void main(){ o=texelFetch(uSrc,ivec2(gl_FragCoord.xy),0); }`;
 /* move fog with its detail: Grab carries what is under the brush along with the cursor (from a copy taken when the stroke began), Comb drags uneven strands */
@@ -1094,6 +1108,7 @@ function formAbs(rec){ const f=rec.form; if(!f) return null; const [W,H,D]=rec.s
   if(f.type==='deck'){ const bb=H*(f.base??0.25), t=H*(f.top??0.75), e=H*0.08; return {...b,id:5,F0:[bb,t,e,0],y:[bb-e*3,t+e*4]}; }
   if(f.type==='lid'){ const t=r.min+H*0.85, e=H*0.08; return {...b,id:6,F0:[t,e,0,0],y:[r.min,t+e*2]}; }
   if(f.type==='even') return {...b,id:7,F0:[H*(f.falloff??0.6),0,0,0],y:[r.min,r.min+H]};
+  if(f.type==='reveal'){ const lv=r.min+(f.depth??H*0.6), e=Math.max((f.depth??H*0.6)*(0.08+0.3*(f.soft??0.5)),0.3); return {...b,id:8,F0:[lv,e,(f.climb??0.5)*(f.depth??H*0.6)*2,Math.max(rec.sim.eddy*0.9,2)],y:[r.min,lv+e*3+(f.climb??0.5)*(f.depth??H*0.6)]}; }   /* painted reveal: depth above the lowest painted ground, softness, how far it climbs and pours */
   return null; }
 /* an emitter's plan: how fast smoke rises and blows, how long it lives */
 /* plumes run on their own clock: rise speed in m/s from heat and size, and turbulence that scales with the rise (not the other way round) */
@@ -1371,10 +1386,11 @@ function genMass(ctx,rec,extra){
   const md=Math.max(...rec.size), mn=Math.min(...rec.size);
   const rough=TEMPLATES[rec.template].rough??1; bind3(pr,0,'uNT',T.noise); u1f(pr,'uNoiseAmp',mn*0.35*rough); u1f(pr,'uNoiseScale',md*0.45); u1f(pr,'uSoft',Math.max(mn*0.08,voxSize(ctx,rec)*1.5));
   const R=mulberry(rec.seed); u3v(pr,'uSeedOff',[R(),R(),R()]); u1i(pr,'uProfile',TEMPLATES[rec.template].profile??0); u1f(pr,'uFl',floorIn(rec)?1:0); boxU(pr,rec); terrU(pr,rec);
-  u1f(pr,'uCling',hasGround(rec)?clamp(rec.sim.cling||0,0,1):0); u1f(pr,'uSlopeB',hasGround(rec)?clamp(rec.sim.slopeB||0,0,1):0); u1f(pr,'uSlopeR',Math.max(rec.sim.eddy*0.8,0.5)); u1f(pr,'uClingD',Math.min(Math.max(...rec.size)*1.5,3000)); u3v(pr,'uSunL',sunDir());
+  u1f(pr,'uCling',hasGround(rec)?clamp(rec.sim.cling||0,0,1):0); u1f(pr,'uSlopeB',hasGround(rec)?clamp(rec.sim.slopeB||0,0,1):0); u1f(pr,'uSlopeR',Math.max(rec.sim.eddy*0.8,0.5)); u1f(pr,'uClingD',Math.min(Math.max(...rec.size)*1.5,3000)); u3v(pr,'uSunL',sunDir()); u2f(pr,'uReach',hasGround(rec)&&rec.reach&&rec.reach.top>0?rec.reach.top:0,rec.reach?rec.reach.fall??0.5:0.5);
   const fa=formAbs(rec); u1i(pr,'uForm',rec.template==='shot'?20:fa?fa.id:0); u2f(pr,'uFOff',rec.off?rec.off[0]:0,rec.off?rec.off[2]:0); u4v(pr,'uF0',fa?fa.F0:[1,0,0,0]); u4v(pr,'uF1',fa?[fa.half[0],fa.half[1],fa.edge,0]:[1,1,1,0]);
   const wd=rec.sim.windDir*D2R; u2f(pr,'uWdir',Math.sin(wd),-Math.cos(wd));
-  if(rec.template==='shot'&&typeof shotGenU==='function') shotGenU(pr,rec); else { u1i(pr,'uNL',0); bindTex(7,gl.TEXTURE_2D,dummy2D()); u1i(pr,'uMask',7); }   // a 2D sampler must never share a unit with the 3D ones
+  if(rec.template==='shot'&&typeof shotGenU==='function') shotGenU(pr,rec); else { u1i(pr,'uNL',0); bindTex(7,gl.TEXTURE_2D,dummy2D()); u1i(pr,'uMask',7); }
+  { const M=typeof revealMask==='function'&&rec.form&&rec.form.type==='reveal'?revealMask(rec):null; bindTex(11,gl.TEXTURE_2D,M?M.tex:dummy2D()); u1i(pr,'uRvM',11); u4v(pr,'uRvB',M?M.B:[0,0,1,1]); }   // a 2D sampler must never share a unit with the 3D ones
   volPass(pr,[ctx.mass[0]],ctx.dims);
   for(const s of [...rec.strokes,...(extra?[extra]:[])]) if(s.t==null) for(const d of s.dabs) dab(ctx,rec,s.op,d,s.r,s.s);   // older recipes sculpted the starting shape; strokes now land on the simulated fog at their time
   const un=rec.det.unify||0; if(un>0){ let pr2=use('unify'); bind3(pr2,0,'uM',ctx.mass[0]); boxU(pr2,rec); u1f(pr2,'uRu',Math.max(rec.sim.eddy*(0.08+0.3*un),voxSize(ctx,rec)*2)); u1f(pr2,'uK',un); volPass(pr2,[ctx.mass[1]],ctx.dims);
@@ -1383,7 +1399,8 @@ function genMass(ctx,rec,extra){
 /* a stroke on the simulated fog itself: what you see is what you sculpt */
 function dabDen(ctx,rec,op,d,r,s,lk,match,ch){ dab(ctx,rec,op,d,r,s,ctx.den[0],ctx.den[1],lk,match||(op===0?(d[6]!=null?[d[6],d.length>8?[d[7],d[8],d[9]]:[d[7]||0,0,0]]:[0.5,[0,0,0]]):null),ch); }
 /* the shape: the type forms once, then every stroke is replayed on it in order */
-function applyShape(ctx,rec){ ctx.sim.shaped=true; if(ctx===MAIN) baseKeep(ctx,rec); for(const st of rec.strokes) if(st.t!=null) applyStroke(ctx,rec,st); }
+function reachPass(ctx,rec){ const R=rec.reach; if(!(R&&R.top>0)) return; const pr=use('reach'); bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uNT',T.noise); u2f(pr,'uReach',R.top,R.fall??0.5); boxU(pr,rec); terrU(pr,rec); volPass(pr,[ctx.den[1]],ctx.dims); copyVol(ctx.den[1],ctx.den[0],ctx.dims); }
+function applyShape(ctx,rec){ ctx.sim.shaped=true; reachPass(ctx,rec); if(ctx===MAIN) baseKeep(ctx,rec); for(const st of rec.strokes) if(st.t!=null) applyStroke(ctx,rec,st); }
 function applyStroke(ctx,rec,st){
   if(st.op===8){ const d=st.dabs[0]; if(d){ snapTake(ctx); warpPass(ctx,rec,0,d,st.r); } return; }          // grab: one move from where the stroke began
   if(st.op===4){ for(const d of st.dabs){ snapTake(ctx); warpPass(ctx,rec,1,d,st.r); } return; }          // comb
@@ -1637,7 +1654,7 @@ function initGL(){
   if(!X.cbf){ fail('This GPU cannot render to floating-point targets, which Brume needs.'); return false; }
   VAfs=gl.createVertexArray(); gl.bindVertexArray(VAfs); const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
   FB1=gl.createFramebuffer(); FB2=gl.createFramebuffer(); FB3=gl.createFramebuffer();
-  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['comp',FS_COMP],['rebox',FS_REBOX],['warp',FS_WARP],['probe',FS_PROBE],['unify',FS_UNIFY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['ext',FS_EXT],['bake',FS_BAKE],['disp',FS_DISP],['copy2',FS_COPY2],['fields',FS_FIELDS],['tile',FS_TILE]]) mkProg(n,s);
+  for(const [n,s] of [['noise',FS_NOISE],['gen',FS_GEN],['dab',FS_DAB],['copy',FS_COPY],['reach',FS_REACH],['comp',FS_COMP],['rebox',FS_REBOX],['warp',FS_WARP],['probe',FS_PROBE],['unify',FS_UNIFY],['siminit',FS_SIMINIT],['simA',FS_SIMA],['simB',FS_SIMB],['light',FS_LIGHT],['render',FS_RENDER],['pick',FS_PICK],['wall',FS_WALL],['ext',FS_EXT],['bake',FS_BAKE],['disp',FS_DISP],['copy2',FS_COPY2],['fields',FS_FIELDS],['tile',FS_TILE]]) mkProg(n,s);
   T.noise=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR); T.detail=tex3D(128,128,128,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.REPEAT,gl.LINEAR);
   T.curl=tex3D(64,64,64,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.REPEAT,gl.LINEAR);
   return true; }
@@ -1884,7 +1901,7 @@ function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase=
   if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
 function drawOverlay(){
-  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(!UI.clean){ drawShotCam(); drawFlood(); drawSlabStroke(); drawPdrop(); } try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
+  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(!UI.clean){ drawShotCam(); drawFlood(); drawSlabStroke(); drawPdrop(); drawRv(); } pourBar(); try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
   if(!REC.dom) return; const BX=drag&&drag.mode==='boxface'?drag.nd:MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; const W=BX[1][0]-BX[0][0], H=BX[1][1]-BX[0][1], D=BX[1][2]-BX[0][2], [x0,y0,z0]=BX[0], [x1,y1,z1]=BX[1];
   // the box: the simulation's room. It flashes when it grows to fit the fog
   const fl=clamp(1-(performance.now()-roomFlash)/900,0,1); if(fl>0) poke();
@@ -2006,6 +2023,7 @@ ov.addEventListener('pointerdown',ev=>{
   if(UI.tool==='collide'){ collideClick(mx,my,ev); return; }
   if(UI.tool==='flood'){ const d=floodStart(mx,my); if(d) drag=d; return; }   // press in a hollow, drag up
   if(UI.tool==='slab'){ drag=slabStart(mx,my); return; }   // paint into the depth slab
+  if(UI.tool==='reveal'){ const d=rvStart(mx,my,ev); if(d) drag=d; return; }   // paint fog in
   if(['shape','blocker','move'].includes(UI.tool)){ if(UI.ws==='shot'&&REC&&REC.blank&&UI.tool!=='blocker'){ toast('Add a fog layer first: pick a type under Layers'); return; } const d=xDown(mx,my,ev); if(d) drag=d; return; }
   if(UI.tool==='sphere'){ const d=sphereDown(mx,my,ev); if(d) drag=d; return; }   // the shot: pick what the fog meets
   if(UI.ws==='shot'&&REC&&REC.blank&&UI.tool!=='place'){ toast('Add a fog layer first: pick a type under Layers'); return; }   // the empty shot: nothing to shape yet
@@ -2031,6 +2049,7 @@ ov.addEventListener('pointermove',ev=>{
   if(drag&&drag.mode==='compass'){ drag.lx=mx; drag.ly=my; compassMove(mx,my); return; }
   if(drag&&drag.mode==='flood'){ drag.lx=mx; drag.ly=my; floodMove(mx,my); return; }
   if(drag&&drag.mode==='pdrop'){ drag.lx=mx; drag.ly=my; pdropMove(mx,my); return; }
+  if(drag&&drag.mode==='rv'){ drag.lx=mx; drag.ly=my; rvMove(mx,my); return; }
   if(drag&&drag.mode==='slab'){ drag.lx=mx; drag.ly=my; slabMove(mx,my); return; }
   if(drag&&drag.mode==='sun'){ drag.lx=mx; drag.ly=my; sunMove(mx,my); refreshPanels(); return; }
   if(!drag&&AB.img) ov.style.cursor=Math.abs(mx-AB.x*cssW)<12?'ew-resize':(UI.tool==='orbit'?'grab':'crosshair');
@@ -2073,7 +2092,7 @@ ov.addEventListener('pointermove',ev=>{
     const w=add(mul(r,dx),mul(f,-dy)); REC.anim.windDir=+(((Math.atan2(w[0],-w[2])/D2R)+360)%360).toFixed(1); REC.anim.wind=+(clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1)*20).toFixed(1); if(followsShot(REC)){ const W=shotWind(); W.dir=REC.anim.windDir; W.spd=+(REC.anim.wind/altK(REC)/(REC.anim.windK??1)).toFixed(1); syncShotWind(); } drag.label=`wind ${REC.anim.wind.toFixed(1)} m/s · ${windWords(REC.anim.wind)} · toward ${REC.anim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='flood'){ const d=drag; drag=d; floodEnd(); drag=null; resetAccum(); return; } if(drag.mode==='slab'){ slabEnd(); drag=null; resetAccum(); return; } if(drag.mode==='pdrop'){ const d=drag; pdropEnd(); if(drag===d) drag=null; resetAccum(); return; } if(drag.mode==='compass'){ if(UI.ws==='shot') syncShotWind(true); if(UI.mode==='anim') markAnim(); pushUndo(); autosave(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='flood'){ const d=drag; drag=d; floodEnd(); drag=null; resetAccum(); return; } if(drag.mode==='slab'){ slabEnd(); drag=null; resetAccum(); return; } if(drag.mode==='pdrop'){ const d=drag; pdropEnd(); if(drag===d) drag=null; resetAccum(); return; } if(drag.mode==='rv'){ rvEnd(); drag=null; resetAccum(); return; } if(drag.mode==='compass'){ if(UI.ws==='shot') syncShotWind(true); if(UI.mode==='anim') markAnim(); pushUndo(); autosave(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
   if(drag.mode==='region'){ const d=drag, x0=Math.min(d.x0,d.x1)/cssW, x1=Math.max(d.x0,d.x1)/cssW, y0=1-Math.max(d.y0,d.y1)/cssH, y1=1-Math.min(d.y0,d.y1)/cssH; REGION.arm=false;
     if(x1-x0>0.03&&y1-y0>0.03){ Object.assign(REGION,{on:true,x0:clamp(x0,0,1),x1:clamp(x1,0,1),y0:clamp(y0,0,1),y1:clamp(y1,0,1)}); toast('Close-up: while it plays, this part renders at full quality. Click the button again to turn it off'); } else REGION.on=false;
     $('#regionBtn').setAttribute('aria-pressed',REGION.on); ov.style.cursor=UI.tool==='orbit'?'grab':'crosshair'; drag=null; resetAccum(); return; }
@@ -3331,6 +3350,8 @@ function xfLayer(rec,C,xf){ const c=Math.cos(xf.yaw||0), s=Math.sin(xf.yaw||0), 
   for(const st of rec.place||[]){ st.pts=st.pts.map(p=>P2(p[0],p[1]).map(v=>+v.toFixed(1))); st.r=+(st.r*k).toPrecision(3); }
   for(const st of rec.strokes||[]){ for(const d of st.dabs||[]){ P3(d); if(d.length>=6) V3(d,3); } st.r=q5(st.r*k); if(st.dom) st.dom=null; }
   for(const f of (rec.anim&&rec.anim.flows)||[]){ for(const p of [...(f.pts||[]),...(f.dabs||[])]) P3(p); if(f.tip) P3(f.tip); if(f.mid) P3(f.mid); f.r=q5(f.r*k); if(f.core) f.core=q5(f.core*k); }
+  if(rec.reach&&rec.reach.top>0) rec.reach.top=q5(rec.reach.top*k);
+  for(const d of rec.rv||[]){ const o=P2(d[0],d[1]); d[0]=q5(o[0]); d[1]=q5(o[1]); d[2]=q5(d[2]*k); } if(rec.rv&&typeof RVTEX!=='undefined') RVTEX.delete(rec.eid);   // painted fog moves, turns and scales with it
   for(const b of rec.blocks||[]){ for(const p of b.pts||[]) P3(p); if(b.s) b.s=b.s.map(v=>q5(v*k)); if(b.r) b.r=q5(b.r*k); if(b.r1) b.r1=q5(b.r1*k); }
   if(rec.layer&&rec.layer.type==='asset'&&rec.off){ const o=P2(rec.off[0],rec.off[2]); rec.off=[q5(o[0]),q5(sceneHJ(o[0],o[1])),q5(o[1])]; rec.rotY=+(((rec.rotY||0)+(xf.yaw||0)/D2R)%360).toFixed(2); rec.sim.windDir=+(((rec.sim.windDir+(xf.yaw||0)/D2R)%360+360)%360).toFixed(1);
     if(k!==1){ rec.size=rec.size.map(v=>q5(v*k)); rec.sim.eddy=q5(rec.sim.eddy*k); rec.det.size=q5(rec.det.size*k); rec.det.brkSize=q5(rec.det.brkSize*k); rec.den.extD=q5(rec.den.extD*k); if(rec.emit){ const E=rec.emit; for(const key of ['w','d','patchS']) E[key]=q5(E[key]*k); } } }
@@ -4043,7 +4064,7 @@ const TABS={
     {id:'save',label:'Save',title:'Save',mode:'shape',tool:'orbit',secs:['shelfSec','lightSec'],tools:['orbit'],say:()=>'',done:()=>false}],
   shot:[
     {id:'set',label:'Set',title:'Set',mode:'shape',tool:'orbit',secs:['setSec','colSec','lightSec'],tools:['orbit','light','collide','blocker'],say:()=>'',done:()=>false},
-    {id:'fog',label:'Place & form',title:'Place & form',mode:'shape',tool:'place',secs:['layerSec','startSec','sizeSec','formSec','emitSec','simSec','looksSec','lodSec'],tools:['orbit','place','flood','slab','move','shape','blocker','box','source',...SHAPE_BRUSH_TOOLS],say:()=>'',done:()=>false},
+    {id:'fog',label:'Place & form',title:'Place & form',mode:'shape',tool:'place',secs:['layerSec','startSec','sizeSec','formSec','emitSec','simSec','looksSec','lodSec'],tools:['orbit','place','reveal','flood','slab','move','shape','blocker','box','source',...SHAPE_BRUSH_TOOLS],say:()=>'',done:()=>false},
     {id:'look',label:'Look & light',title:'Look & light',mode:'shape',tool:'orbit',secs:['layerSec','detSec','denSec','lightSec','lodSec'],tools:['orbit','light','move','box',...SHAPE_BRUSH_TOOLS],say:()=>'',done:()=>false},
     {id:'anim',label:'Motion',title:'Motion',mode:'anim',tool:'orbit',secs:['animSec','movSec','layerSec','colSec','lightSec'],tools:['orbit','collide',...ANIM_TOOLS,'box'],say:()=>'',done:()=>false}]};
 UI.guide=(()=>{ try{ return localStorage.getItem('brume.guide')==='1'; }catch(e){ return false; } })();
@@ -4192,12 +4213,15 @@ $('#soloBtn').onclick=()=>toggleSolo();
 function pdropFoot(){ const S=UI.placeAsset.size; return Math.max(S[0],S[2])/2; }
 function pdropMove(mx,my){ const d=drag, g=shotGround(mx,my)||planePt(mx,my,d.p0,false); d.cur=g; const v=[g[0]-d.p0[0],g[2]-d.p0[2]], L=Math.hypot(v[0],v[1]);
   if(Math.hypot(mx-d.sx,my-d.sy)>8&&L>1e-3){ d.k=clamp(L/pdropFoot(),0.02,60); d.yaw=Math.atan2(v[1],v[0]); }   /* its length lies along the drag */
-  const S=UI.placeAsset.size; d.label=`${fmLen(S[0]*d.k)} × ${fmLen(S[2]*d.k)} · turned ${(((d.yaw/D2R)%360)+360)%360|0}°`; poke(); }
-function drawPdrop(){ if(!drag||drag.mode!=='pdrop'||!UI.placeAsset) return; const d=drag, S=UI.placeAsset.size, hw=S[0]/2*d.k, hd=S[2]/2*d.k, c=Math.cos(d.yaw), s=Math.sin(d.yaw);
+  const S=UI.placeAsset.size; d.label=POURS.has(UI.placeAsset.template)?`pours this way · let go, then Play`:`${fmLen(S[0]*d.k)} × ${fmLen(S[2]*d.k)} · turned ${(((d.yaw/D2R)%360)+360)%360|0}°`; poke(); }
+function drawPdrop(){ if(!drag||drag.mode!=='pdrop'||!UI.placeAsset) return; if(POURS.has(UI.placeAsset.template)&&d0moved()){ const d=drag, a=project(d.p0), b=project(d.cur); if(a&&b){ octx.strokeStyle='rgba(140,225,255,.95)'; octx.lineWidth=3; octx.beginPath(); octx.moveTo(a[0],a[1]); octx.lineTo(b[0],b[1]); octx.stroke(); const an=Math.atan2(b[1]-a[1],b[0]-a[0]); octx.fillStyle='rgba(140,225,255,.95)'; octx.beginPath(); octx.moveTo(b[0]+Math.cos(an)*12,b[1]+Math.sin(an)*12); octx.lineTo(b[0]+Math.cos(an+2.5)*12,b[1]+Math.sin(an+2.5)*12); octx.lineTo(b[0]+Math.cos(an-2.5)*12,b[1]+Math.sin(an-2.5)*12); octx.fill(); } return; } const d=drag, S=UI.placeAsset.size, hw=S[0]/2*d.k, hd=S[2]/2*d.k, c=Math.cos(d.yaw), s=Math.sin(d.yaw);
   const P=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>{ const x=d.p0[0]+c*a*hw-s*b*hd, z=d.p0[2]+s*a*hw+c*b*hd; return [x,sceneHJ(x,z)+0.3,z]; });
   octx.strokeStyle='rgba(239,178,77,.95)'; octx.lineWidth=1.6; octx.setLineDash([5,4]); for(let i=0;i<4;i++) line3(P[i],P[(i+1)%4]); octx.setLineDash([]); line3(d.p0,[d.p0[0]+c*hw,d.p0[1],d.p0[2]+s*hw]); }
-function pdropEnd(){ const d=drag; placeAssetAt(d.p0); if(d.k!==1||d.yaw){ const G=gizmo(REC); if(G){ xfLayer(REC,G.C,{k:d.k,yaw:d.yaw}); markMass(); autosave(); } }
+function pdropEnd(){ const d=drag; if(POURS.has(UI.placeAsset.template)&&Math.hypot(d.cur[0]-d.p0[0],d.cur[2]-d.p0[2])>1e-3&&d.k!==1){ pourPlace(d); return; }   /* a pouring type dragged out: it pours from there, the way you dragged */
+  placeAssetAt(d.p0); if(d.k!==1||d.yaw){ const G=gizmo(REC); if(G){ xfLayer(REC,G.C,{k:d.k,yaw:d.yaw}); markMass(); autosave(); } }
   setTool('move'); buildPanels(); toast((REC.name||'It')+' placed. Move (W) is on: drag the ring to move, its edge to turn, the corner to scale. Or use Size and Turn in the pill'); }
+
+const d0moved=()=>drag&&Math.hypot(drag.cur[0]-drag.p0[0],drag.cur[2]-drag.p0[2])>1e-3&&drag.k!==1;
 /* =====================================================================
    THE AIR, MADE VISIBLE: faint streamlines carried by the same flow the fog simulates, while it is paused
    ===================================================================== */
@@ -4235,6 +4259,58 @@ function resetAll(){ const n=(()=>{ try{ return Object.keys(localStorage).filter
   try{ for(const k of Object.keys(localStorage)) if(k.startsWith('brume')) localStorage.removeItem(k); }catch(e){} try{ sessionStorage.clear(); }catch(e){}
   showLoader('Starting over…',0); setTimeout(()=>location.reload(),150); }
 $('#resetAllBtn').onclick=resetAll;
+/* =====================================================================
+   LANDSCAPE FOG, TWO WAYS: Pour (place a source and let it run as a timelapse, then keep the frame) and Paint (reveal a ready-made flowing field)
+   ===================================================================== */
+const POURS=new Set(['seaclouds','rolling','advection','valley']);
+/* ---------- Pour: press where the fog comes from and drag the way it should pour ---------- */
+function pourPlace(d){ const v=[d.cur[0]-d.p0[0],d.cur[2]-d.p0[2]], an=Math.atan2(v[0],-v[1]), S=UI.placeAsset.size, tpl=UI.placeAsset.template;
+  placeAssetAt(d.p0); const G=gizmo(REC); if(G){ xfLayer(REC,G.C,{k:0.35}); }   // a small seed of fog at the source; the source makes the rest
+  const A=REC.anim, W=Math.max(S[0],S[2]), q=x=>+x.toPrecision(5), dir=+(((an/D2R)%360+360)%360).toFixed(1);
+  A.flows=[{kind:'inflow',r:q(Math.max(Math.min(S[0],S[2])*0.35,10)),d:q(Math.max(W*0.06,5)),h:q(REC.size[1]*0.9/0.35),v:0.9,push:2.5,dir,dabs:[[q(d.p0[0]),q(sceneHJ(d.p0[0],d.p0[2])),q(d.p0[2])]]}];
+  Object.assign(A,{body:'sim',ownWind:true,wind:1.5,windDir:dir,gust:0.25,churn:1,heavy:0.95,lam:0.5,spill:0.5,feed:0,evap:0.3,thinW:0.4,wisp:0.04,tl:30,mlook:null,pour:true}); delete A.lift;
+  REC.time={...TIME_DEF,...(REC.time||{}),frames:240,preN:0,inT:null,outT:null}; markMass(); autosave(); setStep('anim'); buildPanels();
+  toast('Pouring at 30×: press Play and watch it run down the ground. When it looks right, press Keep this frame'); }
+function pourBar(){ let el=$('#pourBar'); const on=UI.mode==='anim'&&REC&&REC.anim&&REC.anim.pour&&!UI.clean;
+  if(!el){ if(!on) return; el=document.createElement('div'); el.id='pourBar'; el.innerHTML='<span></span><button class="chip prim" id="pbKeep">Keep this frame</button><button class="chip" id="pbStop">Stop pouring</button>'; $('#view').appendChild(el);
+    el.querySelector('#pbKeep').onclick=()=>{ if(UI.playing) togglePlay(); setTimeout(()=>{ REC.anim.pour=false; fillToStill(); pourBar(); },60); };
+    el.querySelector('#pbStop').onclick=()=>{ if(UI.playing) togglePlay(); REC.anim.pour=false; REC.anim.flows=(REC.anim.flows||[]).filter(f=>f.kind!=='inflow'); REC.anim.tl=1; pushUndo(); autosave(); markAnim(); buildPanels(); pourBar(); }; }
+  el.hidden=!on; if(on){ const t=el.querySelector('span'), txt=`POURING · ${(REC.anim.tl||1).toFixed(0)}× · ${UI.playing?'running: stop on the frame you like':'press Play to let it run'}`; if(t.textContent!==txt) t.textContent=txt; } }
+
+/* ---------- Paint: brush over the set and reveal fog that looks like it already flowed through ---------- */
+const RV_TYPES=[['seaclouds','Sea of clouds','A deep, smooth sea filling the valleys, rolled along the wind'],['valley','Valley mist','Mist lying in the low ground'],['radiation','Ground fog','A thin layer hugging the ground']];
+UI.rvType=UI.rvType||'seaclouds';
+const RVTEX=new Map();
+function revealMask(rec){ const D=rec.rv||[]; if(!D.length) return null; const key=D.length+'|'+D[D.length-1].join(',')+'|'+D[0].join(','); let M=RVTEX.get(rec.eid||'_');
+  if(M&&M.key===key) return M; let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const [x,z,r] of D){ x0=Math.min(x0,x-r); x1=Math.max(x1,x+r); z0=Math.min(z0,z-r); z1=Math.max(z1,z+r); }
+  const N=512, w=Math.max(x1-x0,1), d=Math.max(z1-z0,1), cv=M&&M.cv||document.createElement('canvas'); cv.width=N; cv.height=N; const c=cv.getContext('2d'); c.clearRect(0,0,N,N);
+  for(const [x,z,r,s] of D){ const px=(x-x0)/w*N, pz=(z-z0)/d*N, rx=r/w*N, rz=r/d*N; c.save(); c.translate(px,pz); c.scale(1,rz/rx); const g=c.createRadialGradient(0,0,0,0,0,rx); g.addColorStop(0,'rgba(255,255,255,0.9)'); g.addColorStop(0.55,'rgba(255,255,255,0.55)'); g.addColorStop(1,'rgba(255,255,255,0)');
+    c.globalCompositeOperation=s<0?'destination-out':'source-over'; c.fillStyle=g; c.beginPath(); c.arc(0,0,rx,0,Math.PI*2); c.fill(); c.restore(); }   /* soft dabs: the reveal fades in at its edges */
+  const tex=M&&M.tex||gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,cv);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+  M={key,tex,cv,B:[x0,z0,w,d]}; RVTEX.set(rec.eid||'_',M); return M; }
+const isReveal=r=>r&&r.form&&r.form.type==='reveal';
+function rvNew(p){ if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); return null; } const T=LIB[UI.rvType]; const r=makeRecipe(UI.rvType,'mid'); r.name='Painted '+T.label.toLowerCase();
+  const dep={seaclouds:45,valley:22,radiation:5}[UI.rvType]*SK(); r.form={type:'reveal',depth:+dep.toPrecision(3),soft:0.5,climb:UI.rvType==='seaclouds'?0.6:0.35}; r.prims='none'; r.rv=[]; r.anim=animDefaults(r);
+  const W=shotWind&&shotWind(); if(W){ r.sim.windDir=W.dir; } UI.placeAsset=r; placeAssetAt(p); REC.blocks=[]; return REC; }
+function rvBounds(rec){ const D=rec.rv||[]; if(!D.length) return; let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const [x,z,r,s] of D){ if(s<0) continue; x0=Math.min(x0,x-r); x1=Math.max(x1,x+r); z0=Math.min(z0,z-r); z1=Math.max(z1,z+r); } if(x1<x0) return;
+  const cx=(x0+x1)/2, cz=(z0+z1)/2, dep=rec.form.depth||10; rec.off=[+cx.toPrecision(6),+sceneHJ(cx,cz).toPrecision(6),+cz.toPrecision(6)]; sizeRecipe(rec,[x1-x0,Math.max(dep*1.8,2),z1-z0]); rec.dom=null; rec.xpad=[0,0,0,0,0,0]; }
+function rvStart(mx,my,ev){ const g=shotGround(mx,my); if(!g){ toast('Paint on the ground of the set'); return null; } const ctrl=ev.ctrlKey||ev.metaKey;
+  if(!isReveal(REC)||UI.rvFresh){ if(ctrl){ toast('Ctrl paints the fog away: paint some in first'); return null; } UI.rvFresh=false; if(!rvNew(g)) return null; }
+  const d={mode:'rv',s:ctrl?-1:1,last:null,lx:mx,ly:my,n0:REC.rv.length}; rvDab(d,g); return d; }
+function rvDab(d,g){ const r=UI.brushR; if(d.last&&Math.hypot(g[0]-d.last[0],g[2]-d.last[2])<r*0.3) return; d.last=g; REC.rv.push([+g[0].toFixed(2),+g[2].toFixed(2),+r.toPrecision(4),d.s]); poke(); }
+function rvMove(mx,my){ const g=shotGround(mx,my); if(g) rvDab(drag,g); }
+function rvEnd(){ if(REC.rv.length) { rvBounds(REC); RVTEX.delete(REC.eid); markMass(); pushUndo(); autosave(); buildPanels(); } }
+function drawRv(){ if(UI.tool!=='reveal'||UI.ws!=='shot'||UI.clean) return; const B=camBasis(CAM); const ring=(x,z,r,col)=>{ octx.strokeStyle=col; octx.beginPath(); let f=true; for(let i=0;i<=32;i++){ const a=i/32*Math.PI*2, px=x+Math.cos(a)*r, pz=z+Math.sin(a)*r, q=project([px,sceneHJ(px,pz)+0.3,pz]); if(!q){ f=true; continue; } f?octx.moveTo(q[0],q[1]):octx.lineTo(q[0],q[1]); f=false; } octx.stroke(); };
+  octx.lineWidth=1; if(isReveal(REC)&&drag&&drag.mode==='rv') for(const [x,z,r,s] of REC.rv.slice(drag.n0)) ring(x,z,r,s<0?'rgba(255,140,120,.5)':'rgba(140,225,255,.45)');
+  if(hoverXY&&!drag){ const g=shotGround(hoverXY[0],hoverXY[1]); if(g){ octx.lineWidth=1.6; ring(g[0],g[2],UI.brushR,'rgba(140,225,255,.95)'); } } }
+function buildRevealPanel(lb){ subH(lb,'Paint fog'); lb.appendChild(Object.assign(document.createElement('div'),{className:'note',innerHTML:'Brush over the set where you want fog. It reveals fog that looks as if it already flowed through on the wind (the compass): filling the low ground, rolled along the wind, pouring down the lee of hills. Ctrl paints it away. Each stroke adds to the picked painted volume; <b>New patch</b> starts another.'}));
+  brushRefs.push(chips(lb,'Kind',RV_TYPES,()=>UI.rvType,v=>{ UI.rvType=v; UI.rvFresh=true; buildBrushRow(); }));
+  const row=document.createElement('div'); row.className='row wide'; const b=document.createElement('button'); b.className='chip'; b.textContent='New patch'; b.title='The next stroke starts a new painted volume'; b.setAttribute('aria-pressed',!!UI.rvFresh); b.onclick=()=>{ UI.rvFresh=true; buildBrushRow(); }; row.appendChild(b); lb.appendChild(row);
+  if(isReveal(REC)){ const F=REC.form, M=Math.max(...REC.size)*2, ch=()=>{ rvBounds(REC); markMass(); };
+    brushRefs.push(slider(lb,{label:'Depth',min:0.3,max:Math.max(400,F.depth*4),log:true,get:()=>F.depth,set:v=>{ F.depth=+v.toPrecision(3); },fmt:fmLen,commit:()=>{ ch(); pushUndo(); autosave(); },tip:'How deep it fills above the lowest painted ground: higher ground pokes out'}));
+    brushRefs.push(slider(lb,{label:'Softness',min:0,max:1,get:()=>F.soft??0.5,set:v=>{ F.soft=+v.toFixed(2); },fmt:pct,commit:()=>{ ch(); pushUndo(); autosave(); },tip:'A crisp sea top or a soft, graded one'}));
+    brushRefs.push(slider(lb,{label:'Climb & pour',min:0,max:1,get:()=>F.climb??0.5,set:v=>{ F.climb=+v.toFixed(2); },fmt:pct,commit:()=>{ ch(); pushUndo(); autosave(); },tip:'How far it spills down the lee of hills and laps up the slopes it meets'})); } }
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
@@ -4258,6 +4334,7 @@ const ICONS={
   tear:'<path d="M4 6c4 2 3 6 7 6s3 5 7 6"/><path d="M8 4l2 4-3 1 2 4"/><path d="M15 12l2 3-2 2 1 3"/>',
   wind:'<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 14h15a3 3 0 1 1-3 3"/><path d="M3 19h6"/>',
   sphere:'<circle cx="12" cy="12" r="6"/><path d="M3 19c3-3 6-4 9-4" stroke-dasharray="2 2"/>',
+  reveal:'<path d="M4 20c2-1 3-3 3-5l9-9 2 2-9 9c-2 0-4 1-5 3z"/><path d="M14 5c2-2 4-1 5 0"/><path d="M3 13c3-1 4 1 7 0" stroke-dasharray="2 2"/>',
   flood:'<path d="M3 15c3-2 6 2 9 0s6-2 9 0"/><path d="M3 19c3-2 6 2 9 0s6-2 9 0"/><path d="M12 3v8M9 8l3 3 3-3"/>',
   slab:'<path d="M4 7l8-3 8 3-8 3z"/><path d="M4 12l8 3 8-3" stroke-dasharray="2 2"/><path d="M4 17l8 3 8-3"/>',
   air:'<path d="M3 8c4-3 7 3 11 0s5-2 7-1"/><path d="M3 13c4-3 7 3 11 0s5-2 7-1"/><path d="M3 18c4-3 7 3 11 0"/>',
@@ -4291,6 +4368,7 @@ const TOOLS=[
   {id:'lift',m:'anim',key:'u',name:'Lift',hint:'Press where the fog should rise and drag out to size it: one mark is placed when you let go (Ctrl makes it sink). Its arrow shows the push: drag the arrow\'s tip to point it any way, the centre dot to move it, the ring dot to resize it.'},
   {id:'calm',m:'anim',key:'c',name:'Calm',hint:'Press where the fog should hold still and drag out to size it: one calm pocket is placed when you let go. The wind and churn leave it alone. Drag the centre dot to move it and the ring dot to resize it.'},
   {id:'thin',m:'anim',key:'t',name:'Thin',hint:'Press where the fog should thin out and evaporate as it plays, and drag out to size it: one mark is placed when you let go (Ctrl makes it thicken and fill in instead). Strength is in the panel. Drag the centre dot to move it and the ring dot to resize it.'},
+  {id:'reveal',m:'shape',ws:'shot',key:'d',name:'Paint fog',hint:'Brush over the set where you want fog: it reveals fog that looks as if it already flowed through on the wind, filling the low ground and pouring down the lee of hills. Ctrl paints it away. Pick the kind, depth and softness in the Brush panel.'},
   {id:'flood',m:'shape',ws:'shot',key:'y',name:'Flood',hint:'Press on the ground in a hollow, a valley or a street and drag up: the water line shows where the fog will meet the ground and what pokes out. Let go and it fills to there, as a heavy valley fog you can shape and animate.'},
   {id:'slab',m:'shape',ws:'shot',key:'n',name:'Depth slab',hint:'Paint mist between two distances from the camera: scroll to move the slab nearer or further (the set inside it is tinted), Shift+scroll to make it thicker, then paint over the picture. The fog fills that slab under your strokes and rests on the ground. [ ] sizes the brush.'},
   {id:'air',m:'anim',key:'r',name:'Air',hint:'Paint the air: drag a stream where the wind should carry the fog (a quick flick is strong, a slow drag gentle). Shift+drag lifts it, Ctrl+drag makes still, dead air (the lee of a building). Drag the dots afterwards to adjust it.'},
@@ -4307,7 +4385,7 @@ const TOOLS=[
 ];
 function buildRail(){ const r=$('#rail'); r.innerHTML=''; const ST=stepTools(); const TV=TOOLS.filter(t=>(t.m==='both'||t.m===UI.mode)&&(!t.ws||t.ws===UI.ws)&&(t.id==='orbit'||ST.includes(t.id))); TV.forEach((t,i)=>{ if(i>0&&TV[i-1]&&(TV[i-1].m==='both')!==(t.m==='both')){ const s=document.createElement('div'); s.className='sep'; r.appendChild(s); }
   const b=document.createElement('button'); b.className='tool'; b.title=`${t.name} (${t.key.toUpperCase()})`; b.setAttribute('aria-label',t.name); b.setAttribute('aria-pressed',UI.tool===t.id); b.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[t.id]}</svg><span class="lb">${SHORT[t.id]||t.name.split(' ')[0]}</span>`; b.onclick=()=>setTool(t.id); r.appendChild(b); }); }
-const SHORT={shape:'Shapes',blocker:'Block',move:'Move',orbit:'Orbit',place:'Place',collide:'Pick',sphere:'Sphere',add:'Add',erase:'Erase',smooth:'Smooth',pull:'Pull',smear:'Comb',tear:'Tear',fill:'Fill',look:'Looks',blow:'Blow',wind:'Wind',flow:'Path',lift:'Lift',calm:'Calm',thin:'Thin',attract:'Attract',inflow:'Source',air:'Air',flood:'Flood',slab:'Slab',swirl:'Vortex',edit:'Edit',box:'Box',light:'Light',source:'Source'};
+const SHORT={shape:'Shapes',blocker:'Block',move:'Move',orbit:'Orbit',place:'Place',collide:'Pick',sphere:'Sphere',add:'Add',erase:'Erase',smooth:'Smooth',pull:'Pull',smear:'Comb',tear:'Tear',fill:'Fill',look:'Looks',blow:'Blow',wind:'Wind',flow:'Path',lift:'Lift',calm:'Calm',thin:'Thin',attract:'Attract',inflow:'Source',air:'Air',flood:'Flood',slab:'Slab',reveal:'Paint',swirl:'Vortex',edit:'Edit',box:'Box',light:'Light',source:'Source'};
 function setTool(id,fromStep){ if(UI.ws==='shot'&&UI.instSel!=null&&!['move','orbit','light','box'].includes(id)){ if(['place','collide','blocker'].includes(id)) UI.instSel=null; else makeOwn(UI.instSel); }   /* any shaping tool on an instance makes it its own */ if(!fromStep&&typeof stepForTool==='function'){ const s=stepForTool(id); if(s&&s.id!==UI.step){ UI.step=s.id; try{ localStorage.setItem('brume.step.'+UI.ws,s.id); }catch(e){} if(UI.mode!==s.mode) setMode(s.mode); applySteps(); } } const t=TOOLS.find(x=>x.id===id); if(t&&t.m!=='both'&&t.m!==UI.mode) setMode(t.m); UI.tool=id; buildRail(); buildHint(); ov.style.cursor=id==='orbit'?'grab':'crosshair'; hover=null; buildBrushRow(); }
 function buildHint(){ const t=TOOLS.find(x=>x.id===UI.tool); $('#hint').innerHTML=`<span><b>${t.name}</b> · ${t.hint}</span>`+(BRUSHES[UI.tool]!=null?`<span>brush <b style="font-family:var(--f-mono)">${fmLen(UI.brushR)}</b> · [ ] to size</span>`:''); }
 function setBrushR(v){ UI.brushR=clamp(v,Math.max(...REC.size)*0.005,Math.max(...REC.size)*0.6); buildHint(); refreshPanels(); }
@@ -4481,6 +4559,9 @@ function buildPanels(){ applySteps(); if(UI.ws==='shot'){ buildLayers(); buildSe
   const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
   dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } const k=[1,1,1]; k[i]=clamp(v,0.1,5000)/REC.size[i]; resizeAsset(k); }; }); refreshers.push(dimRefresh);
   if(UI.ws==='shot'&&REC.off){ subH(zb,'On the set'); refreshers.push(slider(zb,S_('Above the ground',-Math.max(...REC.size),Math.max(...REC.size)*4,()=>REC.off[1]-sceneHJ(REC.off[0],REC.off[2]),v=>{ const d=+(v-(REC.off[1]-sceneHJ(REC.off[0],REC.off[2]))).toPrecision(5); if(Math.abs(d)<1e-6) return; shiftRec(REC,[0,d,0]); REC.off[1]=+(REC.off[1]+d).toPrecision(6); },fmLen,()=>{ REC.dom=null; markMass(); },false,'How high it floats above the ground where it stands. Or drag it with Move (W)'))); note(zb,'In the shot the set is the ground: fog rests on it, flows around and down it.'); }
+  if(hasGround(REC)||UI.ws==='shot'){ subH(zb,'Off the ground'); const RC=()=>REC.reach=REC.reach||{top:0,fall:0.5}; const mxT=Math.max(REC.size[1]*4,50);
+    refreshers.push(slider(zb,S_('Reaches up to',0.2,mxT,()=>REC.reach&&REC.reach.top>0?REC.reach.top:mxT,v=>{ RC().top=v>=mxT*0.98?0:+v.toPrecision(3); },v=>v>=mxT*0.98?'no limit':fmLen(v)+' above the ground',()=>markMass(),true,'How far it comes up off the ground, measured from the ground under each spot, so it hugs the terrain. All the way right: no limit')));
+    refreshers.push(slider(zb,S_('Falloff',0,1,()=>REC.reach?REC.reach.fall??0.5:0.5,v=>{ RC().fall=+v.toFixed(2); },v=>v<0.15?'crisp top':v<0.45?'quick':v<0.75?'soft':'very soft, wisping up',()=>markMass(),false,'How it thins out toward that height: a crisp top or a long, soft fade into the air'))); }
   else { subH(zb,'Ground');
   refreshers.push(chips(zb,'',GROUNDS.filter(g=>g[0]!=='scene').map(g=>[g[0],g[1],g[2]]),()=>REC.gnd.t,v=>setGround(v)));
   if(['slope','peak','valley','bowl','street'].includes(REC.gnd.t)) refreshers.push(slider(zb,S_(REC.gnd.t==='street'?'Building height':'Relief',0.5,3000,()=>REC.gnd.relief,v=>REC.gnd.relief=+v.toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true,'How tall the stand-in ground is')));
@@ -4646,8 +4727,9 @@ function openLibrary(){ const tabs=$('#libTabs'); tabs.innerHTML=''; for(const [
 function closeLibrary(){ $('#libModal').hidden=true; }
 $('#libClose').onclick=closeLibrary; $('#libModal').addEventListener('click',ev=>{ if(ev.target.id==='libModal') closeLibrary(); });
 let brushRow=null;
-function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','attract','sphere','shape','blocker','move'].includes(UI.tool)||UI.tool==='place'&&REC&&REC.layer&&REC.layer.type!=='asset'&&!REC.blank&&!UI.placeAsset; $('#brushSec').hidden=!on; if(!on) return;
+function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','attract','sphere','shape','blocker','move','reveal'].includes(UI.tool)||UI.tool==='place'&&REC&&REC.layer&&REC.layer.type!=='asset'&&!REC.blank&&!UI.placeAsset; $('#brushSec').hidden=!on; if(!on) return;
   brushRow=lb; if(['shape','blocker','move'].includes(UI.tool)){ buildXPanel(lb); return; }
+  if(UI.tool==='reveal'){ brushRefs=[]; brushRefs.push(slider(lb,{label:'Brush',min:1,max:5000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen})); buildRevealPanel(lb); return; }
   brushRefs=[]; brushRefs.push(slider(lb,{label:UI.tool==='flow'?'Width':'Radius',tip:UI.tool==='flow'?'How far around the path the air is carried: the tube you see while drawing':'',min:0.05,max:2000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen}));
   if(UI.tool==='flow'||UI.tool==='lift'||UI.tool==='swirl') brushRefs.push(slider(lb,{label:'Speed',min:0.2,max:30,log:true,get:()=>UI.flowV,set:v=>{ UI.flowV=+v.toFixed(1); },fmt:v=>v.toFixed(1)+' m/s'}));
   else if(!['calm','thin'].includes(UI.tool)) brushRefs.push(slider(lb,{label:'Strength',min:0.05,max:1,get:()=>UI.brushStr,set:v=>{ UI.brushStr=v; },fmt:pct}));
