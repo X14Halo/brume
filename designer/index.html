@@ -230,6 +230,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <input class="name-in" id="assetName" aria-label="Asset name" value="Fog bank">
     <div class="seg" id="modeSeg" role="group" aria-label="Mode"><button data-m="shape" aria-pressed="true" title="Sculpt a still volume. Nothing moves">Shape</button><button data-m="anim" aria-pressed="false" title="Your shape is frame 1: set wind and motion, then Play">Animate</button></div>
     <div class="top-r">
+      <button class="tbtn" id="resetAllBtn" title="Reset all: start the whole tool over from scratch, as on first launch">Reset all</button>
       <button class="tbtn accent" id="exportBtn">Export</button>
     </div>
   </header>
@@ -4202,6 +4203,14 @@ function streamDraw(){ if(!streamsOn()||!STREAM.ok) return; const P=STREAM.draw;
   gl.activeTexture(gl.TEXTURE0+7); gl.bindTexture(gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); gl.uniform1i(U2('uPS'),7); gl.uniform3fv(U2('uCam'),B.pos); gl.uniform3fv(U2('uCR'),B.r); gl.uniform3fv(U2('uCU'),B.u); gl.uniform3fv(U2('uCF'),B.f); gl.uniform1f(U2('uTanY'),B.tanY); gl.uniform1f(U2('uAsp'),cw/ch); gl.uniform1i(U2('uK'),STREAM.K);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,cw,ch); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(STREAM.vao); gl.drawArrays(gl.LINES,0,STREAM.N*(STREAM.K-1)*2); gl.bindVertexArray(null); gl.disable(gl.BLEND); }
 function streamFrame(){ if(streamStep()) streamDraw(); }
+
+/* ---------- Reset all: the whole tool back to how it was on first launch ---------- */
+function resetAll(){ const n=(()=>{ try{ return Object.keys(localStorage).filter(k=>k.startsWith('brume')).length; }catch(e){ return 0; } })();
+  if(!window.confirm('Reset all?\n\nThis starts Brume over from scratch, as on first launch: every Designer volume and shot, the Shelf, your light and view settings and the scanned sets are cleared from this browser. Exported files are not touched.\n\nTo keep a volume, Export it or save its recipe first.')) return;
+  RESETTING=true; clearTimeout(saveH); if(UI.playing) togglePlay();
+  try{ for(const k of Object.keys(localStorage)) if(k.startsWith('brume')) localStorage.removeItem(k); }catch(e){} try{ sessionStorage.clear(); }catch(e){}
+  showLoader('Starting over…',0); setTimeout(()=>location.reload(),150); }
+$('#resetAllBtn').onclick=resetAll;
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
@@ -4650,7 +4659,7 @@ function restore(s){ const old=REC; REC=JSON.parse(s); if(UI.ws==='shot'){ if(UI
   buildPanels(); autosave(); }
 function undo(){ if(undoS.length<2){ toast('Nothing to undo'); return; } redoS.push(undoS.pop()); restore(undoS[undoS.length-1]); toast('Undone'); }
 function redo(){ if(!redoS.length){ toast('Nothing to redo'); return; } const s=redoS.pop(); undoS.push(s); restore(s); toast('Redone'); }
-let saveH=0; function autosave(){ clearTimeout(saveH); const k=wsKey(), r=UI.ws==='shot'?SHOT:REC; saveH=setTimeout(()=>store.set(k,r),400); }
+let saveH=0, RESETTING=false; function autosave(){ if(RESETTING) return; clearTimeout(saveH); const k=wsKey(), r=UI.ws==='shot'?SHOT:REC; saveH=setTimeout(()=>store.set(k,r),400); }
 function saveLook(){ store.set('brume.designer.look',{...LOOK,v:2}); }
 
 /* ---------------- variations: six takes on the current asset, side by side ---------------- */

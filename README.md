@@ -74,6 +74,7 @@ Live: https://x14halo.github.io/brume/
 - **Weather pad** (Motion): drag one dot from calm and smooth to turbulent and gusty, and from heavy fog that pours and pools to buoyant fog that lifts and burns off. Every control is under **Advanced**.
 - **Air brush** (R): drag a stream of air where the wind should carry the fog (a quick flick is strong, a slow drag gentle); Shift+drag lifts, Ctrl+drag makes still, dead air. It replaces separate Path, Lift and Calm tools (their shortcuts still work).
 - **One wind for the shot**: a compass at the bottom left of the view (drag it) and Shot wind in Motion set one wind for every volume, slower near the ground and faster up high. Each volume follows it at its own strength (sheltered or exposed), or has its own.
+- **Reset all** (top bar): starts the whole tool over as on first launch, clearing every volume, shot, the Shelf and settings from this browser (it asks first; exported files are untouched).
 - **Solo** (Shot, view toolbar): only the picked volume on the dark surround, with the same camera and sun. Click again for the whole set.
 - **Shot camera inset**: orbit away from the shot camera and its frustum is drawn in the view, with a small picture of what it last saw in the corner; click it to go back.
 - **Flood** (Y, Shot): press on the ground in a hollow, a valley or a street and drag up; a water line on the ground shows where the fog meets it and what pokes out. Let go and it fills to there, as a heavy valley fog.
