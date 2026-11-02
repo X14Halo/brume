@@ -406,7 +406,9 @@ void main(){
   else if(uProfile==3) m*=smoothstep(0.05,0.22,y);  // floating mass with a ragged base
   // formation: fog that forms by a rule relative to the ground (layer, fill to a level, upslope, sheets, deck, lid, even haze)
   float gh=uGround>0?terrH(p.xz):-1e6, hy=p.y-gh; float mf=0.;
-  vec2 rq=abs(p.xz-uFOff)-uF1.xy; float rgn=1.-smoothstep(-uF1.z,0.,max(rq.x,rq.y)+disp*0.6);
+  vec2 rq=(p.xz-uFOff)/max(uF1.xy,vec2(1e-3)); float Lf=max(uF1.x,uF1.y);   /* the footprint: an organic, rounded patch with a wide soft edge, never a square cut-out */
+  float wob=textureLod(uNT,vec3((p.xz-uFOff)/(Lf*0.9)+uSeedOff.xz*0.01,0.37),0.).r*0.7+textureLod(uNT,vec3((p.xz-uFOff)/(Lf*0.35)+uSeedOff.zx*0.01,0.71),0.).a*0.3;
+  float rr=length(rq)/1.1*(1.+(wob-0.5)*0.5)+disp*0.6/Lf; float rgn=1.-smoothstep(0.5,1.,rr); rgn*=rgn*(3.-2.*rgn);
   if(uForm==1){ float T=uF0.x; float R=max(T*5.,uF0.z); float hm=0.25*(terrH(p.xz+vec2(R,0))+terrH(p.xz-vec2(R,0))+terrH(p.xz+vec2(0,R))+terrH(p.xz-vec2(0,R)));
     float low=clamp((hm-terrH(p.xz))/T,-1.,3.); float Te=T*(1.+uF0.y*max(low,0.)*0.8)*(1.-0.35*uF0.y*max(-low,0.));
     float h=hy+disp*0.5; mf=smoothstep(Te,Te*0.25,h)*exp(-max(h,0.)/Te*0.9)*1.15; }
