@@ -52,7 +52,7 @@ body[data-ws=shot] .ws-designer, body:not([data-ws=shot]) .ws-shot{display:none!
 .lookrow .lksel span{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lookrow.on .lksel{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun) inset}
 .lookrow select{min-width:0;background:var(--well);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px;font:12px var(--f-ui)}
-#cleanBtn[aria-pressed=true],#regionBtn[aria-pressed=true],#refBtn[aria-pressed=true]{background:var(--sun);color:#1b1408}
+#cleanBtn[aria-pressed=true],#regionBtn[aria-pressed=true],#refBtn[aria-pressed=true],#abBtn[aria-pressed=true],#pbBtn[aria-pressed=true]{background:var(--sun);color:#1b1408}
 body.clean #hint, body.clean #hud, body.clean #modeBadge, body.clean .simbar{display:none!important}
 #vres button[aria-pressed=true]{background:var(--sun);color:#1b1408}
 .name-in{background:transparent;border:1px solid transparent;border-radius:4px;padding:4px 7px;font:500 14px var(--f-ui);width:min(260px,30vw);min-width:0}
@@ -224,6 +224,7 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <div id="vtop">
       <div class="seg"><button id="cleanBtn" aria-pressed="false" title="Hide handles (H): only the volume, no box, brush, paths or labels" aria-label="Hide handles"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg></button></div>
       <div class="seg" id="undoSeg" role="group" aria-label="Undo and redo"><button id="undoBtn" title="Undo (Ctrl Z)" aria-label="Undo"><svg viewBox="0 0 16 16"><path d="M5 3L2 6l3 3"/><path d="M2 6h7.5a4 4 0 0 1 0 8H7"/></svg></button><button id="redoBtn" title="Redo (Ctrl Shift Z)" aria-label="Redo"><svg viewBox="0 0 16 16"><path d="M11 3l3 3-3 3"/><path d="M14 6H6.5a4 4 0 0 0 0 8H9"/></svg></button></div>
+      <div class="seg"><button id="abBtn" aria-pressed="false" title="A/B: hold what you see now, change anything, then drag the line across the view to compare. Click again to clear" aria-label="A/B compare"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M8 1v14"/><path d="M3.5 10l1.5-5 1.5 5M4 8.6h2"/></svg></button></div>
       <div class="seg"><button id="refBtn" aria-pressed="true" aria-label="Scale guide"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round"><circle cx="4" cy="4.2" r="1.4"/><path d="M4 6.2v4.3M2.6 15l1.4-4.5 1.4 4.5M2.3 7.6h3.4"/><path d="M8.5 15V5.5l3-2.5 3 2.5V15z"/></svg></button></div>
       <div class="seg"><button id="regionBtn" aria-pressed="false" title="Close-up: drag a box over the part you want to judge. While it plays, that part renders at full quality and the rest of the frame holds still" aria-label="Close-up region"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6"><path d="M1.5 5V1.5H5M11 1.5h3.5V5M14.5 11v3.5H11M5 14.5H1.5V11"/><rect x="5" y="5" width="6" height="6" rx="1"/></svg></button></div>
       <div class="seg" id="vres" role="group" aria-label="Viewport resolution" title="Viewport render resolution (long edge). The volume's own detail is set by Detail level, at the top of the panel. G cycles">
@@ -621,7 +622,7 @@ const DENS_GLSL=TERR_GLSL+BODY_GLSL+`
 uniform sampler3D uD, uR, uRB, uND, uCurlT; uniform vec3 uBMin, uBSize, uVoxU; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
 uniform vec2 uRW; uniform float uHH, uBTop, uProf, uDGain, uCurlK; uniform int uHug;   // rest weights · design height, billows toward the top, core-to-edge profile, detail gain
 uniform int uDM; uniform float uDMs, uDMe, uDMa, uDT, uDLp; uniform vec3 uDMd;
-uniform float uFine, uFineN; uniform vec4 uFx;   // small-vs-large balance of the detail octaves (and its normaliser) · an added fine layer: amount, size, kind (0 billows, 1 wisps, 2 grain)          // how the detail itself moves: kind, speed (m/s), small-vs-large exponent, strength, time (s), loop length (s), direction
+uniform float uBrkM; uniform float uFine, uFineN; uniform vec4 uFx;   // small-vs-large balance of the detail octaves (and its normaliser) · an added fine layer: amount, size, kind (0 billows, 1 wisps, 2 grain)          // how the detail itself moves: kind, speed (m/s), small-vs-large exponent, strength, time (s), loop length (s), direction
 float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
 uniform float uSigma, uTh, uW, uAmt, uBillow, uCurl, uDet, uBreak, uBreakS, uFadeT, uFadeB, uEdgeF; uniform int uOct, uFloorOn, uLk2; uniform vec3 uSeedV;
 uniform vec4 uLa[3], uLb[3]; uniform vec3 uLkOn;   // painted looks (up to 3): billow, amount, edge width, breakup · curl, detail size, sigma ratio, -
@@ -659,6 +660,7 @@ float fxVar(vec3 q){ float L=uFx.y; float wk=smoothstep(0.6,1.6,L*0.3/gFoot); if
 float brkN(vec3 rc){ vec3 o=dmOff(rc,uBreakS,7.); return textureLod(uNT,(rc-o)/uBreakS,0.).r*0.7+textureLod(uNT,(rc-o)/(uBreakS*0.45),0.).a*0.3; }
 float densGrid(vec3 p0){ float dm; vec3 p=bodyP(p0,dm); vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
   vec4 dg=textureLod(uD,u,0.); vec3 w=uLk2==1?lookW(dg):vec3(0.); return uSigma*(1.-w.x-w.y-w.z+w.x*uLb[0].z+w.y*uLb[1].z+w.z*uLb[2].z)*transferG(dg.r*dm); }
+float gridRaw(vec3 p0){ float dm; vec3 p=bodyP(p0,dm); vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; return textureLod(uD,u,0.).r*dm; }   /* the coarse fog, one lookup: where the march need not go */
 float dens(vec3 p0,int lvl){
   float dm; vec3 p=bodyP(p0,dm);
   vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
@@ -675,7 +677,7 @@ float dens(vec3 p0,int lvl){
   float wA=uRW.x, wB=uRW.y, wN=1./max(sqrt(wA*wA+wB*wB),1e-3);   // two rest fields, cross-faded: one is always fresh, so the detail never smears
   if(uEmit==1){ d*=ageFade(rcs.a/max(textureLod(uD,u,0.).r,1e-3)); if(d<0.008) return 0.; }            // fade the tail of the plume, and right at the source
   if(terrOn()&&p.y<terrH(p.xz)) return 0.;
-  if(cBreak>0.){ float nb=0.5+((wA>0.001?(brkN(rA)-0.5)*wA:0.)+(wB>0.001?(brkN(rB)-0.5)*wB:0.))*wN; d*=smoothstep(cBreak*0.75-0.18,cBreak*0.75+0.1,nb); }
+  if(cBreak>0.){ float nb=uBrkM+((wA>0.001?(brkN(rA)-uBrkM)*wA:0.)+(wB>0.001?(brkN(rB)-uBrkM)*wB:0.))*wN; d*=smoothstep(cBreak*0.75-0.18,cBreak*0.75+0.1,nb); }
   float f0=d-uTh; if(f0+cAmt*0.5<=0.) return 0.;
   float f=f0, inner=1.;
   if(lvl>0&&cAmt>0.){
@@ -773,9 +775,11 @@ void main(){
   vec2 tb=box(uCam,rd,uRB0,uRB1); float t0=max(tb.x,0.), t1=min(tb.y,tF);
   if(uPass!=2&&t1>t0){
     float jit=hash13(vec3(fc,uFrame+1.)); float cosT=dot(rd,uL), ph0=phaseHG(cosT);
-    float span=t1-t0; float dt=span/float(uSteps); float pixA=2.*uTanY/uRes.y;
-    float lMax=length(uBSize);
-    for(int i=0;i<480;i++){ if(i>=uSteps) break;
+    { const int NC=40; float cdt=(t1-t0)/float(NC); int i0=-1, i1=-1; for(int i=0;i<NC;i++){ if(gridRaw(uCam+rd*(t0+(float(i)+0.5)*cdt))>0.004){ if(i0<0) i0=i; i1=i; } }   /* a quick pass on the coarse fog first: the steps then go only where there is fog, so thin layers seen edge-on and sparse clouds get their full count */
+      if(i0<0) t1=t0; else { float a0=t0+max(float(i0)-1.5,0.)*cdt, a1=t0+min(float(i1)+2.5,float(NC))*cdt; t0=a0; t1=min(a1,t1); } }
+    float span=max(t1-t0,0.); float dt=span/float(uSteps); float pixA=2.*uTanY/uRes.y;
+    float lMax=length(uBSize); int nS=span>0.?uSteps:0;
+    for(int i=0;i<480;i++){ if(i>=nS) break;
       float t=t0+(float(i)+jit)*dt; vec3 p=uCam+rd*t; gFoot=max(t*pixA,1e-4);
       float d=dens(p,1); if(uNear>0.) d*=smoothstep(uNear*0.2,uNear,t); if(d<1e-6) continue;   // fade near camera: the fog never smothers the lens
       vec4 lv=lvAt(p); float tau=uSigma*lv.r; float gv=lv.b;
@@ -1454,7 +1458,7 @@ function dab(ctx,rec,op,d,r,s,src,tmp,lk,match,ch){ // d: [x,y,z, dx,dy,dz] in w
   pr=use('copy'); bind3(pr,0,'uSrc',tmp); boxU(pr,rec); volPass(pr,[src],dm,B);
 }
 /* ---- 2. simulation ---- */
-let CURL_RMS=1;
+let CURL_RMS=1, BRK_M=0.5;
 /* motion is budgeted against the asset's own size, so fog drifts and curls but stays inside its box */
 function simParams(ctx,rec){ const S=rec.sim; const EP=emitOn(rec)?emitPlan(rec):null;
   const Uw=EP?EP.Uw:Math.max(S.turb,0.02)*S.eddy*0.6, U_=(Uw+0.06*windSim(rec))*(S.churnK??1)/CURL_RMS;   // wind stirs it up: mechanical turbulence
@@ -1537,7 +1541,7 @@ function looksU(rec){ const a=new Float32Array(12), b=new Float32Array(12), on=[
 function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec); u1f(pr,'uEdgeF',rec.den.fall??0.06); const L2=looksU(rec); u1i(pr,'uLk2',L2.on); gl.uniform4fv(U(pr,'uLa[0]'),L2.a); gl.uniform4fv(U(pr,'uLb[0]'),L2.b); u3v(pr,'uLkOn',L2.onv); gl.uniform3fv(U(pr,'uLkC[0]'),L2.col);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
   u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u3v(pr,'uVoxU',ctx.dims.map(v=>1/v)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
-  u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uCurl',rec.det.curl??rec.sim.turb); const dk=detK(rec); u1f(pr,'uDet',rec.det.size*dk); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize*dk); fineU(pr,rec); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
+  u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uCurl',rec.det.curl??rec.sim.turb); const dk=detK(rec); u1f(pr,'uDet',rec.det.size*dk); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize*dk); fineU(pr,rec); u1f(pr,'uBrkM',BRK_M); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
   u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',hasGround(rec)?1:0); terrU(pr,rec); emitFadeU(pr,ctx,rec); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]);
   bind3(pr,5,'uRB',ctx.rb[0]); bind3(pr,10,'uCurlT',T.curl); const w=restW(ctx,rec); u2f(pr,'uRW',w[0],w[1]); detU(pr,rec); bodyU(pr,ctx,rec); dmU(pr,ctx,rec); u3v(pr,'uRB0',rbox(ctx,rec)[0]); u3v(pr,'uRB1',rbox(ctx,rec)[1]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
@@ -1608,6 +1612,7 @@ async function buildNoise(){
     for(let z=0;z<N;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,tex,0,z); u1f(pr,'uZ',(z+0.5)/N); fullscreen(); if(z%16===15){ showLoader('Building the noise volumes',p0+p1*z/N); await yieldUI(); } } }
   // measure the curl field so turbulence speeds come out in metres
   gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.curl,0,17); const a=new Float32Array(64*64*4); gl.readPixels(0,0,64,64,gl.RGBA,gl.FLOAT,a); let s=0; for(let i=0;i<64*64;i++) s+=a[i*4]**2+a[i*4+1]**2+a[i*4+2]**2; CURL_RMS=Math.sqrt(s/(64*64))||1;
+  { let sr=0,sa=0,n=0; const b=new Uint8Array(128*128*4); for(const z of [3,29,61,97,120]){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.noise,0,z); gl.readPixels(0,0,128,128,gl.RGBA,gl.UNSIGNED_BYTE,b); for(let i=0;i<128*128;i+=3){ sr+=b[i*4]; sa+=b[i*4+3]; n++; } } BRK_M=n?(0.7*sr+0.3*sa)/n/255:0.5; }   /* the breakup noise's own mean: the two rest fields cross-fade around it, so holes never swell and shrink with the fade */
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   for(const t of [T.noise,T.detail]){ gl.bindTexture(gl.TEXTURE_3D,t); gl.generateMipmap(gl.TEXTURE_3D); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); } }
 /* =====================================================================
@@ -1842,7 +1847,7 @@ function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase=
   if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
 function drawOverlay(){
-  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); if(UI.clean) return;
+  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(UI.clean) return;
   if(!REC.dom) return; const BX=drag&&drag.mode==='boxface'?drag.nd:MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; const W=BX[1][0]-BX[0][0], H=BX[1][1]-BX[0][1], D=BX[1][2]-BX[0][2], [x0,y0,z0]=BX[0], [x1,y1,z1]=BX[1];
   // the box: the simulation's room. It flashes when it grows to fit the fog
   const fl=clamp(1-(performance.now()-roomFlash)/900,0,1); if(fl>0) poke();
@@ -1929,7 +1934,11 @@ function trimToFog(){ if(REC.fit!=='auto'||MAIN.phase!=='shape') return; const e
   for(let i=0;i<3;i++){ const m=vx*5+(e.hi[i]-e.lo[i])*0.05; lo[i]=Math.max(e.lo[i]-m,old[0][i]); hi[i]=Math.min(e.hi[i]+m,old[1][i]); } if(flatBase(REC)||floorIn(REC)) lo[1]=old[0][1];
   if(![0,1,2].some(i=>(old[1][i]-old[0][i])-(hi[i]-lo[i])>(old[1][i]-old[0][i])*0.05)) return; REC.dom=[lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; REC.budgetK=1; rebox(MAIN,REC,old); roomFlash=performance.now(); syncUndoTop(); }
 function outsideRoom(d,r){ const lo=REC.dom[0], hi=REC.dom[1], sz=domSize(REC); for(let i=0;i<3;i++){ const m=sz[i]*ROOM_MARGIN; if(i===1&&REC.floor){ if(d[1]+r>hi[1]-m) return true; continue; } if(d[i]-r<lo[i]+m||d[i]+r>hi[i]-m) return true; } return false; }
-function moveStroke(mx,my){ const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
+/* painting brushes follow the fog (or the ground) as the stroke travels, so a stroke dragged into the distance stays on the bank instead of floating off in front of it. Pull, Comb and Blow keep their plane; Alt holds the plane for any brush */
+function followSurface(mx,my,alt){ if(alt||[8,4,10].includes(drag.op)) return; const now=performance.now(); if(drag.fx!=null&&Math.hypot(mx-drag.fx,my-drag.fy)<6&&now-drag.ft<40) return; drag.fx=mx; drag.fy=my; drag.ft=now;
+  const B=camBasis(CAM); let h=pickFog(mx,my); if(!h){ const {ro,rd}=mouseRay(mx,my); const g=rayGround(ro,rd); if(g&&len(sub(g,ro))<CAM.dist*3) h=add(g,[0,UI.brushR*0.5,0]); } if(!h) return;
+  const z=dot(sub(h,B.pos),B.f); if(z>0) drag.depth=lerp(drag.depth,z,0.3); }
+function moveStroke(mx,my,ev){ followSurface(mx,my,ev&&ev.altKey); const p=brushDepthPoint(mx,my); const dm=sub(p,drag.last); const L=len(dm);
   if(drag.op===8){ const D=mul(sub(p,drag.start),0.25+0.75*drag.stroke.s); drag.maxD=Math.max(drag.maxD||0,len(D)); if(L>UI.brushR*0.03){ putDab(drag.start,D); drag.last=p; } }   // grab: the fog under the brush follows the cursor (Strength: how closely)
   else if(drag.op===4||drag.op===10){ if(L>UI.brushR*0.2){ putDab(drag.last,mul(dm,drag.op===4?0.3+0.9*drag.stroke.s:1)); drag.last=p; } }   // comb and blow: along the stroke
   else if(L>UI.brushR*0.22){ const n=Math.min(8,Math.floor(L/(UI.brushR*0.22))); for(let i=1;i<=n;i++) putDab(add(drag.last,mul(dm,i/n)),[0,0,0]); drag.last=p; }
@@ -1947,6 +1956,7 @@ ov.addEventListener('contextmenu',e=>e.preventDefault());
 ov.addEventListener('pointerdown',ev=>{
   if(!ready) return; ov.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId,{x:ev.offsetX,y:ev.offsetY}); const mx=ev.offsetX,my=ev.offsetY;
   if(pointers.size===2){ const [a,b]=[...pointers.values()]; if(drag&&drag.mode==='brush') endStroke(); drag={mode:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; return; }
+  if(AB.img&&ev.button===0&&Math.abs(mx-AB.x*cssW)<12){ drag={mode:'ab'}; return; }   // the A/B line
   if(REGION.arm&&ev.button===0&&!ev.altKey){ drag={mode:'region',x0:mx,y0:my,x1:mx,y1:my}; return; }   // close-up: drag the box
   if(!ev.altKey&&ev.button===0){ const g=pickGhost(mx,my); if(g){ drag={mode:'ghost',...g,vert:ev.shiftKey,lx:mx,ly:my}; return; } }   // a mover's ghost before frame 1
   if(!ev.altKey&&ev.button===0&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f>=0){ const B=MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; drag={mode:'boxface',f,b0:B.map(a=>a.slice()),nd:B.map(a=>a.slice()),o:boxFaces(B)[f],lx:mx,ly:my}; return; } }   // grab a side of the box
@@ -1972,6 +1982,8 @@ ov.addEventListener('pointerdown',ev=>{
 });
 ov.addEventListener('pointermove',ev=>{
   const mx=ev.offsetX,my=ev.offsetY; if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:mx,y:my});
+  if(drag&&drag.mode==='ab'){ AB.x=clamp(mx/cssW,0.02,0.98); return; }
+  if(!drag&&AB.img) ov.style.cursor=Math.abs(mx-AB.x*cssW)<12?'ew-resize':(UI.tool==='orbit'?'grab':'crosshair');
   if(!drag&&ready&&UI.mode==='anim'&&INFL_TOOLS.includes(UI.tool)){ const h=pickHandle(mx,my); if(JSON.stringify(h)!==JSON.stringify(hoverH)){ hoverH=h; ov.style.cursor=h?'move':UI.tool==='edit'?'default':'crosshair'; } }
   if(!drag&&ready&&(UI.tool==='orbit'||UI.tool==='box')){ const f=pickBoxFace(mx,my); if(f!==hoverBox){ hoverBox=f; ov.style.cursor=f>=0?'ns-resize':UI.tool==='orbit'?'grab':'default'; } }
   if(!drag&&ready&&UI.tool==='place'){ hoverG=shotGround(mx,my); }
@@ -1985,7 +1997,7 @@ ov.addEventListener('pointermove',ev=>{
   if(drag.mode==='ghost'){ ghostMove(mx,my); return; }
   if(drag.mode==='track'){ track(mx-drag.x,my-drag.y); drag.x=mx; drag.y=my; return; }
   if(drag.mode==='dolly'){ dolly(Math.exp(-((mx-drag.x)+(my-drag.y))*0.005)); drag.x=mx; drag.y=my; return; }
-  if(drag.mode==='brush'){ drag.lx=mx; drag.ly=my; moveStroke(mx,my); return; }
+  if(drag.mode==='brush'){ drag.lx=mx; drag.ly=my; moveStroke(mx,my,ev); return; }
   if(drag.mode==='boxface'){ drag.lx=mx; drag.ly=my; const a=drag.f>>1, hi=drag.f&1; const t=axisAt(mx,my,drag.o,a); if(t==null) return; const B=drag.b0, mn=Math.max((B[1][a]-B[0][a])*0.04,0.05); const nd=B.map(x=>x.slice());
     if(hi) nd[1][a]=Math.max(drag.o[a]+t,B[0][a]+mn); else nd[0][a]=Math.min(drag.o[a]+t,B[1][a]-mn); drag.nd=nd; drag.moved=true; poke(); return; }
   if(drag.mode==='mark'){ drag.lx=mx; drag.ly=my; if(Math.hypot(mx-drag.sx,my-drag.sy)>6) drag.r=Math.max(len(sub(planePt(mx,my,drag.A,2),drag.A)),0.1); drag.label=`${{lift:drag.down?'sink':'lift',calm:'calm',thin:drag.thick?'thicken':'thin',attract:drag.down?'blast':'attract',inflow:'fog source'}[drag.kind]} · ${fmLen(drag.r*2)} ${drag.kind==='inflow'?'wide':'across'}`; return; }
@@ -2011,7 +2023,7 @@ ov.addEventListener('pointermove',ev=>{
     const w=add(mul(r,dx),mul(f,-dy)); REC.anim.windDir=+(((Math.atan2(w[0],-w[2])/D2R)+360)%360).toFixed(1); REC.anim.wind=+(clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1)*20).toFixed(1); drag.label=`wind ${REC.anim.wind.toFixed(1)} m/s · ${windWords(REC.anim.wind)} · toward ${REC.anim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
   if(drag.mode==='region'){ const d=drag, x0=Math.min(d.x0,d.x1)/cssW, x1=Math.max(d.x0,d.x1)/cssW, y0=1-Math.max(d.y0,d.y1)/cssH, y1=1-Math.min(d.y0,d.y1)/cssH; REGION.arm=false;
     if(x1-x0>0.03&&y1-y0>0.03){ Object.assign(REGION,{on:true,x0:clamp(x0,0,1),x1:clamp(x1,0,1),y0:clamp(y0,0,1),y1:clamp(y1,0,1)}); toast('Close-up: while it plays, this part renders at full quality. Click the button again to turn it off'); } else REGION.on=false;
     $('#regionBtn').setAttribute('aria-pressed',REGION.on); ov.style.cursor=UI.tool==='orbit'?'grab':'crosshair'; drag=null; resetAccum(); return; }
@@ -2082,6 +2094,7 @@ function tlMax(tm){ return Math.max(tm.outT*1.12,tm.inT+(tm.outT-tm.inT)*1.4,vie
 function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   <button class="vbtn" id="playBtn" aria-pressed="false" title="Play In to Out (Space)"><svg viewBox="0 0 12 12" id="playIco"><path d="M2.5 1.5v9l7.5-4.5z"/></svg></button>
   <button class="vbtn" id="playStartBtn" title="Play from the very start, pre-roll included. Shift+Space" aria-label="Play from the start"><svg viewBox="0 0 12 12"><path d="M1.5 1.5h1.6v9H1.5z"/><path d="M4 1.5v9l7-4.5z"/></svg></button>
+  <button class="vbtn" id="pbBtn" aria-pressed="false" title="Playblast: every frame from In to Out at full quality, as a movie for review. Shift+click saves a PNG image sequence instead. Click again to stop" aria-label="Record a playblast"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.6"/></svg></button>
   <div class="tlinfo"><b id="tlFrame">frame 1</b><span id="tlTime"></span></div>
   <div class="track" id="tlTrack" role="slider" aria-label="Simulation time" tabindex="0"><div class="pre" id="tlPre"><span id="tlPreL"></span></div><canvas class="cache" id="tlCache" height="3"></canvas><div class="rng" id="tlRng"></div><i class="h in" id="tlIn" title="In: frame 1 of the shot. At the far left it is your shape; drag right to start later in the motion"></i><i class="h out" id="tlOut" title="Out: the last frame"></i><i class="ph" id="tlPh"></i></div>
   <label class="tlnum" title="Pre-roll: frames simulated from your shape before frame 1, so the fog is already moving when the shot starts. The shaded part of the bar">Pre-roll<input type="number" id="tlPreN" min="0" max="100000" step="1"></label>
@@ -2093,7 +2106,7 @@ function buildTimeline(){ const el=$('#tl'); el.innerHTML=`
   
   <span class="tlspd" id="tlWords"></span>`;
   TL.track=$('#tlTrack');
-  $('#playBtn').onclick=togglePlay; $('#playStartBtn').onclick=playFromStart;
+  $('#playBtn').onclick=togglePlay; $('#playStartBtn').onclick=playFromStart; $('#pbBtn').onclick=ev=>playblast(ev.shiftKey?'frames':null);
   $('#tlPreN').onchange=ev=>{ const tm=timing(REC); const n=Math.max(0,Math.round(+ev.target.value||0)); const inT=n*tm.speed/tm.fps; if(REC.time?.outT==null&&REC.time?.inT==null) setTime({preN:n}); else setTime({preN:n,inT:+inT.toFixed(5),outT:+(inT+(tm.outT-tm.inT)).toFixed(5)}); UI.viewT=timing(REC).inT; toast(n?`${n} frames of pre-roll: frame 1 starts that far into the motion`:'No pre-roll: frame 1 is your shape'); };
   $('#tlN').onchange=ev=>{ const tm=timing(REC); const N=Math.max(2,Math.round(+ev.target.value||tm.frames)); setTime({frames:N,inT:tm.inT,outT:tm.inT+tm.speed*(N-1)/tm.fps}); toast(N>tm.frames?`Extended to ${N} frames at the same speed`:`${N} frames at the same speed`); };
   $('#tlFps').onchange=ev=>{ const tm=timing(REC); const f=clamp(+ev.target.value||tm.fps,1,120); setTime({fps:f,inT:tm.inT,outT:tm.inT+tm.speed*(tm.frames-1)/f}); };
@@ -3480,6 +3493,7 @@ function vexDetail(rec){ const M=dmOf(rec), oct=Math.min(6,LODS[lodOf(rec)].oct)
 #define PROF ${f(profOf(rec))}
 #define DET0 ${f(rec.det.size*detK(rec))}
 #define BRKS ${f(rec.det.brkSize*detK(rec))}
+#define BRKM ${f(BRK_M)}
 #define FINE ${f(clamp(rec.det.fine||0,-1,1))}
 #define FINEN ${f(fineN(rec))}
 #define FXA ${f(fxOf(rec).amt)}
@@ -3545,7 +3559,7 @@ float cb2 = volumesample(1, "billow", @P), gain = volumesample(1, "gain", @P);
 vector la = volumesamplev(1, "looka", @P), lb = volumesamplev(1, "lookb", @P);
 float cAmt = la.x, cW = max(la.y, 1e-4), cBreak = la.z, cCurl = lb.x, cDet = lb.y, cSig = lb.z;
 float wN = 1.0/max(sqrt(wA*wA+wB*wB), 1e-3);
-if(cBreak > 0){ float nb = 0.5; if(wA > 0.001) nb += (brk(rA, T)-0.5)*wA*wN; if(wB > 0.001) nb += (brk(rB, T)-0.5)*wB*wN; d *= sstep(cBreak*0.75-0.18, cBreak*0.75+0.1, nb); }
+if(cBreak > 0){ float nb = BRKM; if(wA > 0.001) nb += (brk(rA, T)-BRKM)*wA*wN; if(wB > 0.001) nb += (brk(rB, T)-BRKM)*wB*wN; d *= sstep(cBreak*0.75-0.18, cBreak*0.75+0.1, nb); }
 float f0 = d-TH; if(f0+cAmt*0.5 <= 0){ @density = 0; return; }
 float fv = f0, inner = 1;
 if(cAmt > 0){ vector2 vv = set(0, 0); if(wA > 0.001) vv += detvar(rA, cCurl, cDet, foot, T)*wA; if(wB > 0.001) vv += detvar(rB, cCurl, cDet, foot, T)*wB; vv *= wN*gain;
@@ -3558,8 +3572,10 @@ else fv -= cAmt*0.06;
 `; }
 /* ---------- USD: the volume as a Volume prim with an OpenVDB density field per frame ---------- */
 const usdName=s=>{ const n=slug(s); return /^[a-z_]/.test(n)?n:'v_'+n; };
-function shaderMeta(rec){ const D=rec.den; return {extinction_distance_m:D.extD,extinction_colour:D.extC||'#ffffff',albedo:+(D.alb??0.9).toFixed(3),albedo_colour:D.albC||'#ffffff',eccentricity:D.ecc??0.85,scatter_bounces:D.bounces??-1,emission:D.emit||0,emission_colour:D.emitC||'#8fd3ff',fade_near_camera_m:D.near||0}; }
+function shaderMeta(rec){ const D=rec.den; return {extinction_distance_m:D.extD,extinction_colour:D.extC||'#ffffff',albedo:+(D.alb??0.9).toFixed(3),albedo_colour:D.albC||'#ffffff',eccentricity:D.ecc??0.85,scatter_bounces:D.bounces??-1,emission:D.emit||0,emission_colour:D.emitC||'#8fd3ff',fade_near_camera_m:D.near||0,viewport_inner_glow:+(LOOK.glow||0).toFixed(3),viewport_dark_edges:+(LOOK.powder||0).toFixed(3)}; }
 const usdCol=h=>'('+hexLin(h).map(v=>+v.toFixed(5)).join(', ')+')';
+const usdColK=(h,k,h2)=>{ const a=hexLin(h), b=h2?hexLin(h2):[1,1,1]; return '('+a.map((v,i)=>+(v*b[i]*k).toPrecision(6)).join(', ')+')'; };
+const usdAbs=S=>{ const k=1/Math.max(S.extinction_distance_m,1e-6), e=hexLin(S.extinction_colour), a=hexLin(S.albedo_colour); return '('+e.map((v,i)=>+Math.max(v*k-a[i]*S.albedo*v*k,0).toPrecision(6)).join(', ')+')'; };   /* what is not scattered is absorbed */
 function usdLayer(meta){ const n=meta.prim, S=meta.shader, F=meta.frames, ext=meta.extent;
   const fp=F?`asset filePath.timeSamples = {\n${F.map(f=>`                ${f}: @./${meta.vdb_dir}/${meta.slug}.${String(f).padStart(4,'0')}.vdb@,`).join('\n')}\n            }`:`asset filePath = @./${meta.vdb_dir}/${meta.slug}.vdb@`;
   return `#usda 1.0
@@ -3578,8 +3594,11 @@ def Xform "brume" (
     kind = "group"
 )
 {
-    def Volume "${n}"
+    def Volume "${n}" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
     {
+        rel material:binding = </brume/Materials/${n}_fog>
         float3[] extent = [(${ext[0].map(v=>+v.toFixed(4)).join(', ')}), (${ext[1].map(v=>+v.toFixed(4)).join(', ')})]
         rel field:density = </brume/${n}/density>
         custom float brume:extinction_distance_m = ${S.extinction_distance_m}
@@ -3596,6 +3615,36 @@ def Xform "brume" (
         {
             token fieldName = "density"
             ${fp}
+        }
+    }
+
+    def Scope "Materials"
+    {
+        def Material "${n}_fog" (
+            doc = "Brume's shading in physical terms, for any renderer: map the BrumeVolume shader to your own volume material. Coefficients are per metre at density 1."
+        )
+        {
+            token outputs:volume.connect = </brume/Materials/${n}_fog/BrumeVolume.outputs:volume>
+
+            def Shader "BrumeVolume"
+            {
+                uniform token info:id = "BrumeVolume"
+                float inputs:extinction_distance_m = ${S.extinction_distance_m}
+                float inputs:density_scale = ${+(1/Math.max(S.extinction_distance_m,1e-6)).toPrecision(6)}
+                color3f inputs:extinction_per_m = ${usdColK(S.extinction_colour,1/Math.max(S.extinction_distance_m,1e-6))}
+                color3f inputs:scattering_per_m = ${usdColK(S.albedo_colour,S.albedo/Math.max(S.extinction_distance_m,1e-6),S.extinction_colour)}
+                color3f inputs:absorption_per_m = ${usdAbs(S)}
+                float inputs:albedo = ${S.albedo}
+                color3f inputs:albedo_colour = ${usdCol(S.albedo_colour)}
+                color3f inputs:extinction_colour = ${usdCol(S.extinction_colour)}
+                float inputs:anisotropy = ${S.eccentricity}
+                float inputs:emission = ${S.emission}
+                color3f inputs:emission_colour = ${usdCol(S.emission_colour)}
+                int inputs:scatter_bounces = ${S.scatter_bounces}
+                float inputs:viewport_inner_glow = ${S.viewport_inner_glow}
+                float inputs:viewport_dark_edges = ${S.viewport_dark_edges}
+                token outputs:volume
+            }
         }
     }
 }
@@ -3624,15 +3673,16 @@ def Xform "${usdName(r.name)}_instance" (
     uniform token[] xformOpOrder = ["xformOp:transform"]
 }
 `; }).join('')}`; }
-/* ---------- Houdini: one script sets it all up (SOPs to load or rebuild it, Solaris with a Karma material) ---------- */
+/* ---------- Houdini: one script sets it all up (SOPs to load or rebuild it, Solaris with the layer and its renderer-neutral material) ---------- */
 function houdiniScript(meta){ const S=meta.shader, al=hexLin(S.albedo_colour).map(v=>+(v*S.albedo).toFixed(4)), ex=hexLin(S.extinction_colour).map(v=>+v.toFixed(4)), fields=meta.mode==='fields';
   return `# Brume -> Houdini and Solaris: "${meta.name.replace(/"/g,"'")}"
 # 1. Unzip into your project so this file is at $HIP/brume/${meta.slug}/load_in_houdini.py
 # 2. In Houdini: Windows > Python Source Editor (or the Python Shell), then run:
 #        exec(open(hou.expandString("$HIP/brume/${meta.slug}/load_in_houdini.py")).read())
-# It builds /obj/brume_${meta.slug} (${fields?'rebuilds the detail at full resolution and writes the VDBs':'loads the VDBs'}) and /stage/brume_${meta.slug} (the USD layer, a Karma material, assigned).
+# It builds /obj/brume_${meta.slug} (${fields?'rebuilds the detail at full resolution and writes the VDBs':'loads the VDBs'}) and /stage/brume_${meta.slug} (the USD layer, with its renderer-neutral material already bound).
 # Written by Brume. It was not run in Houdini where it was made: if a node or parameter name differs in your version, it says so and carries on.
 import hou, os, json
+KARMA_PREVIEW = False   # True also builds a Karma Pyro preview material from the same shading values
 FOLDER = hou.expandString("$HIP/brume/${meta.slug}")
 meta = json.load(open(os.path.join(FOLDER, "meta.json")))
 NAME = meta["slug"]
@@ -3693,30 +3743,32 @@ out = vdb
 notes.append("Press Save to Disk on %s to write the rebuilt VDBs the USD layer points at (%s)" % (rop.path(), meta["vdb_pattern"]))`:`out = file_node("fog", "vdb")`}
 out.setDisplayFlag(True); out.setRenderFlag(True); geo.layoutChildren()
 
-# ---- Solaris: the layer, a Karma material with Brume's shading, assigned ----
+# ---- Solaris: the layer (it carries Brume's shading as a renderer-neutral material, bound to the volume) ----
 stage = hou.node("/stage")
 lname = "brume_" + NAME
 lop = stage.node(lname)
 if lop is None:
     lop = stage.createNode("sublayer", lname)
     try_set(lop, ["filepath1"], os.path.join(FOLDER, NAME + ".usda"))
-    mat = stage.createNode("materiallibrary", lname + "_material"); mat.setInput(0, lop)
-    shader = None
-    for t in ("karmapyroshader", "kma_pyroshader", "pyroshader"):
-        try:
-            shader = mat.createNode(t, NAME + "_fog"); break
-        except Exception: pass
-    if shader is None:
-        notes.append("No Pyro shader node type found: put a Karma Pyro Shader in %s by hand" % mat.path())
-    else:
-        try_set(shader, ["densityscale", "density_scale", "smoke_densityscale"], ${+(1/Math.max(S.extinction_distance_m,1e-6)).toPrecision(6)})   # extinction per metre at full density
-        try_set(shader, ["smokecolor", "smoke_color", "scattercolor", "scatter_color"], (${al.join(', ')}))   # albedo colour x albedo
-        try_set(shader, ["phase", "anisotropy", "smoke_anisotropy", "g"], ${S.eccentricity})
-        try_set(shader, ["absorptioncolor", "extinctioncolor", "extinction_color"], (${ex.join(', ')}))
-    asg = stage.createNode("assignmaterial", lname + "_assign"); asg.setInput(0, mat)
-    try_set(asg, ["primpattern1"], "/brume/" + meta["prim"])
-    try_set(asg, ["matspecpath1"], "/materials/" + NAME + "_fog")
-    asg.setDisplayFlag(True); stage.layoutChildren()
+    last = lop   # the layer carries its own renderer-neutral material (/brume/Materials), already bound to the volume
+    if KARMA_PREVIEW:   # optional: a Karma Pyro look-alike, only for previewing in Karma
+        mat = stage.createNode("materiallibrary", lname + "_material"); mat.setInput(0, lop)
+        shader = None
+        for t in ("karmapyroshader", "kma_pyroshader", "pyroshader"):
+            try:
+                shader = mat.createNode(t, NAME + "_fog"); break
+            except Exception: pass
+        if shader is None:
+            notes.append("No Pyro shader node type found: put a Karma Pyro Shader in %s by hand" % mat.path())
+        else:
+            try_set(shader, ["densityscale", "density_scale", "smoke_densityscale"], ${+(1/Math.max(S.extinction_distance_m,1e-6)).toPrecision(6)})   # extinction per metre at full density
+            try_set(shader, ["smokecolor", "smoke_color", "scattercolor", "scatter_color"], (${al.join(', ')}))   # albedo colour x albedo
+            try_set(shader, ["phase", "anisotropy", "smoke_anisotropy", "g"], ${S.eccentricity})
+            try_set(shader, ["absorptioncolor", "extinctioncolor", "extinction_color"], (${ex.join(', ')}))
+        asg = stage.createNode("assignmaterial", lname + "_assign"); asg.setInput(0, mat); last = asg
+        try_set(asg, ["primpattern1"], "/brume/" + meta["prim"])
+        try_set(asg, ["matspecpath1"], "/materials/" + NAME + "_fog")
+    last.setDisplayFlag(True); stage.layoutChildren()
 print("Brume: set up %s" % NAME)
 for n in notes: print("  - " + n)
 print("Shading: extinction distance %s m (density scale %s), albedo %s, albedo colour %s, eccentricity %s" % (${S.extinction_distance_m}, ${+(1/Math.max(S.extinction_distance_m,1e-6)).toPrecision(6)}, ${S.albedo}, "${S.albedo_colour}", ${S.eccentricity}))
@@ -3732,7 +3784,10 @@ rebuild_detail.vfl   the Volume Wrangle that rebuilds the detail at any resoluti
 load_in_houdini.py   builds it all; press Save to Disk on write_vdbs to write vdb/, which the USD layer uses.`:`DETAIL BAKED IN
 vdb/   the fog as OpenVDB, one file per frame, density normalised (1 = full).`}
 ${meta.slug}.usda   a USD layer: /brume/${meta.prim}, a Volume with its density field per frame, and Brume's shading as attributes.
-load_in_houdini.py   run it in Houdini's Python Source Editor: SOPs under /obj, and in /stage the layer with a Karma material assigned.
+load_in_houdini.py   run it in Houdini's Python Source Editor: SOPs under /obj, and in /stage the layer. Set KARMA_PREVIEW = True at its top to also build a Karma Pyro preview material.
+
+SHADING
+Each USD layer carries a renderer-neutral material at /brume/Materials/<name>_fog, bound to the volume: a shader with info:id "BrumeVolume" holding the shading in physical terms (extinction, scattering and absorption per metre at density 1, albedo, anisotropy, emission). Map it to your own renderer's volume material; the same values are on the Volume prim as brume:* attributes and in meta.json. The viewport_* inputs are Brume's preview-only lighting settings, for reference.
 recipe.brume.json    open it in Brume to keep working on it.
 
 Shading: extinction distance ${meta.shader.extinction_distance_m} m (density scale ${+(1/Math.max(meta.shader.extinction_distance_m,1e-6)).toPrecision(6)} per metre at full density),
@@ -3742,7 +3797,7 @@ ${meta.shader.fade_near_camera_m?`Fade near camera: ${meta.shader.fade_near_came
 /* ---------- the Export window ---------- */
 const EXP={mode:'frame',every:1,what:'baked',N:160,res:432,full:true};
 function openExportX(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); EXP.N=LODS[lodOf(REC)].exp; if(UI.mode!=='anim') EXP.mode='frame';
-  m.innerHTML=`<p>For Houdini and Solaris: the fog as <b>OpenVDB</b> files, a <b>USD layer</b> with its shading, and a script that sets up the SOPs and a <b>Karma material</b> in /stage. Unzip into <code>$HIP/brume/</code>.</p>
+  m.innerHTML=`<p>For Houdini and Solaris: the fog as <b>OpenVDB</b> files, a <b>USD layer</b> with its shading as a renderer-neutral material (bound to the volume, ready to map to your own renderer), and a script that sets up the SOPs and the layer in /stage. Unzip into <code>$HIP/brume/</code>.</p>
     <div class="row wide"><label>Export</label><div class="chips" id="exMode"></div></div>
     <div class="row wide" id="exEveryRow"><label>Every</label><div class="chips" id="exEvery"></div></div>
     <div class="row wide" id="exFullRow"><label>Simulate</label><div class="chips" id="exFull"></div></div>
@@ -3761,7 +3816,7 @@ function openExportX(){ const m=$('#mBody'); if(!REC.dom) refit(REC,null,true); 
     let txt; if(EXP.what==='baked'){ const d=budgetDims(DS,EXP.N), mb=d[0]*d[1]*d[2]*2/1048576*0.6; txt=`${d.join(' × ')} voxels · ${fmLen(DS[0]/d[0])} each · about ${mb.toFixed(1)} MB a frame`+(nF>1?` · ${nF} frames · about ${(mb*nF).toFixed(0)} MB`:''); }
     else { const vx=voxSize(MAIN,vr), d=DS.map(v=>Math.max(8,Math.round(v/vx))), mb=d[0]*d[1]*d[2]*(2*6+4*6)/1048576*0.55; txt=`fields ${d.join(' × ')} voxels · about ${mb.toFixed(1)} MB a frame`+(nF>1?` · ${nF} frames`:'')+` · noise about 15 MB once · rebuilt in Houdini at ${EXP.res} voxels along the longest side`; }
     $('#exInfo').textContent=txt;
-    $('#exNote').innerHTML=EXP.what==='fields'?'Houdini rebuilds the detail with a Volume Wrangle that does exactly what Brume\'s renderer does. Run <b>load_in_houdini.py</b>, then press <b>Save to Disk</b> on write_vdbs.':'Run <b>load_in_houdini.py</b> in Houdini\'s Python Source Editor: it loads the VDBs, and in /stage sublayers the USD with a Karma Pyro material carrying Brume\'s shading.'; };
+    $('#exNote').innerHTML=EXP.what==='fields'?'Houdini rebuilds the detail with a Volume Wrangle that does exactly what Brume\'s renderer does. Run <b>load_in_houdini.py</b>, then press <b>Save to Disk</b> on write_vdbs.':'Run <b>load_in_houdini.py</b> in Houdini\'s Python Source Editor: it loads the VDBs, and in /stage sublayers the USD. Or skip Houdini: the USD layer already carries its VDBs and a renderer-neutral material bound to the volume.'; };
   draw(); $('#exGo').onclick=doExportX; $('#modal').hidden=false; $('#mClose').focus(); }
 async function doExportX(){ const st=$('#exStatus'), go=$('#exGo'); go.disabled=true; if(UI.playing) togglePlay();
   const name=slug(REC.name), prim=usdName(REC.name), enc=new TextEncoder(), tm=timing(REC), fields=EXP.what==='fields';
@@ -3887,6 +3942,40 @@ function sourceUpwind(){ const B=REC.dom; if(!B) return; const A=REC.anim, an=((
 /* fill, then keep it: the frame you like becomes the shape, and it barely moves from there */
 function fillToStill(){ frameToShape(true); const A=REC.anim; A.flows=(A.flows||[]).filter(f=>f.kind!=='inflow'); Object.assign(A,{wind:Math.min(A.wind||0,0.6),churn:0.5,feed:0,spill:0,evap:0.1,wisp:0.01,tl:1,mlook:null}); if(A.dm) A.dm.spd=Math.min(A.dm.spd||0.2,0.15);
   pushUndo(); autosave(); markAnim(); buildPanels(); toast('This frame is now the start, and it barely moves from here: a slow churn and gently moving detail'); }
+
+/* ---------- A/B: hold what you see, change anything, then drag the line to compare ---------- */
+const AB={img:null,x:0.5};
+function abToggle(){ const b=$('#abBtn'); if(AB.img){ AB.img=null; b.setAttribute('aria-pressed',false); toast('Snapshot cleared'); return; }
+  const take=c=>{ const cv=document.createElement('canvas'); cv.width=c.width; cv.height=c.height; cv.getContext('2d').drawImage(c,0,0); AB.img=cv; AB.x=0.5; b.setAttribute('aria-pressed',true); toast('Held as A. Change anything, then drag the line to compare. Click again to clear'); };
+  if(frames<8&&UI.ws!=='shot'){ toast('Letting it sharpen first…'); const w=()=>{ if(frames>=8||!ready) capture=take; else requestAnimationFrame(w); }; w(); } else capture=take; }
+function drawAB(){ if(!AB.img) return; const x=AB.x*cssW; octx.save(); octx.beginPath(); octx.rect(0,0,x,cssH); octx.clip(); octx.drawImage(AB.img,0,0,cssW,cssH); octx.restore();
+  octx.strokeStyle='rgba(239,178,77,.95)'; octx.lineWidth=1.5; octx.beginPath(); octx.moveTo(x,0); octx.lineTo(x,cssH); octx.stroke(); octx.fillStyle='rgba(239,178,77,.95)'; octx.beginPath(); octx.arc(x,cssH/2,7,0,Math.PI*2); octx.fill();
+  octx.font='600 11px "IBM Plex Mono", monospace'; octx.fillStyle='rgba(239,178,77,.95)'; octx.fillText('A · held',Math.max(8,x-70),18); octx.fillText('B · live',Math.min(cssW-64,x+10),18); }
+$('#abBtn').onclick=abToggle;
+/* ---------- playblast: every frame from In to Out at full quality, as a movie for review ---------- */
+const PB={on:false,stop:false};
+const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
+const grabFrame=fn=>new Promise(r=>{ capture=c=>{ Promise.resolve(fn(c)).then(r,()=>r(null)); }; });   /* right after a frame is drawn, while the canvas still holds it */
+async function playblast(kind){ const btn=$('#pbBtn'); if(PB.on){ PB.stop=true; return; }
+  kind=kind||(window.MediaRecorder?'movie':'frames');
+  const mime=kind==='movie'?['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m)):null; if(kind==='movie'&&!mime) kind='frames';
+  if(UI.mode!=='anim') setMode('anim'); if(UI.playing) togglePlay(); const tm=timing(REC), F0=tm.start, F1=tm.start+tm.frames-1, need=UI.res>=2048?40:28;
+  let rec=null, chunks=[], track=null, done=null; const pngs=[];
+  if(kind==='movie'){ const stream=glc.captureStream(0); track=stream.getVideoTracks()[0]; rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:24e6}); rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); }; done=new Promise(r=>rec.onstop=r); rec.start(200); rec.pause(); }
+  PB.on=true; PB.stop=false; btn.setAttribute('aria-pressed',true);
+  try{ for(let f=F0;f<=F1&&!PB.stop;f++){ const t=frameT(tm,f); setViewT(t);
+      while(!PB.stop){ await nextFrame(); const S=MAIN.sim; if(MAIN.phase==='anim'&&!AFIT.on&&(S.still||S.step>=S.steps&&Math.abs(S.t-t)<1e-6)&&frames>=need&&!interacting) break; }   /* the frame simulated, then sharpened */
+      if(PB.stop) break;
+      if(kind==='movie'){ rec.resume(); await grabFrame(()=>{ track.requestFrame&&track.requestFrame(); }); await new Promise(r=>setTimeout(r,1000/tm.fps)); rec.pause(); }
+      else { const b=await grabFrame(c=>new Promise(r=>c.toBlob(r,'image/png'))); if(b) pngs.push([f,new Uint8Array(await b.arrayBuffer())]); }
+      $('#hud').textContent=`playblast ${f-F0+1} / ${F1-F0+1}`; } }
+  finally{ if(rec){ rec.requestData(); rec.stop(); await done; } PB.on=false; btn.setAttribute('aria-pressed',false); }
+  const base=slug(REC.name||'brume')+'_playblast'; let blob, name;
+  if(kind==='movie'){ if(!chunks.length){ toast('The browser recorded nothing: saving the frames as images instead'); return playblast('frames'); } blob=new Blob(chunks,{type:mime.split(';')[0]}); name=base+'.'+(mime.includes('mp4')?'mp4':'webm'); }
+  else { if(!pngs.length){ toast('No frames recorded'); return; } if(!(window.fflate&&fflate.zipSync)){ const [f,u]=pngs[0]; blob=new Blob([u],{type:'image/png'}); name=base+'.'+String(f).padStart(4,'0')+'.png'; toast('Could not zip here: saved the first frame'); }
+    else { const files={}; for(const [f,u] of pngs) files[base+'/'+base+'.'+String(f).padStart(4,'0')+'.png']=[u,{level:0}]; blob=new Blob([fflate.zipSync(files)],{type:'application/zip'}); name=base+'_png.zip'; } }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),30000);
+  toast((PB.stop?'Playblast stopped: the frames so far are saved as ':'Playblast saved as ')+name+' ('+cw+'×'+ch+')'); }
 let voxShow=null;   // fills the Custom voxel counts once the box is known
 /* =====================================================================
    UI
@@ -4225,7 +4314,7 @@ function buildPanels(){ applySteps(); if(UI.ws==='shot'){ buildLayers(); buildSe
   subH(lb,'Cloud lighting');
   refreshers.push(slider(lb,L_('Dark edges',0,1,()=>LOOK.powder||0,v=>LOOK.powder=+v.toFixed(2),v=>v<0.02?'off':pct(v),markView)));
   refreshers.push(slider(lb,L_('Inner glow',0,1,()=>LOOK.glow||0,v=>LOOK.glow=+v.toFixed(2),v=>v<0.02?'off':pct(v),markView)));
-  note(lb,'Dense fog and cloud lit by a path tracer look darker at thin edges and glow deep inside, where light has scattered many times. These bring the preview closer to Karma.');
+  note(lb,'Dense fog and cloud lit by a path tracer look darker at thin edges and glow deep inside, where light has scattered many times. These bring the preview closer to a path-traced render. They are preview settings; the export carries them only for reference.');
   buildEnvRow(lb);
   refreshers.push(chips(lb,'Daylight',[['physical','Physical','A low sun is dimmer and the sky darker, as in real daylight. Sun strength and Sky are their values at a high sun'],['manual','Manual','Sun and sky stay as set, whatever the sun height']],()=>LOOK.daylight||'physical',v=>{ LOOK.daylight=v; markView(); saveLook(); }));
   refreshers.push(chips(lb,'Scale guide',[[true,'On'],[false,'Off']],()=>LOOK.figure,v=>{ LOOK.figure=v; saveLook(); refBtnShow(); }));
