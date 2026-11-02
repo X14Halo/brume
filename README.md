@@ -79,12 +79,18 @@ Live: https://x14halo.github.io/brume/
 
 Both workspaces run as a short series of steps across the top of the panel. Each step shows only the panels and tools it needs, says in a sentence what to do, and offers the next step. Tool shortcuts still work and move to their step. Every tool on the left rail has a label.
 
-- **Shot:** 1 Scan (check the set) · 2 Ground (colliders) · 3 Fog (paint layers, or place a Designer volume from the Shelf) · 4 Shape · 5 Animate.
+- **Shot:** 1 Scan (check the set) · 2 Ground (colliders) · 3 Place (add fog from the Library and click on the set) · 4 Look · 5 Sculpt · 6 Animate.
 - **Designer:** 1 Start · 2 Look · 3 Sculpt · 4 Animate · 5 Save.
 
 ### Shot (test scene)
 
-The **Shot** tab opens a made-up test shot (a village on a valley floor, rolling hills, a mountain range) through a shot camera. Fog is painted into the set rather than dropped in and scaled:
+The **Shot** tab opens a made-up test shot (a village on a valley floor, rolling hills, a mountain range) through a shot camera. It works like the Designer, on the landscape:
+
+- **+ Add fog** opens the same Library as the Designer. Pick a type and **click on the set**: it forms there against the real ground (ground fog drapes it, a cap settles on the peak you click, rolling fog and seas of clouds pour down the real slopes; things that float are lifted a little). Up to eight volumes, drawn together.
+- **Every placed volume is a full Designer volume**: Start from (*Change type…* keeps it where it stands), Size (with **Above the ground**), Forming, Detail, Shading, painted looks, the sculpt brushes, and all of Animate (motion looks, Heavy, Fog sources, keep-frame). Pick the one to work on under **Fog in this shot**. **Move** (W) moves, turns and scales it; duplicates are instances.
+- Volumes saved to the Designer's **Shelf** can be placed the same way.
+
+Older shots with painted layers still load and draw:
 
 - **Layers** (up to four), each a fog type that forms by its own rule relative to the ground: **Ground fog** (lies on the ground, set depth), **Valley fog** (fills the low ground to a level), **Hanging mist** (floats at a height above the ground), **Low cloud** (a layer at an altitude, wrapping the slopes it meets), **Mountain cap** (sits on the peaks you paint over), **Haze** (even, up to a height).
 - **Place brush** (Q): pick a layer and paint on the ground where it goes; the ground is tinted with each layer's colour while you paint, and the fog forms there when you let go. Ctrl erases.

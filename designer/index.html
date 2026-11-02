@@ -243,15 +243,15 @@ pre.code{margin:0;background:var(--well);border:1px solid var(--line);border-rad
     <div class="steps" id="steps"></div>
     <details class="sec" open id="lodSec"><summary>Detail level · voxels</summary><div class="body" id="lodBody"></div></details>
     <details class="sec" open id="brushSec" hidden><summary>Brush</summary><div class="body" id="brushBody"></div></details>
-    <details class="sec shape-only ws-shot" open id="layerSec"><summary>Shot layers</summary><div class="body" id="layerBody"></div></details>
+    <details class="sec shape-only ws-shot" open id="layerSec"><summary>Fog in this shot</summary><div class="body" id="layerBody"></div></details>
     <details class="sec ws-shot" open id="setSec"><summary>The set · scan</summary><div class="body" id="setBody"></div></details>
     <details class="sec ws-shot" open id="colSec"><summary>Ground &amp; colliders</summary><div class="body" id="colBody"></div></details>
     <details class="sec ws-shot anim-only" open id="movSec"><summary>Movers</summary><div class="body" id="movBody"></div></details>
     <details class="sec anim-only" open id="animSec"><summary>Animation</summary><div class="body" id="animBody"></div></details>
-    <details class="sec shape-only ws-designer" open id="startSec"><summary>Start from</summary><div class="body" id="startBody"></div></details>
-    <details class="sec shape-only ws-designer" open id="sizeSec"><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
-    <details class="sec shape-only ws-designer" open id="formSec" hidden><summary>Formation</summary><div class="body" id="formBody"></div></details>
-    <details class="sec shape-only ws-designer" open id="emitSec"><summary>Emitter</summary><div class="body" id="emitBody"></div></details>
+    <details class="sec shape-only" open id="startSec"><summary>Start from</summary><div class="body" id="startBody"></div></details>
+    <details class="sec shape-only" open id="sizeSec"><summary>Size &amp; scale</summary><div class="body" id="sizeBody"></div></details>
+    <details class="sec shape-only" open id="formSec" hidden><summary>Formation</summary><div class="body" id="formBody"></div></details>
+    <details class="sec shape-only" open id="emitSec"><summary>Emitter</summary><div class="body" id="emitBody"></div></details>
     <details class="sec shape-only" open id="simSec"><summary>Forming</summary><div class="body" id="simBody"></div></details>
     <details class="sec" open id="detSec"><summary>Detail</summary><div class="body" id="detBody"></div></details>
     <details class="sec shape-only" open id="looksSec"><summary>Painted looks</summary><div class="body" id="looksBody"></div></details>
@@ -1111,14 +1111,14 @@ function animDefaults(r){ const s=r.sim, t=r.template, ly=r.layer&&r.layer.type,
     spill:hasGround(r)?e[0]:0,feed:e[1],thinW:e[2],thinL:e[3],wisp:e[4],evap:e[5],tl:e[6],mlook:'natural'}; }   /* by default it simulates: churn, drift and drain the way that element does */
 /* primitives for each starting shape, in metres, laid out from the seed */
 function templatePrims(rec){ const P=templatePrims0(rec), o=rec.off; const base=!o?P:P.map(q=>{ const r=q.slice(); for(let i=0;i<3;i++) r[i]+=o[i]; if(q[3]===1) for(let i=0;i<3;i++) r[8+i]+=o[i]; return r; }); rec._npt=base.length; return [...base,...(typeof blockPrims==='function'?blockPrims(rec):[])].slice(0,64); }   /* the type's own shape, then your blocking shapes (already where they stand) */   // a Designer volume placed in the shot: built around the origin, shifted to where it stands
-function templatePrims0(rec){
+function templatePrims0(rec){ const o0=rec.off||[0,0,0], tH=(x,z)=>terrHJ(rec,x+o0[0],z+o0[2])-o0[1];   /* the ground under each part, wherever the volume stands */
   const [W,H,D]=rec.size, R=mulberry(rec.seed*7919+13), P=[];
   const ell=(x,y,z,rx,ry,rz,w=1)=>P.push([x,y,z,0, rx,ry,rz,w, 0,0,0,0]);
   const cap=(a,b,ra,rb,w=1)=>P.push([a[0],a[1],a[2],1, ra,0,0,w, b[0],b[1],b[2],rb]);
   const box=(x,y,z,hx,hy,hz,rr,w=1)=>P.push([x,y,z,2, hx,hy,hz,w, rr,0,0,0]);
   const t=(LIB[rec.template]&&LIB[rec.template].prims)||rec.template;
   if(t==='none') return P;
-  const Ht=terrHJ(rec,0,0), wd=rec.sim.windDir*D2R, wx=Math.sin(wd), wz=-Math.cos(wd);
+  const Ht=tH(0,0), wd=rec.sim.windDir*D2R, wx=Math.sin(wd), wz=-Math.cos(wd);
   if(t==='cap'){ ell(0,Ht-H*0.06,0,W*0.38,H*0.46,D*0.38,1);                               // sits on the summit
     for(let i=0;i<9;i++){ const a=R()*6.283, r=0.16+R()*0.14; ell(Math.cos(a)*r*W,Ht+H*(-0.12+R()*0.35),Math.sin(a)*r*D,W*(0.12+R()*0.08),H*(0.18+R()*0.12),D*(0.12+R()*0.08),0.9); } }
   else if(t==='banner'){ let p=[0,Ht-H*0.12,0], rad=H*0.16;                                   // streams off the lee side of the peak
@@ -1128,8 +1128,8 @@ function templatePrims0(rec){
     for(let i=0;i<n;i++){ const x=(i/(n-1)-0.5)*W*0.7+(R()-0.5)*W*0.05, z=(R()-0.5)*D*0.4; cap([x,H*0.93,z],[x-wx*sl,H*(0.08+R()*0.35),z-wz*sl],W*(0.05+R()*0.03),W*(0.03+R()*0.02),0.85); } }
   else if(t==='residual'){ for(let i=0;i<8;i++) ell((R()-0.5)*W*0.7,H*(0.15+R()*0.65),(R()-0.5)*D*0.7,W*(0.12+R()*0.12),H*(0.05+R()*0.06),D*(0.12+R()*0.12),0.8); }
   else if(t==='swirl'){ ell(0,H*0.45,0,W*0.2,H*0.22,D*0.2,1); for(let i=0;i<7;i++){ const a=i/7*6.283+R()*0.4; ell(Math.cos(a)*W*0.22,H*(0.3+i*0.07),Math.sin(a)*D*0.22,W*0.1,H*0.12,D*0.1,0.85); } }
-  else if(t==='roll'){ for(let i=0;i<26;i++){ const x=W*(0.0+R()*0.48), z=(R()-0.5)*D*0.78, h=terrHJ(rec,x,z); ell(x,h+H*(0.16+R()*0.14),z,W*(0.06+R()*0.05),H*(0.26+R()*0.14),D*(0.09+R()*0.06),0.9); }   // a bank on the upper slope and over the brow; the wind takes it downhill
-    for(let i=0;i<6;i++){ const x=W*(-0.05+R()*0.12), z=(R()-0.5)*D*0.6; ell(x,terrHJ(rec,x,z)+H*0.12,z,W*0.05,H*0.18,D*0.1,0.75); } }
+  else if(t==='roll'){ for(let i=0;i<26;i++){ const x=W*(0.0+R()*0.48), z=(R()-0.5)*D*0.78, h=tH(x,z); ell(x,h+H*(0.16+R()*0.14),z,W*(0.06+R()*0.05),H*(0.26+R()*0.14),D*(0.09+R()*0.06),0.9); }   // a bank on the upper slope and over the brow; the wind takes it downhill
+    for(let i=0;i<6;i++){ const x=W*(-0.05+R()*0.12), z=(R()-0.5)*D*0.6; ell(x,tH(x,z)+H*0.12,z,W*0.05,H*0.18,D*0.1,0.75); } }
   else if(t==='bank'){ box(0,H*0.12,0,W*0.33,H*0.12,D*0.22,Math.min(H,D)*0.1,0.85);
     for(let i=0;i<11;i++){ const x=(i/10-0.5)*W*0.66+(R()-0.5)*W*0.05; ell(x,H*(0.22+R()*0.16),(R()-0.5)*D*0.2,W*(0.08+R()*0.05),H*(0.24+R()*0.12),D*(0.18+R()*0.08),0.9); } }
   else if(t==='sheet'){ box(0,H*0.18,0,W*0.33,H*0.16,D*0.33,H*0.15,0.9);
@@ -2207,40 +2207,45 @@ function shotRender(vw,vh,moving,fin,target,steps){ const act=REC; const list=[]
   for(const f of fogs){ const rt=f.rt; if(rt.frames<target||moving){ renderPass(f.ctx,f.rec,CAM,vw,vh,moving?1:1/(rt.frames+1),fin&&rt.frames>0,rt.frames,steps,1); if(REFINE.wrap) rt.frames++; }
     const B=camBasis(CAM), c=domCenter(f.rec); list.push({acc:f.ctx.acc,d:len(sub(c,B.pos))}); }
   SET_DEPTH=null;
-  list.sort((a,b)=>b.d-a.d); ensureAcc({acc:COMPACC},vw,vh); gl.bindFramebuffer(gl.FRAMEBUFFER,COMPACC.fb[0]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,vw,vh);
-  const pr=use('comp'); bindTex(0,gl.TEXTURE_2D,SET.col); u1i(pr,'uB',0); list.slice(0,4).forEach((e,i)=>{ bindTex(1+i,gl.TEXTURE_2D,e.acc.tex[e.acc.cur]); u1i(pr,'uE'+i,1+i); }); u1i(pr,'uNE',Math.min(list.length,4)); u2f(pr,'uRes',vw,vh); fullscreen();
-  gl.bindFramebuffer(gl.FRAMEBUFFER,null); COMPACC.cur=0; return Math.min(target,...fogs.map(f=>f.rt.frames)); }
+  list.sort((a,b)=>b.d-a.d); ensureAcc({acc:COMPACC},vw,vh);   /* far to near, four volumes per pass, each pass over the last */
+  let src=SET.col, cur=0; for(let g=0;g===0||g<list.length;g+=4){ gl.bindFramebuffer(gl.FRAMEBUFFER,COMPACC.fb[cur]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,vw,vh);
+    const pr=use('comp'); bindTex(0,gl.TEXTURE_2D,src); u1i(pr,'uB',0); const part=list.slice(g,g+4); part.forEach((e,i)=>{ bindTex(1+i,gl.TEXTURE_2D,e.acc.tex[e.acc.cur]); u1i(pr,'uE'+i,1+i); }); u1i(pr,'uNE',part.length); u2f(pr,'uRes',vw,vh); fullscreen(); src=COMPACC.tex[cur]; COMPACC.cur=cur; cur^=1; }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); return Math.min(target,...fogs.map(f=>f.rt.frames)); }
 /* ---------- the shot recipe ---------- */
+const MAXVOL=8;   /* volumes per shot (instances count too) */
 function newShot(scene){ scene=scene||'village'; return {v:3,scene,name:scene==='village'?'Village shot':(SCENES[scene]||{label:scene}).label+' shot',els:[],movers:[]}; }   // an empty set: you place the fog
 function blankEl(){ if(!SHOT.blank){ const b=makeShotEl('ground',-1); b.blank=true; b.lod=0; delete b.voxCap; b.name='No layer yet'; SHOT.blank=b; } return SHOT.blank; }   // stands in while the shot has no layers, so the tools have something to point at
 function loadShot(scene){ scene=scene||curScene(); const s=store.get(shotKey(scene)); if(s&&s.v===3&&Array.isArray(s.els)){ delete s.blank; s.scene=scene; s.els=s.els.map(r=>{ if(r.lod==='custom'&&r.voxCap){ r.lod=r.layer&&r.layer.type==='haze'?1:2; delete r.voxCap; delete r.voxM; r.dom=null; }   /* layers from before: back on the Designer's detail budget */ const b=makeRecipe('shot','mid',r.seed); return migrateRecipe({...b,...r,sim:{...b.sim,...r.sim},det:{...b.det,...r.det},den:{...b.den,...r.den}}); }); return s; } return newShot(scene); }
 function setShotCam(){ const c=SCAN.src&&SCAN.src.shotCam?SCAN.src.shotCam:(SCENES[curScene()]||SCENES.village).cam(), off=sub(c.pos,c.look), d=len(off); CAM.tgt=c.look.slice(); CAM.dist=d; CAM.yaw=Math.atan2(off[0],off[2]); CAM.pitch=Math.asin(off[1]/d); CAM.tanY=c.tanY||Math.tan(21*D2R); poke(); }
 /* ---------- layers ---------- */
-function addLayer(type){ if(shotEls().length>=4){ toast('Up to four layers in this shot'); return; } const e=makeShotEl(type,shotEls().length); SHOT.els.push(e); activate(SHOT.els.length-1,true); autosave(); setTool('place'); buildPanels(); toast(STYPE(type).label+': paint where it goes'); }
+function addLayer(type){ if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); return; } const e=makeShotEl(type,shotEls().length); SHOT.els.push(e); activate(SHOT.els.length-1,true); autosave(); setTool('place'); buildPanels(); toast(STYPE(type).label+': paint where it goes'); }
 function removeLayer(k){
   shotEls().forEach((e,j)=>{ if(e.inst&&e.inst.of===SHOT.els[k].eid) makeOwn(j,true); });   /* instances of it become layers of their own */
   if(UI.instSel===k) UI.instSel=null; const r=SHOT.els[k]; if(REC===r){ stash(); } const rt=RTM.get(r.eid); SHOT.els.splice(k,1); if(rt){ freeRt(rt); RTM.delete(r.eid); } maskBuild();
   shotEls().forEach(e=>{ const t=RTM.get(e.eid); if(t){ t.dirty.mass=true; t.fresh=true; } });   // channels shifted: each layer forms again when it is next active
   UI.layer=-1; activate(Math.max(0,Math.min(k,SHOT.els.length-1)),true); autosave(); buildPanels(); if(!SHOT.els.length) toast('The shot is empty again'); }
 function buildLayers(){ const el=$('#layerBody'); if(!el||!SHOT) return; el.innerHTML='';
-  note(el,'Paint fog into the shot. Pick a layer (or add one), then paint with the <b>Place</b> brush (Q) on the ground where it should be: it forms there by its type when you let go. Ctrl erases. Each layer is its own volume with its own detail level, look and animation; the one you pick is the one every Shape and Animate tool works on.');
+  { const row=document.createElement('div'); row.className='btns'; const b=document.createElement('button'); b.className='btn prim'; b.textContent=UI.placeAsset?'Click on the set…':'+ Add fog'; b.title='Pick a type from the Library, then click on the set where it goes'; b.disabled=shotEls().length>=MAXVOL; b.onclick=()=>{ UI.libMode='place'; openLibrary(); }; row.appendChild(b);
+    if(UI.placeAsset){ const c=document.createElement('button'); c.className='btn'; c.textContent='Cancel'; c.onclick=()=>{ UI.placeAsset=null; buildPanels(); }; row.appendChild(c); } el.appendChild(row); }
+  if(UI.placeAsset) note(el,'<b>Click on the set</b> where the '+(UI.placeAsset.name||'fog').toLowerCase()+' should go. It forms there against the real ground.');
+  else if(!shotEls().length) note(el,'Add fog from the Library: the same types as the Designer (ground fog, banks, rolling fog, sea of clouds, caps, clouds, haze…). Each one you place is a full Designer volume on the set: sculpt it, set its look, and animate or simulate it into the landscape.');
   shotEls().forEach((r,k)=>{ const T=STYPE(r.layer.type), sel=r.inst?UI.instSel===k:r===REC&&UI.instSel==null; const row=document.createElement('div'); row.className='lookrow'+(sel?' on':''); row.style.gridTemplateColumns='minmax(0,1fr) 112px 28px';
     const painted=(r.place||[]).length, rt=RTM.get(r.eid); const dims=(sel?MAIN:rt&&rt.ctx)?.dims;
-    row.innerHTML=`<button class="lksel" title="Work on this layer"><i style="background:${T.col}"></i><b>${r.inst?r.name:T.label}</b><span>${r.inst?'instance of '+((srcOf(r)||{}).name||'?'):painted||r.layer.type==='asset'?(dims?dims.join('×'):'forming…'):'paint it in'}</span></button><select title="Its look">${DSTYLES.map(st=>`<option value="${st.id}"${st.id===r.style?' selected':''}>${st.label}</option>`).join('')}</select><button class="chip" aria-label="Remove" title="Remove this layer">×</button>`;
-    row.querySelector('.lksel').onclick=()=>{ if(r.inst){ selectInst(k); return; } activate(k); if(!['place'].includes(UI.tool)&&!BRUSHES[UI.tool]) setTool('place'); buildPanels(); };
-    row.querySelector('select').onchange=e=>{ if(r.inst){ makeOwn(k); } else activate(k); applyStyle(e.target.value); buildPanels(); };   /* a new look for an instance makes it its own */
+    row.innerHTML=`<button class="lksel" title="Work on this layer"><i style="background:${T.col}"></i><b>${r.inst||r.layer.type==='asset'?r.name:T.label}</b><span>${r.inst?'instance of '+((srcOf(r)||{}).name||'?'):painted||r.layer.type==='asset'?(dims?dims.join('×'):'forming…'):'paint it in'}</span></button><select title="Its look">${r.style?'':'<option value="" selected>Its own look</option>'}${DSTYLES.map(st=>`<option value="${st.id}"${st.id===r.style?' selected':''}>${st.label}</option>`).join('')}</select><button class="chip" aria-label="Remove" title="Remove this layer">×</button>`;
+    row.querySelector('.lksel').onclick=()=>{ if(r.inst){ selectInst(k); return; } activate(k); if(r.layer.type!=='asset'&&!['place'].includes(UI.tool)&&!BRUSHES[UI.tool]) setTool('place'); buildPanels(); };
+    row.querySelector('select').onchange=e=>{ if(!e.target.value) return; if(r.inst){ makeOwn(k); } else activate(k); applyStyle(e.target.value); buildPanels(); };   /* a new look for an instance makes it its own */
     row.querySelector('.chip').onclick=()=>removeLayer(k); el.appendChild(row);
     if(sel&&!r.inst){ const box=document.createElement('div'); box.style.cssText='border-left:2px solid '+T.col+';padding-left:8px;margin:2px 0 8px'; note(box,T.tip);
       for(const [id,lbl,mn0,mx0,df0] of T.params){ const k=SK(), mn=+(mn0*k).toPrecision(2), mx=+(mx0*k).toPrecision(3), df=+(df0*k).toPrecision(3); refreshers.push(slider(box,S_(lbl,mn,mx,()=>(r.layer.p||{})[id]??df,v=>{ r.layer.p=r.layer.p||{}; r.layer.p[id]=+v.toPrecision(3); },fmLen,()=>{ REC.dom=null; markMass(); },mx/mn>50))); }
       el.appendChild(box); } });
-  subH(el,'Add a layer'); const g=document.createElement('div'); g.className='chips'; for(const T of SHOT_TYPES){ if(T.hidden) continue; const b=document.createElement('button'); b.className='chip'; b.innerHTML=`<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${T.col};margin-right:5px"></i>${T.label}`; b.title=T.tip; b.disabled=shotEls().length>=4; b.onclick=()=>addLayer(T.id); g.appendChild(b); } el.appendChild(g);
-  { const V=designerVolumes(); subH(el,'From the Designer'); if(!V.length) note(el,'Volumes you save to the Designer\'s Shelf show up here, to place on the set as a starting point.'); else { const g2=document.createElement('div'); g2.className='chips';
-      for(const v of V.slice(0,10)){ const b=document.createElement('button'); b.className='chip'; b.textContent=v.name; b.title='Place it: then click on the set where it should stand'; b.setAttribute('aria-pressed',!!(UI.placeAsset&&UI.placeAsset.name===v.rec.name)); b.disabled=shotEls().length>=4; b.onclick=()=>armAsset(v); g2.appendChild(b); }
-      el.appendChild(g2); if(UI.placeAsset) note(el,'<b>Click on the set</b> where it should stand.'); } }
+
+  { const V=designerVolumes(); subH(el,'From your Shelf'); if(!V.length) note(el,'Volumes you save to the Designer\'s Shelf show up here, to place on the set too.'); else { const g2=document.createElement('div'); g2.className='chips';
+      for(const v of V.slice(0,10)){ const b=document.createElement('button'); b.className='chip'; b.textContent=v.name; b.title='Place it: then click on the set where it should stand'; b.setAttribute('aria-pressed',!!(UI.placeAsset&&UI.placeAsset.name===v.rec.name)); b.disabled=shotEls().length>=MAXVOL; b.onclick=()=>armAsset(v); g2.appendChild(b); }
+      el.appendChild(g2); } }
   const row=document.createElement('div'); row.className='row wide'; row.style.marginTop='8px'; const sh=document.createElement('button'); sh.className='chip'; sh.textContent='Show painted areas'; sh.title='Outline where each layer is painted on the set'; sh.setAttribute('aria-pressed',!!UI.showPaint); sh.onclick=()=>{ UI.showPaint=!UI.showPaint; SET.key=''; resetAccum(); buildPanels(); }; row.appendChild(sh);
   const cb=document.createElement('button'); cb.className='chip'; cb.textContent='Shot camera'; cb.onclick=setShotCam; row.appendChild(cb); el.appendChild(row); }
 /* ---------- painting layers onto the set ---------- */
-function placeStart(mx,my,ev){ if(UI.placeAsset){ const g=shotGround(mx,my); if(g) placeAssetAt(g); else toast('Click on the set'); return null; } if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
+function placeStart(mx,my,ev){ if(UI.placeAsset){ const g=shotGround(mx,my); if(g) placeAssetAt(g); else toast('Click on the set'); return null; } if(!REC.blank&&REC.layer&&REC.layer.type==='asset'){ toast('Press + Add fog to place another, or use Move (W) to move this one'); return null; } if(REC.blank){ toast('Press + Add fog under Fog in this shot, pick a type, then click on the set'); return null; } if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
   const st={e:!!(ev.ctrlKey||ev.metaKey),r:+UI.brushR.toPrecision(3),s:+UI.brushStr.toFixed(2),pts:[[+p[0].toFixed(1),+p[2].toFixed(1)]]};
   maskDab(REC.el,p[0],p[2],st.r,st.s,st.e); maskUpload(); resetAccum(); return {mode:'place',st,last:p,lx:mx,ly:my}; }
 function placeMove(mx,my){ const p=shotGround(mx,my); if(!p) return; drag.cur=p; const st=drag.st;
@@ -3004,14 +3009,16 @@ const STEPS={
     {id:'ground',label:'Ground',title:'2 · Ground & colliders',mode:'shape',tool:'collide',secs:['colSec','lightSec'],tools:['orbit','collide','blocker'],
       say:()=>'The fog only meets what you pick. Click the ground or a large object with <b>Pick</b> (K), or tick it in the scene tree. Pick nothing and the fog sits on the ground found in the scan.',
       done:()=>true},
-    {id:'fog',label:'Fog',title:'3 · Place fog',mode:'shape',tool:'place',secs:['layerSec','lodSec','lightSec'],tools:['orbit','place','move','box'],
-      say:()=>'Pick a fog type under <b>Shot layers</b>, then paint on the set with <b>Place</b> (Q) where it should be. It forms there when you let go. Or bring in a volume you made in the Designer.',
+    {id:'fog',label:'Place',title:'3 · Place fog',mode:'shape',tool:'place',secs:['layerSec','startSec','sizeSec','formSec','emitSec','lodSec'],tools:['orbit','place','move','shape','blocker','box','source'],
+      say:()=>'Press <b>+ Add fog</b> and pick from the Library (the same types as the Designer), then <b>click on the set</b> where it goes. It forms there against the real ground: ground fog drapes it, a cap settles on the peak you click, a bank pours down the real slopes. Move it with <b>Move</b> (W), size it under <b>Size</b>.',
       done:()=>shotEls().some(r=>(r.place||[]).length||r.layer&&r.layer.type==='asset')},
-    {id:'shape',label:'Shape',title:'4 · Shape it',mode:'shape',tool:'add',secs:['layerSec','simSec','detSec','denSec','looksSec','lodSec','lightSec'],tools:['orbit','shape',...SHAPE_BRUSH_TOOLS,'box','light'],
-      say:()=>'Optional. Sculpt the starting shape with the brushes (Add, Erase, Pull, Comb…), then tune <b>Forming</b>, <b>Detail</b> and <b>Shading</b>. Pick the layer to work on in Shot layers.',
+    {id:'look',label:'Look',title:'4 · Set the look',mode:'shape',tool:'orbit',secs:['layerSec','detSec','denSec','simSec','lodSec','lightSec'],tools:['orbit','light','move','box'],
+      say:()=>'Tune <b>Detail</b> and <b>Shading</b> for the volume picked under <b>Fog in this shot</b>, and its age under <b>Forming</b>.',done:()=>false},
+    {id:'shape',label:'Sculpt',title:'5 · Sculpt',mode:'shape',tool:'add',secs:['layerSec','looksSec','simSec','detSec','lodSec'],tools:['orbit','shape',...SHAPE_BRUSH_TOOLS,'blocker','box','light'],
+      say:()=>'Paint, erase, pull and comb the picked volume with the brushes, right on the set. <b>Paint look</b> mixes another look into parts of it.',
       done:()=>false},
-    {id:'anim',label:'Animate',title:'5 · Animate',mode:'anim',tool:'orbit',secs:['animSec','movSec','layerSec','colSec','lightSec'],tools:['orbit','collide',...ANIM_TOOLS,'box'],
-      say:()=>'Press <b>Play</b> (space). Pick how it moves: <b>Simulate</b> churns and drifts it the way that fog really moves (the default); <b>Simple</b> breathes, rolls or drifts the whole layer with no simulation; set how its <b>detail moves</b>; <b>Loop</b> for background fog. Wind, influencers and things that push it (pick movers with <b>Pick</b>, K) need Simulate.',
+    {id:'anim',label:'Animate',title:'6 · Animate',mode:'anim',tool:'orbit',secs:['animSec','movSec','layerSec','colSec','lightSec'],tools:['orbit','collide',...ANIM_TOOLS,'box'],
+      say:()=>'Press <b>Play</b> (space). Pick a <b>Motion look</b>, or let fog fill the set: put a <b>Fog source</b> (I) where it should roll in, turn up <b>Heavy</b>, run it fast to see where it goes, then <b>Keep this frame, barely moving</b>. Things that push it (pick movers with <b>Pick</b>, K) need Simulate.',
       done:()=>false}],
   designer:[
     {id:'start',label:'Start',title:'1 · Pick a starting point',mode:'shape',tool:'orbit',secs:['startSec','sizeSec','formSec','emitSec','lodSec'],tools:['orbit','shape','blocker','box','source'],
@@ -3056,11 +3063,22 @@ function shiftRec(o,d){ if(!o||typeof o!=='object') return; const mv=p=>{ for(le
 function designerVolumes(){ const out=[]; const cur=UI.ws==='shot'?(DESRT&&DESRT.rec)||store.get('brume.designer.current'):null; if(cur&&cur.template) out.push({name:'Current: '+(cur.name||'Designer volume'),rec:cur});
   for(const it of shelf()) if(it.rec&&it.rec.template&&it.rec.template!=='shot') out.push({name:it.rec.name,rec:it.rec,thumb:it.thumb}); return out; }
 function armAsset(v){ UI.placeAsset=JSON.parse(JSON.stringify(v.rec)); setStep('fog',true); setTool('place',true); toast('Click on the set where '+(v.rec.name||'it')+' should stand'); buildPanels(); }
-function placeAssetAt(p){ const src=UI.placeAsset; UI.placeAsset=null; if(shotEls().length>=4){ toast('Up to four layers in this shot'); buildPanels(); return; }
+/* a Library type into the shot: armed, then placed where you click */
+function armTemplate(k){ const T=LIB[k]; if(!T) return; const r=makeRecipe(k,SK()<0.5?'close':'mid'); r.name=T.label; UI.placeAsset=r; if(UI.ws==='shot'&&UI.step!=='fog') setStep('fog',true); setTool('place',true); buildPanels(); toast('Click on the set where the '+T.label.toLowerCase()+' should go'); }
+const FLOATS=new Set(['cloud','scud','deck','curtain','haze','shafts','inversion','hang','veil','wisps','tendril','puff','glowmist','swirl']);
+function placeAssetAt(p){ const src=UI.placeAsset; UI.placeAsset=null; const fresh=!src.off; if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); buildPanels(); return; }
   const r=migrateRecipe(src); const d=[+p[0].toPrecision(6),+p[1].toPrecision(6),+p[2].toPrecision(6)]; shiftRec(r,d); r.off=[...d];   // its shape is built around the origin: it is formed shifted by off
   r.eid='e'+Math.random().toString(36).slice(2,9); r.layer={type:'asset',p:{},from:src.name||'Designer volume'}; r.place=[]; r.looks=r.looks||[];
-  if(r.gnd&&r.gnd.t!=='none'){ r.gnd={...r.gnd,t:'scene'}; r.floor=true; } r.name=src.name||'Designer volume'; delete r.time;
+  r.gnd={...(r.gnd||{}),t:'scene'}; r.floor=true; r.name=src.name||'Designer volume'; delete r.time;   /* every volume meets the real ground */
+  if(FLOATS.has(r.template)&&fresh){ const up=+(r.size[1]*0.6).toPrecision(4); shiftRec(r,[0,up,0]); r.off[1]=+(r.off[1]+up).toPrecision(6); }   // things that float are lifted off the ground a little; move them up or down with Move
+  if(!r.anim) r.anim=animDefaults(r);
   SHOT.els.push(r); activate(SHOT.els.length-1,true); autosave(); buildPanels(); toast((src.name||'The volume')+' placed: it forms here on the set. Shape and Animate work on it like any layer'); }
+
+/* change the type of a volume on the set, keeping where it stands */
+function retypeVol(k){ const old=REC, p=old.off||[0,0,0], k0=SHOT.els.indexOf(old); if(k0<0) return; const T=LIB[k]; const r=makeRecipe(k,old.cls||'mid'); r.name=T.label;
+  const keep={eid:old.eid,layer:{type:'asset',p:{},from:T.label},place:[],el:old.el}; shiftRec(r,p); r.off=[...p]; r.gnd={...r.gnd,t:'scene'}; r.floor=true;
+  if(FLOATS.has(k)&&!FLOATS.has(old.template)){ const up=+(r.size[1]*0.6).toPrecision(4); shiftRec(r,[0,up,0]); r.off[1]=+(r.off[1]+up).toPrecision(6); }
+  for(const key of Object.keys(old)) delete old[key]; Object.assign(old,migrateRecipe(r),keep); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); buildPanels(); toast('Now '+T.label.toLowerCase()+', in the same place'); }
 /* =====================================================================
    MOTION & DETAIL — how the fog moves when it is not simulated, how its detail moves on its own,
    the split detail controls, blockers, the close-up region, and the HDRI
@@ -3360,7 +3378,7 @@ function instFog(r,act){ const src=srcOf(r); if(!src) return null; const srt=rtO
   if(!ic.light||ic.light.w!==C.ldims[0]||ic.light.h!==C.ldims[1]||ic.light.d!==C.ldims[2]){ if(ic.light) gl.deleteTexture(ic.light); ic.light=tex3D(...C.ldims,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT); ic.lkey=''; }
   const key=[LIGHTVER,C.lightN,JSON.stringify(I),ic.phase,ic.phase==='anim'?C.sim.t:C.showT].join('|'); if(key!==ic.lkey){ ic.lkey=key; lightUpdate(ic,rr); rt.frames=0; }
   return {ctx:ic,rec:rr,rt,setRec:{...rr,dom:ic.instBox}}; }
-function dupLayer(k){ if(shotEls().length>=4){ toast('Up to four layers in this shot'); return; } const src=SHOT.els[k]; if(!src) return; const base=srcOf(src)||src; const G=gizmo(src); if(!G){ toast('Paint this layer in first'); return; }
+function dupLayer(k){ if(shotEls().length>=MAXVOL){ toast('Up to '+MAXVOL+' volumes in this shot'); return; } const src=SHOT.els[k]; if(!src) return; const base=srcOf(src)||src; const G=gizmo(src); if(!G){ toast('Paint this layer in first'); return; }
   const B=camBasis(CAM), side=norm([B.r[0],0,B.r[2]]), dd=Math.max(G.F.hw,G.F.hd)*1.2; const r=JSON.parse(JSON.stringify(base)); r.eid='e'+Math.random().toString(36).slice(2,9); r.name=(src.name||'Layer').replace(/ copy( \d+)?$/,'')+' copy'; r.place=[];
   const I0=src.inst?{...src.inst,d:src.inst.d.slice()}:{of:base.eid,C0:G.C.slice(),d:[0,0,0],yaw:0,k:1}; const nx=G.C[0]+side[0]*dd, nz=G.C[2]+side[2]*dd;
   I0.d[0]+=side[0]*dd; I0.d[2]+=side[2]*dd; I0.d[1]+=sceneHJ(nx,nz)-sceneHJ(G.C[0],G.C[2]); r.inst=I0; SHOT.els.push(r); maskBuild(); autosave(); selectInst(SHOT.els.length-1);
@@ -3905,7 +3923,7 @@ const ICONS={
 };
 const TOOLS=[
   {id:'orbit',key:'v',m:'both',name:'Look around',hint:'Drag to orbit, middle-drag to pan, right-drag or scroll to zoom. Alt does the same with any other tool, like Maya. F frames the fog, H hides the handles.'},
-  {id:'place',m:'shape',ws:'shot',key:'q',name:'Place fog',hint:'Paint fog into the set: pick a layer under Shot layers (or add one), then paint on the ground where it should be. It forms there by its type when you let go: ground fog lies on the ground, valley fog fills to a level, hanging mist floats above it, low cloud sits at an altitude, a cap sits on the peaks. Big brush for broad areas; Ctrl erases. Show painted areas (in Shot layers) outlines what each layer covers.'},
+  {id:'place',m:'shape',ws:'shot',key:'q',name:'Place fog',hint:'Press + Add fog and pick a type from the Library, then click on the set where it goes: it forms there against the real ground. Move it afterwards with Move (W).'},
   {id:'collide',m:'both',ws:'shot',key:'k',name:'Pick colliders',hint:'Click objects in the set to make the fog meet them: it sits on them and flows around them. Click again to drop one, Ctrl-click to drop. Pick by Element (a whole house or tree) or Leaf (just a roof) in the Set panel, where the scene tree does the same. Everything else is only there to look at.'},
   {id:'sphere',m:'anim',ws:'shot',key:'m',name:'Sphere mover',hint:'Your own mover: click on the set to place a sphere at this frame. Move the playhead and click (or drag the sphere) to key where it goes next; the fog is pushed along its path. Shift-click starts another sphere. Strength, Simplify and Size are in the Set panel under Movers.'},
   {id:'add',m:'shape',key:'1',name:'Add fog',hint:'Paint fog in where you want more. Start the stroke on existing fog and the new fog takes on its density and breakup, so it blends in. Strength: how much each pass adds. Ctrl erases instead.'},
@@ -4096,7 +4114,7 @@ function buildPanels(){ applySteps(); if(UI.ws==='shot'){ buildLayers(); buildSe
   const cur=document.createElement('div'); cur.className='cur'; cur.innerHTML=`<svg viewBox="0 0 30 24">${T0.icon}</svg><div><b></b><span></span><em></em></div>`;
   cur.querySelector('b').textContent=T0.label+' · '+(CATS.find(c=>c[0]===T0.cat)||['','Shapes'])[1]; cur.querySelector('span').textContent=T0.desc; cur.querySelector('em').textContent='Use for: '+T0.use; sb.appendChild(cur);
   const vb=document.createElement('div'); vb.className='btns'; vb.innerHTML='<button class="btn prim" id="libBtn">Library…</button><button class="btn" id="varBtn">Variations</button><button class="btn" id="seedBtn">New seed</button>'; sb.appendChild(vb);
-  vb.querySelector('#libBtn').onclick=openLibrary;
+  vb.querySelector('#libBtn').onclick=()=>{ UI.libMode=UI.ws==='shot'?'retype':null; openLibrary(); }; if(UI.ws==='shot'){ vb.querySelector('#libBtn').textContent='Change type…'; vb.querySelector('#varBtn').hidden=true; }
   vb.querySelector('#varBtn').onclick=makeVariations; vb.querySelector('#seedBtn').onclick=()=>{ REC.seed=Math.floor(Math.random()*9999); markMass(); pushUndo(); toast('New seed: same settings, a different shape'); };
   // size & scale
   const zb=$('#sizeBody'); zb.innerHTML='';
@@ -4104,13 +4122,14 @@ function buildPanels(){ applySteps(); if(UI.ws==='shot'){ buildLayers(); buildSe
   const dims=document.createElement('div'); dims.className='dims'; dims.innerHTML=['Width','Height','Depth'].map((n,i)=>`<label>${n}<input type="number" id="dim${i}" min="0.1" step="any"></label>`).join(''); zb.appendChild(dims);
   const dimRefresh=()=>{ [0,1,2].forEach(i=>{ const el=$('#dim'+i); if(document.activeElement!==el) el.value=+REC.size[i].toPrecision(4); }); };
   dimRefresh(); [0,1,2].forEach(i=>{ $('#dim'+i).onchange=ev=>{ const v=parseFloat(ev.target.value); if(!(v>0)){ dimRefresh(); return; } const k=[1,1,1]; k[i]=clamp(v,0.1,5000)/REC.size[i]; resizeAsset(k); }; }); refreshers.push(dimRefresh);
-  subH(zb,'Ground');
+  if(UI.ws==='shot'&&REC.off){ subH(zb,'On the set'); refreshers.push(slider(zb,S_('Above the ground',-Math.max(...REC.size),Math.max(...REC.size)*4,()=>REC.off[1]-sceneHJ(REC.off[0],REC.off[2]),v=>{ const d=+(v-(REC.off[1]-sceneHJ(REC.off[0],REC.off[2]))).toPrecision(5); if(Math.abs(d)<1e-6) return; shiftRec(REC,[0,d,0]); REC.off[1]=+(REC.off[1]+d).toPrecision(6); },fmLen,()=>{ REC.dom=null; markMass(); },false,'How high it floats above the ground where it stands. Or drag it with Move (W)'))); note(zb,'In the shot the set is the ground: fog rests on it, flows around and down it.'); }
+  else { subH(zb,'Ground');
   refreshers.push(chips(zb,'',GROUNDS.filter(g=>g[0]!=='scene').map(g=>[g[0],g[1],g[2]]),()=>REC.gnd.t,v=>setGround(v)));
   if(['slope','peak','valley','bowl','street'].includes(REC.gnd.t)) refreshers.push(slider(zb,S_(REC.gnd.t==='street'?'Building height':'Relief',0.5,3000,()=>REC.gnd.relief,v=>REC.gnd.relief=+v.toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true,'How tall the stand-in ground is')));
   if(['slope','peak','valley','bowl'].includes(REC.gnd.t)) refreshers.push(slider(zb,S_('Ground size',2,20000,()=>REC.gnd.L,v=>REC.gnd.L=+v.toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true,'How wide the hills are')));
   if(REC.gnd.t==='street') refreshers.push(slider(zb,S_('Street width',1,200,()=>REC.gnd.w*2,v=>REC.gnd.w=+(v/2).toPrecision(3),fmLen,()=>{ REC.dom=null; markMass(); },true)));
   if(REC.gnd.t==='pool') refreshers.push(slider(zb,S_('Pool size',0.5,2000,()=>REC.gnd.w*2,v=>REC.gnd.w=+(v/2).toPrecision(3),fmLen,()=>markView(),true)));
-  note(zb,'A stand-in to design against: fog rests on it, flows around and down it, and it casts shadows. In a shot, your real set takes its place.');
+  note(zb,'A stand-in to design against: fog rests on it, flows around and down it, and it casts shadows. In a shot, your real set takes its place.'); }
   subH(zb,'Room');
   refreshers.push(chips(zb,'',[['auto','Auto','The box fits itself around the fog and grows when a stroke or the simulation reaches a wall'],['fixed','Locked','Keep the box as it is: fog flattens against its walls, like a ceiling or a room']],()=>REC.fit,v=>{ REC.fit=v; if(v==='auto'){ REC.afix=false; if(UI.mode==='anim') dirty.anim=true; REC.xpad=[0,0,0,0,0,0]; if(refit(REC,null,true)) markMass(); } pushUndo(); autosave(); }));
   note(zb,'Sizes are real metres. Changing size re-runs the fog at that size: swirls and detail stay their real size, they do not stretch. The dashed box is only the simulation\'s room: on Auto it makes space wherever you pull or the fog drifts.');
@@ -4259,15 +4278,15 @@ function openLibrary(){ const tabs=$('#libTabs'); tabs.innerHTML=''; for(const [
   const body=$('#libBody'); body.innerHTML='';
   for(const [ck,cl] of CATS){ if(libCat!=='all'&&libCat!==ck) continue; const items=Object.entries(LIB).filter(([,t])=>t.cat===ck); if(!items.length) continue;
     const h=document.createElement('div'); h.className='libcat'; h.textContent=cl; body.appendChild(h); const g=document.createElement('div'); g.className='libgrid'; body.appendChild(g);
-    for(const [k,t] of items){ const c=document.createElement('button'); c.className='card'; c.setAttribute('aria-current',REC.template===k);
+    for(const [k,t] of items){ if(t.cat==='hidden') continue; const c=document.createElement('button'); c.className='card'; c.setAttribute('aria-current',UI.ws!=='shot'||UI.libMode==='retype'?REC.template===k:false);
       c.innerHTML=`<svg viewBox="0 0 30 24">${t.icon}</svg><div><b></b><span></span><em><i>Use for</i> · </em><em><i>Needs</i> · </em></div>`;
       c.querySelector('b').textContent=t.label; c.querySelector('span').textContent=t.desc; const ems=c.querySelectorAll('em'); ems[0].append(t.use); ems[1].append(t.needs);
-      c.onclick=()=>{ closeLibrary(); startFrom(k); }; g.appendChild(c); } }
+      c.onclick=()=>{ closeLibrary(); if(UI.ws==='shot'){ if(UI.libMode==='retype'&&REC&&!REC.blank&&REC.layer&&REC.layer.type==='asset') retypeVol(k); else armTemplate(k); } else startFrom(k); UI.libMode=null; }; g.appendChild(c); } }
   $('#libModal').hidden=false; $('#libClose').focus(); }
 function closeLibrary(){ $('#libModal').hidden=true; }
 $('#libClose').onclick=closeLibrary; $('#libModal').addEventListener('click',ev=>{ if(ev.target.id==='libModal') closeLibrary(); });
 let brushRow=null;
-function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','attract','sphere','place','shape','blocker','move'].includes(UI.tool); $('#brushSec').hidden=!on; if(!on) return;
+function buildBrushRow(){ const lb=$('#brushBody'); lb.innerHTML=''; brushRow=null; brushRefs=[]; const on=BRUSHES[UI.tool]!=null||['flow','lift','calm','thin','swirl','attract','sphere','shape','blocker','move'].includes(UI.tool)||UI.tool==='place'&&REC&&REC.layer&&REC.layer.type!=='asset'&&!REC.blank&&!UI.placeAsset; $('#brushSec').hidden=!on; if(!on) return;
   brushRow=lb; if(['shape','blocker','move'].includes(UI.tool)){ buildXPanel(lb); return; }
   brushRefs=[]; brushRefs.push(slider(lb,{label:UI.tool==='flow'?'Width':'Radius',tip:UI.tool==='flow'?'How far around the path the air is carried: the tube you see while drawing':'',min:0.05,max:2000,log:true,get:()=>UI.brushR,set:v=>{ UI.brushR=v; buildHint(); },fmt:fmLen}));
   if(UI.tool==='flow'||UI.tool==='lift'||UI.tool==='swirl') brushRefs.push(slider(lb,{label:'Speed',min:0.2,max:30,log:true,get:()=>UI.flowV,set:v=>{ UI.flowV=+v.toFixed(1); },fmt:v=>v.toFixed(1)+' m/s'}));
@@ -4280,8 +4299,8 @@ function applyLight(v){ const yaw=CAM.yaw/D2R; // relative to where you are look
   else if(v==='overcast') set(55,30,0.12,6500,1.6,7000); else if(v==='dusk') set(3,-25,1.2,2600,0.3,13000,1.5); else set(28,60,0.06,7800,0.08,14000);
   LOOK.preset=v; markLight(); refreshPanels(); saveLook(); }
 /* scale the asset per axis: the sculpt goes with it, and the room refits */
-function scaleStrokes(rec,k){ const kr=Math.cbrt(k[0]*k[1]*k[2]); const q=v=>+v.toPrecision(5); rec.strokes=rec.strokes.map(s=>({...s,r:q(s.r*kr),dabs:s.dabs.map(d=>d.map((v,i)=>q(v*k[i%3])))})); }
-function resizeAsset(k){ REC.size=REC.size.map((v,i)=>+(v*k[i]).toPrecision(4)); scaleStrokes(REC,k); if(REC.emit){ REC.emit.x*=k[0]; REC.emit.z*=k[2]; } REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }
+function scaleStrokes(rec,k){ const kr=Math.cbrt(k[0]*k[1]*k[2]); const q=v=>+v.toPrecision(5); const o=rec.off||[0,0,0]; rec.strokes=rec.strokes.map(s=>({...s,r:q(s.r*kr),dabs:s.dabs.map(d=>d.map((v,i)=>q(i<3?o[i]+(v-o[i])*k[i]:v*k[i%3])))})); }   /* about where it stands (a volume on the set), or the origin */
+function resizeAsset(k){ REC.size=REC.size.map((v,i)=>+(v*k[i]).toPrecision(4)); scaleStrokes(REC,k); if(REC.emit){ const o=REC.off||[0,0,0]; REC.emit.x=o[0]+(REC.emit.x-o[0])*k[0]; REC.emit.z=o[2]+(REC.emit.z-o[2])*k[2]; } REC.dom=null; REC.xpad=[0,0,0,0,0,0]; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); }
 function setClass(cls){ const k=CLASSES[cls].k/CLASSES[REC.cls].k; if(k===1) return; REC.cls=cls;
   { const g=REC.gnd, E=REC.emit, q=v=>+(v*k).toPrecision(4); g.relief=q(g.relief); g.L=q(g.L); g.w=q(g.w); for(const key of ['w','d','x','z','y','patchS']) E[key]=q(E[key]); REC.sim.gustL=q(REC.sim.gustL||REC.sim.eddy*3); } REC.size=REC.size.map(v=>+(v*k).toPrecision(3)); scaleStrokes(REC,[k,k,k]); REC.dom=null; REC.xpad=[0,0,0,0,0,0]; REC.sim.eddy=+(REC.sim.eddy*k).toPrecision(3); REC.det.size=+(REC.det.size*k).toPrecision(3); REC.den.extD=+(REC.den.extD*k).toPrecision(3); REC.det.brkSize=+(REC.det.brkSize*k).toPrecision(3); REC.sim.strat=CLASSES[cls].strat;
   UI.brushR*=k; markMass(); pushUndo(); autosave(); frameAll(); refreshPanels(); buildHint(); }
