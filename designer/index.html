@@ -828,7 +828,8 @@ void main(){
   }
   vec4 cur=vec4(uPass==1?Lc:Lc+T*col,1.-dot(T,vec3(0.2126,0.7152,0.0722)));   // a layer: its light and how much it hides what is behind
   vec4 prev=texelFetch(uPrev,ivec2(fc),0);
-  o=mix(prev,cur,uBlend);
+  bool badC=any(isnan(cur))||any(isinf(cur)), badP=any(isnan(prev))||any(isinf(prev));   /* a bad sample (or an old one) never sticks: it would stay black in the accumulation forever */
+  o=badC?(badP?vec4(0.):prev):(badP||uBlend>0.999?cur:mix(prev,cur,uBlend));
 }`;
 
 /* first point along a ray where the fog gets solid — where a brush lands */
@@ -861,7 +862,7 @@ void main(){ vec3 e=vec3(gl_FragCoord.xy/uEDims.xy,uEZ); vec3 p0=uEB0+e*uESz; o0
 const FS_TILE=HEAD+`uniform sampler3D uT; uniform float uZ, uL; out vec4 o; void main(){ o=texelFetch(uT,ivec3(ivec2(gl_FragCoord.xy),int(uZ)),int(uL)); }`;   // a noise tile, one mip level, read back for export
 const FS_COMP=HEAD+`uniform sampler2D uB, uE0, uE1, uE2, uE3, uSD; uniform int uNE; uniform vec2 uRes; uniform vec3 uSlab; out vec4 o;
 void main(){ vec2 uv=gl_FragCoord.xy/uRes; vec3 c=texture(uB,uv).rgb; vec4 e;
-  if(uNE>0){ e=texture(uE0,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>1){ e=texture(uE1,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>2){ e=texture(uE2,uv); c=e.rgb+(1.-e.a)*c; } if(uNE>3){ e=texture(uE3,uv); c=e.rgb+(1.-e.a)*c; }
+  if(uNE>0){ e=texture(uE0,uv); if(!any(isnan(e))) c=e.rgb+(1.-e.a)*c; } if(uNE>1){ e=texture(uE1,uv); if(!any(isnan(e))) c=e.rgb+(1.-e.a)*c; } if(uNE>2){ e=texture(uE2,uv); if(!any(isnan(e))) c=e.rgb+(1.-e.a)*c; } if(uNE>3){ e=texture(uE3,uv); if(!any(isnan(e))) c=e.rgb+(1.-e.a)*c; }
   if(uSlab.z>0.5){ float d=texture(uSD,uv).r; float w=fwidth(d)*1.5+uSlab.y*0.002; float inS=step(uSlab.x,d)*step(d,uSlab.y); float edge=max(1.-abs(d-uSlab.x)/w,0.)+max(1.-abs(d-uSlab.y)/w,0.);   /* the depth slab: the set inside it is tinted, its near and far edges drawn */
     c=mix(c,c*0.55+vec3(0.10,0.42,0.55)*0.6,inS*0.6); c=mix(c,vec3(0.55,0.88,1.),clamp(edge,0.,1.)*0.8); }
   o=vec4(c,1.); }`;   // the shot: the set, then each fog layer over it from the farthest to the nearest
@@ -1135,11 +1136,11 @@ function animDefaults(r){ const s=r.sim, t=r.template, ly=r.layer&&r.layer.type,
   const k=ly?({ground:'ground',valley:'valley',hang:'hang_',cloud:'cloud_',cap:'cloud_',haze:'haze'}[ly]||'ground'):t; const m=M[k]||(cat==='cloud'?M.cloud:cat==='atmos'?M.haze:M.bank);
   const rise={wisps:0.5,steam:0.6,spray:0.3,glowmist:0.2}[t]||0;
   /* the edges and the supply: [keep spilling, keep arriving, wind on thin parts, rise on thin parts, wisps lift (m/s), thin edges evaporate, time speed] */
-  const E={radiation:[0.35,0.4,0.35,0.5,0.02,0.3,2],valley:[0.3,0.4,0.35,0.5,0.02,0.25,2],advection:[0.75,0.8,0.45,0.5,0.05,0.35,4],upslope:[0.1,0.7,0.5,0.6,0.06,0.4,4],freezing:[0.3,0.3,0.3,0.4,0.01,0.2,1],icefog:[0.2,0.3,0.3,0.3,0.01,0.15,1],steam:[0,0.6,0.5,0.8,0.12,0.6,1],
-    rolling:[0.45,0.7,0.65,0.6,0.12,0.55,30],seaclouds:[0.3,0.9,0.4,0.5,0.04,0.3,30],ground:[0.35,0.4,0.35,0.5,0.02,0.3,2],bank:[0.35,0.6,0.4,0.5,0.04,0.3,2],sheet:[0.3,0.4,0.35,0.5,0.02,0.25,2],
-    cap:[0,0.8,0.5,0.4,0.05,0.5,4],banner:[0,0.9,0.5,0.4,0.05,0.55,4],deck:[0,0.5,0.4,0.4,0.03,0.25,4],scud:[0,0.4,0.5,0.5,0.06,0.45,2],cloud:[0,0.3,0.4,0.4,0.04,0.25,4],cloud_:[0,0.4,0.4,0.4,0.04,0.3,4],
+  const E={radiation:[0.35,0.4,0.35,0.5,0.02,0.3,1],valley:[0.3,0.4,0.35,0.5,0.02,0.25,1],advection:[0.75,0.8,0.45,0.5,0.05,0.35,1],upslope:[0.1,0.7,0.5,0.6,0.06,0.4,1],freezing:[0.3,0.3,0.3,0.4,0.01,0.2,1],icefog:[0.2,0.3,0.3,0.3,0.01,0.15,1],steam:[0,0.6,0.5,0.8,0.12,0.6,1],
+    rolling:[0.45,0.7,0.65,0.6,0.12,0.55,1],seaclouds:[0.3,0.9,0.4,0.5,0.04,0.3,1],ground:[0.35,0.4,0.35,0.5,0.02,0.3,1],bank:[0.35,0.6,0.4,0.5,0.04,0.3,1],sheet:[0.3,0.4,0.35,0.5,0.02,0.25,1],
+    cap:[0,0.8,0.5,0.4,0.05,0.5,1],banner:[0,0.9,0.5,0.4,0.05,0.55,1],deck:[0,0.5,0.4,0.4,0.03,0.25,1],scud:[0,0.4,0.5,0.5,0.06,0.45,1],cloud:[0,0.3,0.4,0.4,0.04,0.25,1],cloud_:[0,0.4,0.4,0.4,0.04,0.3,1],
     wisps:[0,0.3,0.6,0.7,0.1,0.5,1],tendril:[0,0.6,0.6,0.6,0.08,0.45,1],veil:[0,0.4,0.5,0.6,0.05,0.4,1],hang:[0,0.3,0.4,0.5,0.03,0.25,1],hang_:[0,0.3,0.4,0.5,0.03,0.25,1]};
-  const e=E[k]||(cat==='fog'?E.ground:cat==='cloud'?E.cloud:[0,0,0.3,0.4,0,0.1,1]);
+  const e=E[k]||(cat==='fog'?E.ground:cat==='cloud'?E.cloud:[0,0,0.3,0.4,0,0.1,1]);   /* every type plays at real speed by default; Time scale speeds it up or slows it down */
   return {wind:Math.max(s.wind,m[0]),windDir:s.windDir??70,gust:m[2],gustL:s.gustL||s.eddy*3,churn:m[1],rise,lift:0,hold:false,flows:[],body:'sim',gm:{type:'breathe',amt:0.75,per:8,dir:null,spd:0.4},dm:{type:m[4],spd:m[5],fine:0.4,amt:0.8,dir:null},loop:false,drain:m[3],
     heavy:hasGround(r)?({seaclouds:0.85,radiation:0.6,valley:0.75,advection:0.6,rolling:0.6,freezing:0.5,icefog:0.4,ground:0.6,valley_:0.75,bank:0.4,sheet:0.5,inversion:0.3}[k]||0):0,lam:({seaclouds:0.8,rolling:0.3,advection:0.3,valley:0.3,inversion:0.5,deck:0.3,sheet:0.3}[k]||0),
     spill:hasGround(r)?e[0]:0,feed:e[1],thinW:e[2],thinL:e[3],wisp:e[4],evap:e[5],tl:e[6],mlook:'natural'}; }   /* by default it simulates: churn, drift and drain the way that element does */
@@ -1881,7 +1882,7 @@ function boxFaceEnd(){ const d=drag; if(!d.moved) return; const anim=MAIN.phase=
   if(anim){ REC.adom=nd; REC.afix=true; rebox(MAIN,ARec(REC),old); } else { REC.dom=nd; REC.fit='fixed'; REC.budgetK=1; rebox(MAIN,REC,old); }
   dirty.light=true; resetAccum(); pushUndo(); autosave(); buildPanels(); toast(anim?'Animation box set':'Box set by hand: the fog is resampled into it, nothing re-simulates. Room → Auto fits it again'); }
 function drawOverlay(){
-  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(!UI.clean){ drawShotCam(); drawFlood(); drawSlabStroke(); } try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
+  octx.setTransform(dpr,0,0,dpr,0,0); octx.clearRect(0,0,cssW,cssH); drawAB(); if(!UI.clean){ drawShotCam(); drawFlood(); drawSlabStroke(); drawPdrop(); } try{ pillPlace(REC&&!REC.blank?(MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom):null); }catch(e){} if(UI.clean) return; drawCompass();
   if(!REC.dom) return; const BX=drag&&drag.mode==='boxface'?drag.nd:MAIN.phase==='anim'&&REC.adom?REC.adom:REC.dom; const W=BX[1][0]-BX[0][0], H=BX[1][1]-BX[0][1], D=BX[1][2]-BX[0][2], [x0,y0,z0]=BX[0], [x1,y1,z1]=BX[1];
   // the box: the simulation's room. It flashes when it grows to fit the fog
   const fl=clamp(1-(performance.now()-roomFlash)/900,0,1); if(fl>0) poke();
@@ -1927,7 +1928,9 @@ function brushOp(ctrl){ const o=BRUSHES[UI.tool]; if(o===0&&ctrl) return 1; if(o
 let drag=null; const pointers=new Map();
 function tumble(dx,dy){ CAM.yaw-=dx*0.006; CAM.pitch=clamp(CAM.pitch+dy*0.006,-1.45,1.45); poke(); }
 function track(dx,dy){ const B=camBasis(CAM); const s=2*CAM.dist*CAM.tanY/cssH; CAM.tgt=add(CAM.tgt,add(mul(B.r,-dx*s),mul(B.u,dy*s))); poke(); }
-function dolly(k){ const m=Math.max(...(REC.dom?domSize(REC):REC.size)); CAM.dist=clamp(CAM.dist*k,m*0.04,m*12); poke(); }
+function dolly(k){ const m=Math.max(...(REC.dom?domSize(REC):REC.size)); const mn=UI.ws==='shot'?0.5:m*0.02, mx=UI.ws==='shot'?Math.max(m*12,30000):Math.max(m*40,5000); const d=CAM.dist*k;
+  if(d<mn){ const B=camBasis(CAM); CAM.tgt=add(CAM.tgt,mul(B.f,CAM.dist-d)); CAM.dist=mn; }   /* past the closest it can get: it keeps going, carrying the pivot forward (as in Maya), instead of stopping at a wall */
+  else CAM.dist=Math.min(d,mx); poke(); }
 function frameAll(){ if(!REC.dom) refit(REC,null,true); const [W,H,D]=domSize(REC), c=domCenter(REC); CAM.tgt=[c[0],REC.dom[0][1]+H*0.42,c[2]]; CAM.dist=Math.hypot(W,H,D)*0.5/Math.tan(Math.atan(CAM.tanY)*0.92)*1.05; poke(); }
 /* where a ray meets the stand-in ground (null when there is none) */
 function rayGround(ro,rd){ if(!hasGround(REC)) return null; if(flatBase(REC)&&REC.gnd.t!=='street'){ if(rd[1]>=-1e-5) return null; const t=-ro[1]/rd[1]; return add(ro,mul(rd,t)); }
@@ -2025,6 +2028,7 @@ ov.addEventListener('pointermove',ev=>{
   hoverXY=[mx,my];
   if(drag&&drag.mode==='compass'){ drag.lx=mx; drag.ly=my; compassMove(mx,my); return; }
   if(drag&&drag.mode==='flood'){ drag.lx=mx; drag.ly=my; floodMove(mx,my); return; }
+  if(drag&&drag.mode==='pdrop'){ drag.lx=mx; drag.ly=my; pdropMove(mx,my); return; }
   if(drag&&drag.mode==='slab'){ drag.lx=mx; drag.ly=my; slabMove(mx,my); return; }
   if(drag&&drag.mode==='sun'){ drag.lx=mx; drag.ly=my; sunMove(mx,my); refreshPanels(); return; }
   if(!drag&&AB.img) ov.style.cursor=Math.abs(mx-AB.x*cssW)<12?'ew-resize':(UI.tool==='orbit'?'grab':'crosshair');
@@ -2067,7 +2071,7 @@ ov.addEventListener('pointermove',ev=>{
     const w=add(mul(r,dx),mul(f,-dy)); REC.anim.windDir=+(((Math.atan2(w[0],-w[2])/D2R)+360)%360).toFixed(1); REC.anim.wind=+(clamp(Math.hypot(dx,dy)/Math.min(cssW,cssH)*1.6,0,1)*20).toFixed(1); if(followsShot(REC)){ const W=shotWind(); W.dir=REC.anim.windDir; W.spd=+(REC.anim.wind/altK(REC)/(REC.anim.windK??1)).toFixed(1); syncShotWind(); } drag.label=`wind ${REC.anim.wind.toFixed(1)} m/s · ${windWords(REC.anim.wind)} · toward ${REC.anim.windDir.toFixed(0)}°`; refreshPanels(); return; }
   if(drag.mode==='light'){ drag.lx=mx; drag.ly=my; LOOK.az=((LOOK.az+(mx-drag.x)*0.35)%360+540)%360-180; LOOK.el=clamp(LOOK.el-(my-drag.y)*0.25,-5,88); drag.x=mx; drag.y=my; LOOK.preset=null; markLight(); poke(); refreshPanels(); return; }
 });
-function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='flood'){ const d=drag; drag=d; floodEnd(); drag=null; resetAccum(); return; } if(drag.mode==='slab'){ slabEnd(); drag=null; resetAccum(); return; } if(drag.mode==='compass'){ syncShotWind(true); pushUndo(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
+function endPointer(ev){ pointers.delete(ev.pointerId); if(!drag){ brushing=false; return; } if(drag.mode==='ab'){ drag=null; return; } if(drag.mode==='sun'){ saveLook(); drag=null; return; } if(drag.mode==='flood'){ const d=drag; drag=d; floodEnd(); drag=null; resetAccum(); return; } if(drag.mode==='slab'){ slabEnd(); drag=null; resetAccum(); return; } if(drag.mode==='pdrop'){ const d=drag; pdropEnd(); if(drag===d) drag=null; resetAccum(); return; } if(drag.mode==='compass'){ syncShotWind(true); pushUndo(); buildPanels(); drag=null; return; } if(drag.mode==='pinch'){ if(pointers.size<2) drag=null; return; }
   if(drag.mode==='region'){ const d=drag, x0=Math.min(d.x0,d.x1)/cssW, x1=Math.max(d.x0,d.x1)/cssW, y0=1-Math.max(d.y0,d.y1)/cssH, y1=1-Math.min(d.y0,d.y1)/cssH; REGION.arm=false;
     if(x1-x0>0.03&&y1-y0>0.03){ Object.assign(REGION,{on:true,x0:clamp(x0,0,1),x1:clamp(x1,0,1),y0:clamp(y0,0,1),y1:clamp(y1,0,1)}); toast('Close-up: while it plays, this part renders at full quality. Click the button again to turn it off'); } else REGION.on=false;
     $('#regionBtn').setAttribute('aria-pressed',REGION.on); ov.style.cursor=UI.tool==='orbit'?'grab':'crosshair'; drag=null; resetAccum(); return; }
@@ -2304,7 +2308,7 @@ function buildLayers(){ const el=$('#layerBody'); if(!el||!SHOT) return; el.inne
   const row=document.createElement('div'); row.className='row wide'; row.style.marginTop='8px'; const sh=document.createElement('button'); sh.className='chip'; sh.textContent='Show painted areas'; if(!shotEls().some(r=>r.layer&&r.layer.type!=='asset'&&!r.inst)) sh.hidden=true; sh.title='Outline where each layer is painted on the set'; sh.setAttribute('aria-pressed',!!UI.showPaint); sh.onclick=()=>{ UI.showPaint=!UI.showPaint; SET.key=''; resetAccum(); buildPanels(); }; row.appendChild(sh);
   const cb=document.createElement('button'); cb.className='chip'; cb.textContent='Shot camera'; cb.onclick=setShotCam; row.appendChild(cb); el.appendChild(row); }
 /* ---------- painting layers onto the set ---------- */
-function placeStart(mx,my,ev){ if(UI.placeAsset){ const g=shotGround(mx,my); if(g) placeAssetAt(g); else toast('Click on the set'); return null; } if(!REC.blank&&REC.layer&&REC.layer.type==='asset'){ toast('Press + Add fog to place another, or use Move (W) to move this one'); return null; } if(REC.blank){ toast('Press + Add fog under Fog in this shot, pick a type, then click on the set'); return null; } if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
+function placeStart(mx,my,ev){ if(UI.placeAsset){ const g=shotGround(mx,my); if(!g){ toast('Click on the set'); return null; } return {mode:'pdrop',p0:g,cur:g,sx:mx,sy:my,lx:mx,ly:my,k:1,yaw:0}; }   /* click to drop it as it is; or drag out to size it, the way you drag sets which way it faces */ if(!REC.blank&&REC.layer&&REC.layer.type==='asset'){ toast('Press + Add fog to place another, or use Move (W) to move this one'); return null; } if(REC.blank){ toast('Press + Add fog under Fog in this shot, pick a type, then click on the set'); return null; } if(REC.blank){ toast('Pick a fog type under Layers first, then paint where it goes'); return null; } const p=shotGround(mx,my); if(!p){ toast('Point at the ground to paint'); return null; }
   const st={e:!!(ev.ctrlKey||ev.metaKey),r:+UI.brushR.toPrecision(3),s:+UI.brushStr.toFixed(2),pts:[[+p[0].toFixed(1),+p[2].toFixed(1)]]};
   maskDab(REC.el,p[0],p[2],st.r,st.s,st.e); maskUpload(); resetAccum(); return {mode:'place',st,last:p,lx:mx,ly:my}; }
 function placeMove(mx,my){ const p=shotGround(mx,my); if(!p) return; drag.cur=p; const st=drag.st;
@@ -3220,9 +3224,10 @@ function buildMotion(ab,A){ const b=A.body||'sim';
   subH(ab,'How it moves'); refreshers.push(chips(ab,'',BODY_KINDS,()=>A.body||'sim',v=>setBody(v)));
   if(b==='sim'){ subH(ab,'Motion look'); refreshers.push(chips(ab,'',MLOOKS.map(L=>[L.id,L.label,L.tip]),()=>A.mlook||null,v=>applyMotionLook(v)));
     note(ab,'A starting point for the whole motion: speed, wind, how the edges behave. Everything below fine-tunes it.');
-    const tlNow=()=>{ const tm=timing(REC); return REC.time&&REC.time.outT!=null?'custom':(A.tl||1); };
-    refreshers.push(chips(ab,'Time',[...TL_SPEEDS.map(([v,t,ti])=>[v,t,ti]),...(tlNow()==='custom'?[['custom','Custom','Set with Speed on the timeline']]:[])],tlNow,v=>{ if(v==='custom') return; A.tl=v; if(REC.time) REC.time={...REC.time,outT:null}; A.mlook=null; pushUndo(); autosave(); markAnim(); drawTimeline(); buildPanels(); }));
-    note(ab,'Real fog is slow: a timelapse is how most fog footage you have seen was shot. A faster time simulates more per frame, so it takes longer to play the first time; then it is cached.'); }
+    const setTL=v=>{ A.tl=+clamp(v,0.02,200).toPrecision(3); if(REC.time) REC.time={...REC.time,outT:null}; };
+    refreshers.push(slider(ab,{label:'Time scale',min:0.05,max:100,log:true,get:()=>A.tl||1,set:v=>{ setTL(Math.abs(Math.log(v))<0.06?1:v); drawTimeline(); },fmt:v=>Math.abs(v-1)<0.03?'real time':v<1?(1/v).toFixed(v<0.2?0:1)+'× slower':v.toFixed(v<10?1:0)+'× faster',commit:()=>{ A.mlook=null; pushUndo(); autosave(); markAnim(); buildPanels(); },tip:'How fast this volume plays: real time by default. Slower for fog that should barely move, faster for fog the wind should push more. It only changes how much time passes per frame: the simulation runs the same, in the same small steps, so faster is never looser'}));
+    refreshers.push(chips(ab,'',[[0.25,'¼×'],[0.5,'½×'],[1,'Real'],[4,'4×'],[30,'30×']],()=>A.tl||1,v=>{ setTL(v); A.mlook=null; pushUndo(); autosave(); markAnim(); drawTimeline(); buildPanels(); }));
+    if(REC.time&&REC.time.outT!=null) note(ab,'The timeline Speed is set by hand, which overrides this. Press Reset on the timeline to follow Time scale again.'); }
   if(b==='gentle'){ const G=A.gm=A.gm||{...GENTLE_DEF}; if(G.type==='sway') G.type='breathe';
     refreshers.push(chips(ab,'',GENTLE_KINDS,()=>G.type,v=>{ G.type=v; pushUndo(); autosave(); markAnim(); buildPanels(); }));
     if(G.type==='drift') refreshers.push(slider(ab,S_('Speed',0.01,5,()=>G.spd,v=>G.spd=+v.toPrecision(3),v=>v.toFixed(v<1?2:1)+' m/s',markAnim,true,'How fast the whole shape slides along')));
@@ -3928,15 +3933,15 @@ function feedU(pr,ctx,rec){ const S=rec.sim, sm=ctx.sim||{}; const on=!sm.formin
 const MLOOKS=[
   {id:'natural',label:'Natural',tip:'How this element really moves, at real speed',set:r=>{ const d=animDefaults(r); return {wind:d.wind,gust:d.gust,churn:d.churn,rise:d.rise,drain:d.drain,spill:d.spill,feed:d.feed,thinW:d.thinW,thinL:d.thinL,wisp:d.wisp,evap:d.evap,tl:d.tl,heavy:d.heavy||0,lam:d.lam||0,dm:{...d.dm}}; }},
   {id:'pour',label:'Pouring sea of clouds',tip:'The smooth, flowing marine layer of a landscape timelapse: a heavy, layered sea that pours through gaps and down valleys in long rolling waves',
-    set:r=>({wind:1.5,gust:0.3,churn:1.1,rise:0,drain:0,spill:0.3,feed:0.9,thinW:0.4,thinL:0.5,wisp:0.04,evap:0.3,heavy:0.85,lam:0.8,tl:30,dm:{type:'stream',spd:0.3,fine:0.5,amt:0.8,dir:null}})},
+    set:r=>({wind:1.5,gust:0.3,churn:1.1,rise:0,drain:0,spill:0.3,feed:0.9,thinW:0.4,thinL:0.5,wisp:0.04,evap:0.3,heavy:0.85,lam:0.8,tl:1,dm:{type:'stream',spd:0.3,fine:0.5,amt:0.8,dir:null}})},
   {id:'rolling',label:'Rolling timelapse',tip:'Fog rolling across the land in a timelapse: a dense river pouring over and down the ground, its thin edges lifting off, breaking up and fading',
     set:r=>({wind:4.5,gust:0.4,churn:1.5,rise:0,drain:0,spill:0.45,feed:0.7,thinW:0.65,thinL:0.6,wisp:0.12,evap:0.55,heavy:0.6,lam:0.3,tl:30,dm:{type:'stream',spd:0.35,fine:0.5,amt:0.8,dir:null}})},
   {id:'spill',label:'Dry-ice spill',tip:'A heavy blanket that keeps welling up and runs like a liquid: down every slope, into gaps and hollows, never climbing',
-    set:r=>({wind:0.2,gust:0.1,churn:1,rise:-0.05,drain:0,spill:1,feed:0.8,thinW:0.3,thinL:0.4,wisp:0.03,evap:0.35,heavy:1,lam:0.4,tl:12,dm:{type:'roll',spd:0.25,fine:0.4,amt:0.8,dir:null}})},
+    set:r=>({wind:0.2,gust:0.1,churn:1,rise:-0.05,drain:0,spill:1,feed:0.8,thinW:0.3,thinL:0.4,wisp:0.03,evap:0.35,heavy:1,lam:0.4,tl:1,dm:{type:'roll',spd:0.25,fine:0.4,amt:0.8,dir:null}})},
   {id:'drift',label:'Slow drift',tip:'A bank drifting past on a light breeze, churning gently',
-    set:r=>({wind:2,gust:0.3,churn:1,rise:0,drain:0,spill:0.2,feed:0.5,thinW:0.4,thinL:0.3,wisp:0.03,evap:0.25,heavy:0.3,lam:0.2,tl:2,dm:{type:'stream',spd:0.3,fine:0.4,amt:0.8,dir:null}})},
+    set:r=>({wind:2,gust:0.3,churn:1,rise:0,drain:0,spill:0.2,feed:0.5,thinW:0.4,thinL:0.3,wisp:0.03,evap:0.25,heavy:0.3,lam:0.2,tl:1,dm:{type:'stream',spd:0.3,fine:0.4,amt:0.8,dir:null}})},
   {id:'rising',label:'Lifting & burning off',tip:'Morning fog lifting: the thin parts rise, break into wisps and evaporate while the core lingers',
-    set:r=>({wind:1.2,gust:0.3,churn:1.6,rise:0.08,drain:0,spill:0,feed:0,thinW:0.5,thinL:0.9,wisp:0.2,evap:0.7,heavy:0,lam:0,tl:12,dm:{type:'swirl',spd:0.3,fine:0.5,amt:0.8,dir:null}})}];
+    set:r=>({wind:1.2,gust:0.3,churn:1.6,rise:0.08,drain:0,spill:0,feed:0,thinW:0.5,thinL:0.9,wisp:0.2,evap:0.7,heavy:0,lam:0,tl:1,dm:{type:'swirl',spd:0.3,fine:0.5,amt:0.8,dir:null}})}];
 function applyMotionLook(id){ const L=MLOOKS.find(x=>x.id===id); if(!L) return; const A=REC.anim; const v=L.set(REC); const {dm,...rest}=v; Object.assign(A,rest); if(dm) A.dm={...(A.dm||{}),...dm}; A.body='sim'; A.mlook=id; delete A.lift;
   if(REC.time&&REC.time.outT!=null){ REC.time={...REC.time,outT:null}; }   // the look's own speed: the timeline Speed follows it
   pushUndo(); autosave(); markAnim(); buildPanels(); drawTimeline(); toast(L.label+': '+L.tip.charAt(0).toLowerCase()+L.tip.slice(1)); }
@@ -4058,8 +4063,12 @@ function pillBuild(){ const v=$('#view'); if(!v) return; let el=$('#pill'); if(!
     row('Height',0.1,3000,()=>REC.size[1],v=>{ PILL.h=v; },fmLen,true,()=>{ if(PILL.h){ resizeAsset([1,PILL.h/REC.size[1],1]); PILL.h=null; } }),
     row('Breakup',0,1,()=>REC.det.brk,v=>{ REC.det.brk=+v.toFixed(3); markView(); },pct),
     row('Softness',0,1,()=>REC.det.edge,v=>{ REC.det.edge=+v.toFixed(3); markLight(); },pct)];
-  PILL.key=REC.eid||REC.name; }
-function pillPlace(BX){ if(!PILL.el||(PILL.key!==(REC.eid||REC.name))) pillBuild(); const el=PILL.el; if(!el) return; const off=UI.clean||!BX||MAIN.phase==='form'||UI.pill===false||drag&&drag.mode!=='ab'&&drag.mode!=='sun'; el.hidden=off; if(off) return;
+  if(UI.ws==='shot'&&REC.off&&REC.layer&&REC.layer.type==='asset'){ PILL.k0=Math.max(REC.size[0],REC.size[2]);
+    PILL.rows.unshift(row('Size',1,20000,()=>PILL.sz??Math.max(REC.size[0],REC.size[2]),v=>{ PILL.sz=v; },fmLen,true,()=>{ const G=gizmo(REC); if(G&&PILL.sz){ xfLayer(REC,G.C,{k:PILL.sz/Math.max(REC.size[0],REC.size[2])}); PILL.sz=null; markMass(); } }));
+    PILL.rows.unshift(row('Turn',-180,180,()=>PILL.tn??(((REC.rotY||0)+540)%360-180),v=>{ PILL.tn=v; },v=>v.toFixed(0)+'°',false,()=>{ const G=gizmo(REC); if(G&&PILL.tn!=null){ xfLayer(REC,G.C,{yaw:(PILL.tn-(((REC.rotY||0)+540)%360-180))*D2R}); PILL.tn=null; markMass(); } }));
+    el.prepend(PILL.rows[0]); el.prepend(PILL.rows[1]); }   /* Size, then Turn, on top */
+  PILL.key=(REC.eid||REC.name)+'|'+UI.ws; }
+function pillPlace(BX){ if(!PILL.el||(PILL.key!==(REC.eid||REC.name)+'|'+UI.ws)) pillBuild(); const el=PILL.el; if(!el) return; const off=UI.clean||!BX||MAIN.phase==='form'||UI.pill===false||drag&&drag.mode!=='ab'&&drag.mode!=='sun'; el.hidden=off; if(off) return;
   let xs=[],ys=[]; for(const x of [BX[0][0],BX[1][0]]) for(const y of [BX[0][1],BX[1][1]]) for(const z of [BX[0][2],BX[1][2]]){ const q=project([x,y,z]); if(q){ xs.push(q[0]); ys.push(q[1]); } } if(!xs.length){ el.hidden=true; return; }
   const w=el.offsetWidth||220, h=el.offsetHeight||100; let x=clamp((Math.min(...xs)+Math.max(...xs))/2-w/2,8,cssW-w-8), y=clamp(Math.max(...ys)+10,40,cssH-h-44);
   if(Math.abs(x-PILL.x)>1.5||Math.abs(y-PILL.y)>1.5){ PILL.x=x; PILL.y=y; el.style.transform=`translate(${x.toFixed(0)}px,${y.toFixed(0)}px)`; } }
@@ -4174,6 +4183,17 @@ function slabEnd(){ const P=drag.pts; if(P.length<1) return; if(shotEls().length
   toast('Mist painted between '+fmLen(SLAB.near)+' and '+fmLen(SLAB.far)+' from the camera. Sculpt it, or paint another slab'); }
 let hoverXY=null;
 $('#soloBtn').onclick=()=>toggleSolo();
+
+/* ---------- placing: drag out from where it goes to size and turn it in one go; then it is ready to move, turn and scale ---------- */
+function pdropFoot(){ const S=UI.placeAsset.size; return Math.max(S[0],S[2])/2; }
+function pdropMove(mx,my){ const d=drag, g=shotGround(mx,my)||planePt(mx,my,d.p0,false); d.cur=g; const v=[g[0]-d.p0[0],g[2]-d.p0[2]], L=Math.hypot(v[0],v[1]);
+  if(Math.hypot(mx-d.sx,my-d.sy)>8&&L>1e-3){ d.k=clamp(L/pdropFoot(),0.02,60); d.yaw=Math.atan2(v[1],v[0]); }   /* its length lies along the drag */
+  const S=UI.placeAsset.size; d.label=`${fmLen(S[0]*d.k)} × ${fmLen(S[2]*d.k)} · turned ${(((d.yaw/D2R)%360)+360)%360|0}°`; poke(); }
+function drawPdrop(){ if(!drag||drag.mode!=='pdrop'||!UI.placeAsset) return; const d=drag, S=UI.placeAsset.size, hw=S[0]/2*d.k, hd=S[2]/2*d.k, c=Math.cos(d.yaw), s=Math.sin(d.yaw);
+  const P=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>{ const x=d.p0[0]+c*a*hw-s*b*hd, z=d.p0[2]+s*a*hw+c*b*hd; return [x,sceneHJ(x,z)+0.3,z]; });
+  octx.strokeStyle='rgba(239,178,77,.95)'; octx.lineWidth=1.6; octx.setLineDash([5,4]); for(let i=0;i<4;i++) line3(P[i],P[(i+1)%4]); octx.setLineDash([]); line3(d.p0,[d.p0[0]+c*hw,d.p0[1],d.p0[2]+s*hw]); }
+function pdropEnd(){ const d=drag; placeAssetAt(d.p0); if(d.k!==1||d.yaw){ const G=gizmo(REC); if(G){ xfLayer(REC,G.C,{k:d.k,yaw:d.yaw}); markMass(); autosave(); } }
+  setTool('move'); buildPanels(); toast((REC.name||'It')+' placed. Move (W) is on: drag the ring to move, its edge to turn, the corner to scale. Or use Size and Turn in the pill'); }
 /* =====================================================================
    THE AIR, MADE VISIBLE: faint streamlines carried by the same flow the fog simulates, while it is paused
    ===================================================================== */
