@@ -516,7 +516,7 @@ uniform sampler3D uCurl; uniform float uEddy, uU, uLift, uLiftN, uStrat, uCalm, 
 uniform int uEmit, uSrcShape; uniform vec3 uSrcC; uniform vec4 uSrcS; uniform float uRise, uRiseH, uPush, uPushH, uSpreadE, uSrcTh;
 uniform int uNF; uniform vec4 uFA[48], uFB[48]; uniform float uFK[48], uFT[48]; uniform float uFlowOnly;   // influencer segments; kind: 0 carry (path, lift), 1 calm, 2 thin/thicken, 3 swirl   // drawn wind paths: segment start + radius, segment end + speed
 uniform float uDrain;   // cold fog drains down slopes, in the sim's metres per second
-uniform float uThinW, uThinL, uWispL, uHeavy, uHeavyV;   /* heavy: dense fog runs downhill like a liquid, pools in the low ground and never climbs (uHeavyV its speed on a 45 degree slope, sim m/s) */   // how much more the wind and the rise move the thin parts than the dense core; thin wisps lifting off by themselves (sim m/s)
+uniform float uThinW, uThinL, uWispL, uHeavy, uHeavyV, uUpEvap, uCohere;   /* heavy: dense fog runs downhill like a liquid, pools in the low ground and never climbs (uHeavyV its speed on a 45 degree slope, sim m/s) */   // how much more the wind and the rise move the thin parts than the dense core; thin wisps lifting off by themselves (sim m/s)
 float thinOf(float d){ return 1.-smoothstep(0.04,0.5,d); }
 /* a fog source: a box standing on the ground (centre, half width; facing angle, height, half depth) that keeps making fog and pours it out of its front face.
    ahead: also the stretch in front of it, where its push fades out */
@@ -616,6 +616,10 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
   vec4 rc=textureLod(uR,u,0.); vec4 rb=textureLod(uRB,u,0.); float gh=uGround>0?terrH(p.xz):0.;
   if(uRst.x>0.5) rc.xyz=vec3(0.); if(uRst.y>0.5) rb.xyz=vec3(0.);
   if(uEvap>0.){ float thn=thinOf(d); d*=exp(-uEvap*thn*thn*uDt); }   // thin edges evaporate, the dense core holds
+  if(uUpEvap>0.&&uGround>0){ vec2 tg=terrG(p.xz); float hyU=p.y-terrH(p.xz); float up=max(dot(v.xz,tg),0.)*(1.-smoothstep(0.,max(uHgt*1.2,uEddy),hyU));   /* forced up a slope or over an obstacle: that part thins and burns off, the rest rolls on */
+    d*=exp(-uUpEvap*up/max(uHgt*0.12,0.5)*uDt); }
+  if(uCohere>0.&&d>0.004){ vec3 o3=1./uDims; float a=(textureLod(uD,u+vec3(o3.x,0,0),0.).r+textureLod(uD,u-vec3(o3.x,0,0),0.).r+textureLod(uD,u+vec3(0,o3.y,0),0.).r+textureLod(uD,u-vec3(0,o3.y,0),0.).r+textureLod(uD,u+vec3(0,0,o3.z),0.).r+textureLod(uD,u-vec3(0,0,o3.z),0.).r)/6.;
+    d=clamp(d+uCohere*0.22*(d-a)*smoothstep(0.02,0.25,max(d,a)),0.,1.); d=mix(d,max(d,a*0.98),uCohere*0.5*smoothstep(0.15,0.5,a)); }   /* holds together: the front stays thick instead of smearing thin as it travels */
   if(uFeedR>0.){ float sf=dot(p.xz,uFeedP.xy)-uFeedP.z; float m=1.-smoothstep(0.,uFeedP.w,sf); if(m>0.){ float fd=textureLod(uFeed,u,0.).r;   // new fog keeps arriving from upwind: the start shape's upwind part is topped up
       float nz=textureLod(uNT,(p-uWind*uSimT)/max(uFeedP.w*0.8,1e-3)+uCurlOff,0.).r; m*=0.45+0.9*smoothstep(0.25,0.75,nz);   // it arrives in uneven pulses that ride the wind, not as a wall
       float inj=clamp(m*uFeedR*uDt,0.,1.); d=mix(d,max(d,fd),inj); } }   /* the rest fields carry on as the air does, so arriving fog streams its detail with the wind */   // a rest field starts over (its weight is zero right now, so nothing pops)
@@ -1160,6 +1164,7 @@ function animDefaults(r){ const s=r.sim, t=r.template, ly=r.layer&&r.layer.type,
   const e=E[k]||(cat==='fog'?E.ground:cat==='cloud'?E.cloud:[0,0,0.3,0.4,0,0.1,1]);   /* every type plays at real speed by default; Time scale speeds it up or slows it down */
   return {wind:Math.max(s.wind,m[0]),windDir:s.windDir??70,gust:m[2],gustL:s.gustL||s.eddy*3,churn:m[1],rise,lift:0,hold:false,flows:[],body:'sim',gm:{type:'breathe',amt:0.75,per:8,dir:null,spd:0.4},dm:{type:m[4],spd:m[5],fine:0.4,amt:0.8,dir:null},loop:false,drain:m[3],
     heavy:hasGround(r)?({seaclouds:0.85,radiation:0.6,valley:0.75,advection:0.6,rolling:0.6,freezing:0.5,icefog:0.4,ground:0.6,valley_:0.75,bank:0.4,sheet:0.5,inversion:0.3}[k]||0):0,lam:({seaclouds:0.8,rolling:0.3,advection:0.3,valley:0.3,inversion:0.5,deck:0.3,sheet:0.3}[k]||0),
+    cohere:({seaclouds:0.6,rolling:0.4,advection:0.4,valley:0.3}[k]||0),upEvap:hasGround(r)?({seaclouds:0.5,rolling:0.6,advection:0.3}[k]||0):0,
     spill:hasGround(r)?e[0]:0,feed:e[1],thinW:e[2],thinL:e[3],wisp:e[4],evap:e[5],tl:e[6],mlook:'natural'}; }   /* by default it simulates: churn, drift and drain the way that element does */
 /* primitives for each starting shape, in metres, laid out from the seed */
 function templatePrims(rec){ const P=templatePrims0(rec), o=rec.off; const base=!o?P:P.map(q=>{ const r=q.slice(); for(let i=0;i<3;i++) r[i]+=o[i]; if(q[3]===1) for(let i=0;i<3;i++) r[8+i]+=o[i]; return r; }); rec._npt=base.length; return [...base,...(typeof blockPrims==='function'?blockPrims(rec):[])].slice(0,64); }   /* the type's own shape, then your blocking shapes (already where they stand) */   // a Designer volume placed in the shot: built around the origin, shifted to where it stands
@@ -1444,7 +1449,7 @@ let SNAP={den:null,rc:null,rb:null,dims:null,dom:null,ok:false};
 /* the recipe as the animation sees it: the shape's own fog physics, with the animation's wind, churn and rise, in the animation box */
 function ARec(rec){ return ARecWith(rec,rec.anim||animDefaults(rec)); }
 function ARecWith(rec,A){
-  return {...rec,_sdom:rec.dom,_simK:(A.body||'sim')==='sim'?SIMRES_K[A.simRes||'full']||1:1,dom:rec.adom||rec.dom,strokes:[],flows:[...(A.flows||[]),...guideFlows(rec,A)],sim:{...rec.sim,wind:A.wind,windDir:A.windDir,gust:A.gust,gustL:A.gustL,churnK:A.churn??1,lift:clamp(riseOf(A)/2,-1,1),spread:(rec.sim.spread||0)*(0.25+0.75*clamp(A.spill||0,0,1.5)),drain:A.drain||0,heavy:A.heavy||0,lam:A.lam||0,strat:Math.max(rec.sim.strat||0,clamp(A.lam||0,0,1)*0.9),churnK:(A.churn??1)*(1-0.55*clamp(A.lam||0,0,1)),spill:A.spill||0,thinW:A.thinW||0,thinL:A.thinL||0,wisp:A.wisp||0,evap:A.evap||0,feed:A.feed||0}}; }
+  return {...rec,_sdom:rec.dom,_simK:(A.body||'sim')==='sim'?SIMRES_K[A.simRes||'full']||1:1,dom:rec.adom||rec.dom,strokes:[],flows:[...(A.flows||[]),...guideFlows(rec,A)],sim:{...rec.sim,wind:A.wind,windDir:A.windDir,gust:A.gust,gustL:A.gustL,churnK:A.churn??1,lift:clamp(riseOf(A)/2,-1,1),spread:(rec.sim.spread||0)*(0.25+0.75*clamp(A.spill||0,0,1.5)),drain:A.drain||0,heavy:A.heavy||0,lam:A.lam||0,strat:Math.max(rec.sim.strat||0,clamp(A.lam||0,0,1)*0.9),churnK:(A.churn??1)*(1-0.55*clamp(A.lam||0,0,1)),spill:A.spill||0,thinW:A.thinW||0,thinL:A.thinL||0,wisp:A.wisp||0,evap:A.evap||0,feed:A.feed||0,upEvap:A.upEvap||0,cohere:A.cohere||0}}; }
 /* sculpt guidance: the way you pulled, combed and blew the shape carries on gently as it plays, so the motion follows your sculpt instead of fighting it */
 function guideFlows(rec,A){ const k=A.guide??1; if(k<=0.01) return []; const out=[]; const S=rec.strokes||[]; let from=0; S.forEach((st,i)=>{ if(st.op===11) from=i+1; });   // a frame taken as the start resets the guidance: only later sculpting guides the motion
   for(const st of S.slice(from)){ let P=null; if(st.op===8&&st.dabs[0]){ const d=st.dabs[0]; P=[[d[0],d[1],d[2]],[d[0]+d[3],d[1]+d[4],d[2]+d[5]]]; }
@@ -1477,11 +1482,11 @@ function snapLoad(ctx,rec){ if(!SNAP.dom||!SNAP.ok) return false; const d=recDim
 /* the animation box: the shape's box, opened up the way the wind will carry the fog over the shot (the wall check adds more if needed) */
 function animDom(rec){ if(!simBody(rec)) return [rec.dom[0].slice(),rec.dom[1].slice()]; const A=rec.anim, b=rec.dom, sz=domSize(rec), tm=timing(rec); const ar=ARec(rec); const lo=b[0].slice(), hi=b[1].slice();
   const T_=Math.max(tm.outT,0)/Math.max(realTimeK(ar),1e-4);                     // seconds of real time the shot covers
-  const wd=A.windDir*D2R, run=A.wind*T_*(1+0.6*A.gust)*(A.hold?0.15:1); const dx=Math.sin(wd)*run, dz=-Math.cos(wd)*run;
+  const wd=A.windDir*D2R, run=(A.wind+(A.pour?3.5:0))*T_*(1+0.6*A.gust)*(A.hold?0.15:1);   /* pouring: the source's push and the downhill run carry it further than the wind alone */ const dx=Math.sin(wd)*run, dz=-Math.cos(wd)*run;
   if(dx>0) hi[0]+=dx; else lo[0]+=dx; if(dz>0) hi[2]+=dz; else lo[2]+=dz;
   const side=Math.min(run*0.15,Math.max(...sz)), ch=rec.sim.eddy*0.25*(A.churn??1); for(const i of [0,2]){ lo[i]-=side*0.5+ch; hi[i]+=side*0.5+ch; } const rs=riseOf(A); hi[1]+=ch+Math.max(rs,0)*T_*1.1; if(rs<0&&!flatBase(rec)) lo[1]+=rs*T_*0.6;
   for(const f of A.flows||[]) for(const p of [...(f.pts||f.dabs||[]),...(f.tip?[f.tip]:[]),...(f.mid?[f.mid]:[])]) for(let i=0;i<3;i++){ lo[i]=Math.min(lo[i],p[i]-f.r); hi[i]=Math.max(hi[i],p[i]+f.r); }
-  if(flatBase(rec)) lo[1]=b[0][1]; const cap=Math.max(...sz)*4; for(let i=0;i<3;i++){ lo[i]=Math.max(lo[i],b[0][i]-cap); hi[i]=Math.min(hi[i],b[1][i]+cap); }
+  if(flatBase(rec)) lo[1]=b[0][1]; const cap=Math.max(...sz)*(A.pour?14:4); for(let i=0;i<3;i++){ lo[i]=Math.max(lo[i],b[0][i]-cap); hi[i]=Math.min(hi[i],b[1][i]+cap); }
   return [lo.map(v=>+v.toPrecision(5)),hi.map(v=>+v.toPrecision(5))]; }
 /* start the animation over: frame 1 is the shape, exactly, then simulate to the time asked for */
 function animReset(ctx,rec,target){ const ar=ARec(rec); if(snapLoad(ctx,ar)===false){ ctx.phase='shape'; AFIT.on=false; return; }   /* no frame 1 kept (a layer or workspace switched mid-way): back to the shape */ const sp=simParams(ctx,ar); const tg=Math.max(0,target||0);
@@ -1534,7 +1539,7 @@ function velUniforms(pr,ctx,rec){ const S=rec.sim; const held=!ctx.sim.emit&&ctx
   u1f(pr,'uLiftN',S.lift||0); u1f(pr,'uSimT',ctx.sim.t); u1f(pr,'uGust',S.gust||0); u1f(pr,'uGustL',Math.max(S.gustL||S.eddy*3,1e-3));
   const R=mulberry(rec.seed+71); u3v(pr,'uCurlOff',[R(),R(),R()]); bind3(pr,5,'uCurl',T.curl); boxU(pr,rec); terrU(pr,rec);
   if(MOVPRE){ u1i(pr,'uNF',0); u1f(pr,'uFlowOnly',1); } else { flowU(pr,rec); u1f(pr,'uFlowOnly',rec.flowRaw?1:0); } movU(pr,ctx,rec);
-  u1f(pr,'uDrain',(S.drain||0)/Math.max(realTimeKF(rec),1e-3)); blkU(pr,rec); u1f(pr,'uThinW',clamp(S.thinW||0,0,1)); u1f(pr,'uThinL',clamp(S.thinL||0,0,1)); u1f(pr,'uWispL',(S.wisp||0)/Math.max(realTimeKF(rec),1e-3)); u1f(pr,'uHeavy',clamp(S.heavy||0,0,1)); u1f(pr,'uHeavyV',clamp(S.heavy||0,0,2)*clamp(0.3+0.035*rec.size[1],0.3,4)/Math.max(realTimeKF(rec),1e-3));
+  u1f(pr,'uDrain',(S.drain||0)/Math.max(realTimeKF(rec),1e-3)); blkU(pr,rec); u1f(pr,'uThinW',clamp(S.thinW||0,0,1)); u1f(pr,'uThinL',clamp(S.thinL||0,0,1)); u1f(pr,'uWispL',(S.wisp||0)/Math.max(realTimeKF(rec),1e-3)); u1f(pr,'uHeavy',clamp(S.heavy||0,0,1)); u1f(pr,'uUpEvap',(S.upEvap||0)); u1f(pr,'uCohere',clamp(S.cohere||0,0,1)); u1f(pr,'uHeavyV',clamp(S.heavy||0,0,2)*clamp(0.3+0.035*rec.size[1],0.3,4)/Math.max(realTimeKF(rec),1e-3));
   const E=rec.emit, EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0);
   if(EP){ u1i(pr,'uSrcShape',['disc','rect','line','ring'].indexOf(E.shape)); u3v(pr,'uSrcC',[E.x,E.y,E.z]); u4v(pr,'uSrcS',[E.w,E.d,E.ang*D2R,E.edge]);
     u1f(pr,'uRise',EP.Vr); u1f(pr,'uRiseH',EP.riseH); u1f(pr,'uPush',EP.push); u1f(pr,'uPushH',EP.pushH); u1f(pr,'uSpreadE',E.spread); u1f(pr,'uSrcTh',EP.th); } }
@@ -3954,9 +3959,9 @@ function feedU(pr,ctx,rec){ const S=rec.sim, sm=ctx.sim||{}; const on=!sm.formin
   const G=feedGeo(rec); u4v(pr,'uFeedP',G.P); u1f(pr,'uFeedR',clamp(S.feed,0,2)*2*Math.max(G.wind,0.4)/Math.max(G.w,0.5)/rt); bind3(pr,11,'uFeed',ctx.feed); }
 /* ---------- motion looks: one click sets how it moves; the sliders fine-tune it ---------- */
 const MLOOKS=[
-  {id:'natural',label:'Natural',tip:'How this element really moves, at real speed',set:r=>{ const d=animDefaults(r); return {wind:d.wind,gust:d.gust,churn:d.churn,rise:d.rise,drain:d.drain,spill:d.spill,feed:d.feed,thinW:d.thinW,thinL:d.thinL,wisp:d.wisp,evap:d.evap,tl:d.tl,heavy:d.heavy||0,lam:d.lam||0,dm:{...d.dm}}; }},
+  {id:'natural',label:'Natural',tip:'How this element really moves, at real speed',set:r=>{ const d=animDefaults(r); return {wind:d.wind,gust:d.gust,churn:d.churn,rise:d.rise,drain:d.drain,spill:d.spill,feed:d.feed,thinW:d.thinW,thinL:d.thinL,wisp:d.wisp,evap:d.evap,tl:d.tl,heavy:d.heavy||0,lam:d.lam||0,cohere:d.cohere||0,upEvap:d.upEvap||0,dm:{...d.dm}}; }},
   {id:'pour',label:'Pouring sea of clouds',tip:'The smooth, flowing marine layer of a landscape timelapse: a heavy, layered sea that pours through gaps and down valleys in long rolling waves',
-    set:r=>({wind:1.5,gust:0.3,churn:1.1,rise:0,drain:0,spill:0.3,feed:0.9,thinW:0.4,thinL:0.5,wisp:0.04,evap:0.3,heavy:0.85,lam:0.8,tl:1,dm:{type:'stream',spd:0.3,fine:0.5,amt:0.8,dir:null}})},
+    set:r=>({wind:1.5,gust:0.3,churn:1.1,rise:0,drain:0,spill:0.3,feed:0.9,thinW:0.4,thinL:0.5,wisp:0.04,evap:0.08,cohere:0.6,upEvap:0.5,heavy:0.85,lam:0.8,tl:1,dm:{type:'stream',spd:0.3,fine:0.5,amt:0.8,dir:null}})},
   {id:'rolling',label:'Rolling timelapse',tip:'Fog rolling across the land in a timelapse: a dense river pouring over and down the ground, its thin edges lifting off, breaking up and fading',
     set:r=>({wind:4.5,gust:0.4,churn:1.5,rise:0,drain:0,spill:0.45,feed:0.7,thinW:0.65,thinL:0.6,wisp:0.12,evap:0.55,heavy:0.6,lam:0.3,tl:30,dm:{type:'stream',spd:0.35,fine:0.5,amt:0.8,dir:null}})},
   {id:'spill',label:'Dry-ice spill',tip:'A heavy blanket that keeps welling up and runs like a liquid: down every slope, into gaps and hollows, never climbing',
@@ -4268,7 +4273,7 @@ function pourPlace(d){ const v=[d.cur[0]-d.p0[0],d.cur[2]-d.p0[2]], an=Math.atan
   placeAssetAt(d.p0); const G=gizmo(REC); if(G){ xfLayer(REC,G.C,{k:0.35}); }   // a small seed of fog at the source; the source makes the rest
   const A=REC.anim, W=Math.max(S[0],S[2]), q=x=>+x.toPrecision(5), dir=+(((an/D2R)%360+360)%360).toFixed(1);
   A.flows=[{kind:'inflow',r:q(Math.max(Math.min(S[0],S[2])*0.35,10)),d:q(Math.max(W*0.06,5)),h:q(REC.size[1]*0.9/0.35),v:0.9,push:2.5,dir,dabs:[[q(d.p0[0]),q(sceneHJ(d.p0[0],d.p0[2])),q(d.p0[2])]]}];
-  Object.assign(A,{body:'sim',ownWind:true,wind:1.5,windDir:dir,gust:0.25,churn:1,heavy:0.95,lam:0.5,spill:0.5,feed:0,evap:0.3,thinW:0.4,wisp:0.04,tl:30,mlook:null,pour:true}); delete A.lift;
+  Object.assign(A,{body:'sim',ownWind:true,wind:1.5,windDir:dir,gust:0.25,churn:1,heavy:0.95,lam:0.5,spill:0.5,feed:0,evap:0,cohere:0.7,upEvap:0.6,thinW:0.4,wisp:0.04,tl:30,mlook:null,pour:true});   /* it keeps spilling and rolling; only where it is forced up does it burn off */ delete A.lift;
   REC.time={...TIME_DEF,...(REC.time||{}),frames:240,preN:0,inT:null,outT:null}; markMass(); autosave(); setStep('anim'); buildPanels();
   toast('Pouring at 30×: press Play and watch it run down the ground. When it looks right, press Keep this frame'); }
 function pourBar(){ let el=$('#pourBar'); const on=UI.mode==='anim'&&REC&&REC.anim&&REC.anim.pour&&!UI.clean;
@@ -4502,6 +4507,8 @@ function buildAnim(){ const ab=$('#animBody'); ab.innerHTML=''; const A=REC.anim
   refreshers.push(slider(adv,MS('Wisps lift off',0,1,()=>A.wisp||0,v=>A.wisp=+v.toFixed(3),v=>v<0.005?'off':(v*100).toFixed(0)+' cm/s','The thin edges rise into the air by themselves and break up, while the dense part stays down',false)));
   refreshers.push(slider(adv,MS('Thin edges fade',0,1,()=>A.evap||0,v=>A.evap=+v.toFixed(2),v=>v<0.01?'off':'wisps last about '+fmT(20+600*(1-v)*(1-v)),'Thin parts evaporate as they peel away, so the fog fades off at its edges instead of spreading forever. The dense core holds')));
   refreshers.push(slider(adv,MS('Keep arriving',0,1,()=>A.feed||0,v=>A.feed=+v.toFixed(2),v=>v<0.02?'off':v<0.4?'a little':v<0.8?'steady supply':'strong supply',(A.wind||0)<0.3?'With no wind, your shape works as its own source: it keeps welling up where it starts, like dry ice or a fog machine, and the new fog flows away from it':'New fog keeps rolling in from the upwind side of your shape, so the bank streams past instead of drifting away and thinning out')));
+  refreshers.push(slider(adv,MS('Holds together',0,1,()=>A.cohere||0,v=>A.cohere=+v.toFixed(2),v=>v<0.03?'off':v<0.4?'a little':v<0.75?'stays thick':'holds its body','The front and body stay thick as they travel instead of thinning out into nothing: for a bank that should keep spilling and rolling a long way')));
+  if(hasGround(REC)) refreshers.push(slider(adv,MS('Burns off where forced up',0,2,()=>A.upEvap||0,v=>A.upEvap=+v.toFixed(2),v=>v<0.03?'off':v<0.6?'a little':v<1.3?'yes':'strongly','Where the fog is pushed up a slope or over an obstacle, that part thins and burns off, while the main mass keeps rolling')));
   if(hasGround(REC)) refreshers.push(slider(adv,MS('Keep spilling',0,1,()=>A.spill||0,v=>A.spill=+v.toFixed(2),v=>v<0.02?'settled':v<0.4?'a little':v<0.8?'spills on':'keeps spreading','The heavy fog keeps slumping out along the ground the way it did while it formed, instead of settling straight away')));
   subH(ab,'Sculpt guidance');
   refreshers.push(slider(ab,S_('Follow my sculpt',0,3,()=>A.guide??1,v=>A.guide=+v.toFixed(2),v=>v<0.02?'off':v<0.6?'gently':v<1.4?'yes':'strongly',markAnim,false,'The way you pulled, combed and blew the shape keeps going as it plays, so the motion carries on from your sculpt instead of snapping back to the original flow. Off: only the wind and your influencers move it')));
