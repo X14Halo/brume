@@ -4310,14 +4310,14 @@ const d0moved=()=>drag&&Math.hypot(drag.cur[0]-drag.p0[0],drag.cur[2]-drag.p0[2]
 /* =====================================================================
    THE AIR, MADE VISIBLE: faint streamlines carried by the same flow the fog simulates, while it is paused
    ===================================================================== */
-const FS_PART=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler2D uPS; uniform sampler3D uD, uPV; uniform float uPDt, uSeed, uPhK; uniform int uPhy; uniform vec3 uCDp; out vec4 o;
+const FS_PART=HEAD+VOX_GLSL+TERR_GLSL+VEL_GLSL+`uniform sampler2D uPS; uniform sampler3D uD, uPV; uniform float uPDt, uSeed, uPhK, uPDtP; uniform int uPhy; uniform vec3 uCDp; out vec4 o;
 vec3 hh(vec2 p){ vec3 q=fract(vec3(p.xyx)*vec3(.1031,.1030,.0973)); q+=dot(q,q.yxz+33.33); return fract((q.xxy+q.yxx)*q.zyx); }
 bool outB(vec3 p){ vec3 u=p2u(p); return any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.))); }
 void main(){ ivec2 c=ivec2(gl_FragCoord.xy); vec4 h=texelFetch(uPS,ivec2(c.x,0),0);
   bool dead=h.w<=0.||outB(h.xyz); vec3 np; float nl;
   if(dead){ float best=-1.; np=uLo+uSize*0.5; for(int k=0;k<5;k++){ vec3 r=hh(vec2(float(c.x)+0.37*float(k),uSeed+float(k)*17.)); vec3 cand=uLo+r*uSize; float d=textureLod(uD,r,0.).r+r.x*0.02; if(uGround>0&&cand.y<terrH(cand.xz)) d=-1.; if(d>best){ best=d; np=cand; } }   /* born where there is fog, mostly */
     nl=30.+90.*hh(vec2(float(c.x),uSeed*1.7)).x; }
-  else { vec3 v; if(uPhy==1){ vec3 g=(h.xyz-uLo)/(uSize/uCDp), nn=uCDp+1.; v=vec3(textureLod(uPV,(g+vec3(.5,0.,0.))/nn,0.).x,textureLod(uPV,(g+vec3(0.,.5,0.))/nn,0.).y,textureLod(uPV,(g+vec3(0.,0.,.5))/nn,0.).z)*uPhK; } else v=vel(h.xyz,p2u(h.xyz),uD); np=h.xyz+v*uPDt;   /* with the fluid solver: the air it actually computed */ if(uGround>0){ float g=terrH(np.xz); if(np.y<g) np.y=g; } nl=h.w-1.; }
+  else { vec3 v; if(uPhy==1){ vec3 g=(h.xyz-uLo)/(uSize/uCDp), nn=uCDp+1.; v=vec3(textureLod(uPV,(g+vec3(.5,0.,0.))/nn,0.).x,textureLod(uPV,(g+vec3(0.,.5,0.))/nn,0.).y,textureLod(uPV,(g+vec3(0.,0.,.5))/nn,0.).z)*uPhK; } else v=vel(h.xyz,p2u(h.xyz),uD); np=h.xyz+v*(uPhy==1?uPDtP:uPDt);   /* with the fluid solver: the air it actually computed */ if(uGround>0){ float g=terrH(np.xz); if(np.y<g) np.y=g; } nl=h.w-1.; }
   o=c.y==0?vec4(np,nl):(dead?vec4(np,0.):vec4(texelFetch(uPS,ivec2(c.x,c.y-1),0).xyz,0.)); }`;
 const VS_PART=`#version 300 es
 uniform highp sampler2D uPS; uniform vec3 uCam,uCR,uCU,uCF; uniform float uTanY,uAsp; uniform int uK; out float vA;
@@ -4330,7 +4330,7 @@ UI.streams=true;
 function streamInit(){ if(STREAM.ok) return true; try{ mkProg('part',FS_PART); STREAM.draw=glProg(VS_PART,FS_PARTD); STREAM.vao=gl.createVertexArray(); for(let i=0;i<2;i++){ const t=tex2D(STREAM.N,STREAM.K,gl.RGBA32F,gl.RGBA,gl.FLOAT,gl.NEAREST); const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); STREAM.tex.push(t); STREAM.fb.push(f); } gl.bindFramebuffer(gl.FRAMEBUFFER,null); STREAM.ok=true; return true; }catch(e){ console.warn('streamlines off',e); STREAM.ok=false; UI.streams=false; return false; } }
 const streamsOn=()=>UI.streams!==false&&UI.mode==='anim'&&MAIN.phase==='anim'&&!UI.playing&&!UI.clean&&!AFIT.on&&!(typeof PB!=='undefined'&&PB.on)&&!(REC&&REC.blank)&&(REC.anim.body||'sim')==='sim'&&!exporting;
 function streamStep(){ if(!streamsOn()||!streamInit()||!PR.part||!progDone(PR.part)) return false; if(!STREAM.checked){ STREAM.checked=true; if(!gl.getProgramParameter(PR.part.p,gl.LINK_STATUS)){ console.warn('streamlines off: '+gl.getShaderInfoLog(PR.part.f)); UI.streams=false; return false; } } const ar=ARec(REC); const pr=use('part'); velUniforms(pr,MAIN,ar);
-  bind3(pr,1,'uD',MAIN.den[0]); { const on=!!(MAIN.ph&&MAIN.ph.ok&&physOn(ar)); bind3(pr,12,'uPV',on?MAIN.ph.v[0]:MAIN.den[0]); u1i(pr,'uPhy',on?1:0); u3v(pr,'uCDp',on?MAIN.ph.cd:MAIN.dims); u1f(pr,'uPhK',1/Math.max(realTimeKF(ar),1e-4)); } bindTex(7,gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); u1i(pr,'uPS',7); u3v(pr,'uDims',MAIN.dims); u1f(pr,'uPDt',(MAIN.sim.dt||0.05)*0.7); u1f(pr,'uSeed',(STREAM.seed=(STREAM.seed+1)%997));
+  bind3(pr,1,'uD',MAIN.den[0]); { const on=!!(MAIN.ph&&MAIN.ph.ok&&physOn(ar)); bind3(pr,12,'uPV',on?MAIN.ph.v[0]:MAIN.den[0]); u1i(pr,'uPhy',on?1:0); u3v(pr,'uCDp',on?MAIN.ph.cd:MAIN.dims); if(on){ const hm=Math.min(...domSize(ar).map((s,i)=>s/MAIN.ph.cd[i])); u1f(pr,'uPhK',1); u1f(pr,'uPDtP',Math.min(1.2*hm/Math.max(physUmax(ar),0.5),5)); } else u1f(pr,'uPhK',1/Math.max(realTimeKF(ar),1e-4));   /* the solver's air: each segment about one air cell long at the fastest wind, whatever the time scale */ } bindTex(7,gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); u1i(pr,'uPS',7); u3v(pr,'uDims',MAIN.dims); u1f(pr,'uPDt',(MAIN.sim.dt||0.05)*0.7); u1f(pr,'uSeed',(STREAM.seed=(STREAM.seed+1)%997));
   gl.bindFramebuffer(gl.FRAMEBUFFER,STREAM.fb[1-STREAM.cur]); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,STREAM.N,STREAM.K); fullscreen(); gl.bindFramebuffer(gl.FRAMEBUFFER,null); STREAM.cur=1-STREAM.cur; return true; }
 function streamDraw(){ if(!streamsOn()||!STREAM.ok) return; const P=STREAM.draw; gl.useProgram(P); const B=camBasis(CAM); const U2=n=>gl.getUniformLocation(P,n);
   gl.activeTexture(gl.TEXTURE0+7); gl.bindTexture(gl.TEXTURE_2D,STREAM.tex[STREAM.cur]); gl.uniform1i(U2('uPS'),7); gl.uniform3fv(U2('uCam'),B.pos); gl.uniform3fv(U2('uCR'),B.r); gl.uniform3fv(U2('uCU'),B.u); gl.uniform3fv(U2('uCF'),B.f); gl.uniform1f(U2('uTanY'),B.tanY); gl.uniform1f(U2('uAsp'),cw/ch); gl.uniform1i(U2('uK'),STREAM.K);
@@ -4608,10 +4608,13 @@ void main(){ ivec3 I=outI(); vec3 gs=vec3(I)+0.5, p=sP(gs); ivec3 D=ivec3(uSD+0.
   if(solidS(p)){ ivec3 A=min(I+ivec3(0,1,0),D-1); bool f=!solidS(sP(vec3(A)+0.5)); oD=f?texelFetch(uD,A,0):vec4(0.); oT=f?texelFetch(uTh,A,0):vec4(0.,rhAmb(p.y)*qsA(p.y)-qsA(p.y),0.,0.); return; }   /* inside the ground: mirror the fog just above, so the fog lying on the ground keeps its density right down to it */
   vec4 h=texelFetch(uHD,I,0); vec2 ht=texelFetch(uHT,I,0).xy; vec3 v0=velP(uVel,p);
   vec3 vf=velP(uVel,p+0.5*uDtR*v0), pf=p+uDtR*vf;                                    /* the round trip forward, with the same second-order step as the backtrace */
-  vec2 hb=thAt(uHT,pf,p.y); vec2 t0=texelFetch(uTh,I,0).xy; vec2 th=ht+0.5*(t0-hb);
-  vec3 vb=velP(uVel,p-0.5*uDtR*v0), gb=clamp((p-uDtR*vb-uLo)/uSHv,vec3(0.),uSD); ivec3 i0=ivec3(floor(gb-0.5)); vec2 mn=vec2(1e9), mx=vec2(-1e9);
-  for(int k=0;k<8;k++){ ivec3 c=clamp(i0+ivec3(k&1,(k>>1)&1,(k>>2)&1),ivec3(0),D-1); vec2 s=texelFetch(uTh,c,0).xy; float yy=sP(vec3(c)+0.5).y; s+=vec2(thAmb(yy)-thAmb(p.y),qsA(yy)-qsA(p.y)); mn=min(mn,s); mx=max(mx,s); }
-  th=clamp(th,mn,mx);
+  vec3 vb=velP(uVel,p-0.5*uDtR*v0), pbk=p-uDtR*vb; vec2 th=ht;
+  bool inside=all(greaterThanEqual(pf,uLo))&&all(lessThanEqual(pf,uLo+uSize))&&all(greaterThanEqual(pbk,uLo))&&all(lessThanEqual(pbk,uLo+uSize));
+  if(inside&&!solidS(pf)&&!solidS(pbk)){   /* the MacCormack correction only where both trajectories stay in the air: at the walls, the ground and the box's edges the plain backtrace is kept (the standard safeguard) */
+    vec2 hb=thAt(uHT,pf,p.y); vec2 t0=texelFetch(uTh,I,0).xy; th=ht+0.5*(t0-hb);
+    vec3 gb=clamp((pbk-uLo)/uSHv,vec3(0.),uSD); ivec3 i0=ivec3(floor(gb-0.5)); vec2 mn=vec2(1e9), mx=vec2(-1e9);
+    for(int k=0;k<8;k++){ ivec3 c=clamp(i0+ivec3(k&1,(k>>1)&1,(k>>2)&1),ivec3(0),D-1); vec2 s=texelFetch(uTh,c,0).xy; float yy=sP(vec3(c)+0.5).y; s+=vec2(thAmb(yy)-thAmb(p.y),qsA(yy)-qsA(p.y)); mn=min(mn,s); mx=max(mx,s); }
+    th=clamp(th,mn,mx); }
   float qc0=qcOf(th,p.y);
   if(uAmb3.x>0.&&qc0>0.){ ivec3 U3=I+ivec3(0,1,0); float qu=U3.y<D.y?qcOf(texelFetch(uTh,U3,0).xy,sP(vec3(U3)+0.5).y):0.; th.x-=uAmb3.x*clamp((qc0-qu)/max(uAmb2.z,1e-3),0.,1.)*uDtR; }   // the fog top radiates its heat to the sky and cools
   if(uAmb3.y>0.&&solidS(p-vec3(0.,uSHv.y,0.))) th.x+=uAmb3.y*uDtR/(1.2*1005.*uSHv.y);                                                                                 // sunlit ground heats the air on it
@@ -4621,6 +4624,7 @@ void main(){ ivec3 I=outI(); vec3 gs=vec3(I)+0.5, p=sP(gs); ivec3 D=ivec3(uSD+0.
   if(uFeedR>0.){ float sf=dot(p.xz,uFeedP.xy)-uFeedP.z; float m=1.-smoothstep(0.,uFeedP.w,sf); if(m>0.){ vec2 ft=texelFetch(uFeedT,I,0).xy; float inj=clamp(m*uFeedR*uDtR,0.,1.); th=mix(th,ft,inj); } }   // fog keeps arriving from upwind
   vec3 e=min(gs,uSD-gs); float de=min(min(e.x,e.z),uSD.y-gs.y); if(de<4.){ vec3 n=e.x==de?(gs.x<uSD.x*0.5?vec3(1,0,0):vec3(-1,0,0)):e.z==de?(gs.z<uSD.z*0.5?vec3(0,0,1):vec3(0,0,-1)):vec3(0,-1,0);   // fresh air comes in at the upwind edges
     if(dot(v0,n)>0.){ float s=(1.-smoothstep(0.,4.,de))*clamp(uDtR*length(v0)/(4.*min(uSHv.x,uSHv.z)),0.,1.); vec2 amb=vec2(0.,(rhAmb(p.y)-1.)*qsA(p.y)); if(uFeedR<=0.||texelFetch(uFeedT,I,0).y<amb.y+1e-3) th=mix(th,amb,s); } }
+  th=vec2(clamp(th.x,-25.,25.),clamp(th.y,-qsA(p.y)*0.98,6.));   /* physical bounds: total water is never negative, and air is never wildly supersaturated */
   float qc=qcOf(th,p.y), dn=qc/max(uAmb2.z,1e-4);
   if(uNMB>0) dn*=1.-movClear(p);                                                                                                                                       // nothing stays inside a moving solid
   vec4 hd=h; float sc=dn/max(hd.r,1e-4); oD=vec4(dn,min(hd.gba*min(sc,4.),vec3(dn))); oT=vec4(th,0.,0.); }`;
@@ -4717,7 +4721,8 @@ function physSimStep(ctx,rec){ const S=ctx.sim; S.h=Math.max(Math.min(S.dt,S.tar
   if(!ctx.ph||!ctx.ph.ok||ctx.ph.key!==physKey(ctx,rec)) physInit(ctx,rec);
   const P=restPer(rec), r0=S.rclk||0, dr=S.noRest?0:S.h*S.U*CURL_RMS/Math.max(rec.sim.eddy,1e-3);
   const K=Math.max(realTimeKF(rec),1e-4), dtR=S.h/K, hmin=Math.min(...domSize(rec).map((s,i)=>s/ctx.ph.cd[i]));
-  const n=clamp(Math.ceil(dtR*physUmax(rec)/(3*hmin)),1,4);   /* the backtraces are stable at any step; about three air cells per sub-step keeps it accurate, and never more than four sub-steps a frame */
+  const hy=domSize(rec)[1]/ctx.ph.cd[1], N2=9.81/285*Math.max(phv(rec,'stab')/1000,Math.abs(phv(rec,'inv'))/Math.max(2*hy,1),Math.abs(phv(rec,'fogDT'))/Math.max(rec.size[1],2)), Nb=Math.sqrt(N2);
+  const n=clamp(Math.ceil(Math.max(dtR*physUmax(rec)/(2*hmin),dtR*Nb/0.7)),1,48);   /* small enough sub-steps for two things: about two air cells of travel each, and the layered air's buoyancy oscillation (a long step makes it ring and blow up). The GPU fence keeps the view from stalling however many it takes */
   for(let i=0;i<n;i++){ const ra=r0+dr*i/n, rb=r0+dr*(i+1)/n; physOne(ctx,rec,dtR/n,[Math.floor(rb/P)>Math.floor(ra/P)?1:0,Math.floor(rb/P+0.5)>Math.floor(ra/P+0.5)?1:0]); }   // the drawn detail's fields start over on the exact sub-step their clock crosses
   S.rclk=r0+dr; S.t+=S.h; S.step++; if(S.step>=S.steps) S.t=S.target; }
 /* the GPU runs behind the page: queue one step of the fluid solver, and the next only once the GPU has finished it, so the view never freezes */
