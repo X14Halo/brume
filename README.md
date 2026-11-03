@@ -90,6 +90,10 @@ Live: https://x14halo.github.io/brume/
 - **Where fog is painted** (Set > The ticks set): painted fog, and fog that forms by a rule, lies on the ground plus only the objects you tick for painting (none by default), so it fills the streets around the houses instead of sitting on their roofs. Collision is set separately.
 - **Fog lighting over uneven ground**: the light grid now has full vertical resolution and finer steps near each point, and voxels inside a hill take the light at the ground's surface. Fog over low ground is no longer much darker than fog over the hills, and fog the view fades away no longer shades the fog under it.
 - **Faster start-up on Windows**: export and picking shaders compile in the background after the first picture, and the shader loops no longer get unrolled by the Direct3D compiler.
+- **Breakup that flows**: when a simulation starts, the breakup is taken into the fog itself exactly as it looks at frame 1, so the pockets and clumps are carried, stretched and closed by the air instead of being drawn on top (no more jumps). Its noise no longer visibly repeats.
+- **Steadier detail**: the two layers of moving detail cross-fade continuously instead of swapping in a quick fade.
+- **The front is carried, not grown**: Holds together now only sharpens what the air brought; it no longer spreads fog ahead of the front.
+- **The body flows too**: the wind carries the dense core nearly as much as the thin edges, the core is less calmed, and the fog's surface (its top and sides) rolls into turning lobes where the air shears past it.
 - **Off the ground** (Size): **Reaches up to** a height above the ground under each spot, so it hugs the terrain, with a **Falloff** from a crisp top to a long soft fade into the air.
 - **Wind compass** in the corner of the view in every mode: drag it to set where the wind blows and how hard (the shot's wind in a shot, the volume's own in the Designer).
 - **No cookie-cutter edges**: types that form by a rule (radiation and ground fog, valley fill, layers, decks, haze) now form as a rounded, irregular patch with a wide soft falloff, so they blend into other volumes instead of ending in a square.

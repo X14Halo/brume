@@ -572,10 +572,12 @@ vec3 vel(vec3 p,vec3 u,sampler3D den){
   v.y*=1.-uStrat*0.75; v.xz*=1.+uStrat*0.35; v.y*=1.-uFlat*0.85;   /* flat top: stable air under the inversion barely lets the eddies move up or down */
   float y0=gh+uSrcC.y, hs=max(p.y-y0,0.);
   float sprE=uEmit==1?1.+uSpreadE*1.5*clamp(hs/uHgt,0.,1.5):1.;          // a plume widens as it entrains air
-  v*=uU*mix(1.,1.-uCalm,smoothstep(0.3,0.85,d))*sprE;          // calm core, lively edges
+  v*=uU*mix(1.,1.-uCalm*0.5,smoothstep(0.3,0.85,d))*sprE;          // a calmer core, lively edges (the core still turns over: it is not frozen)
+  { vec3 e3=vec3(1.)/uDims; vec3 gd=vec3(textureLod(den,u+vec3(e3.x,0,0),0.).r-textureLod(den,u-vec3(e3.x,0,0),0.).r,textureLod(den,u+vec3(0,e3.y,0),0.).r-textureLod(den,u-vec3(0,e3.y,0),0.).r,textureLod(den,u+vec3(0,0,e3.z),0.).r-textureLod(den,u-vec3(0,0,e3.z),0.).r)*0.5;
+    float gi=clamp(length(gd)*2.5,0.,1.); v+=curlAt(p+vec3(73.,11.,29.),uEddy*0.7)*uU*gi*1.3;  }   /* the fog's surface rolls: where the air slides over the top of the bank and past its sides it shears into turning lobes that grow, fold over and travel, as on a real fog bank */
   vec3 vc=v;
   float thn=thinOf(d);   /* thin, light fog is pushed and lifted more; the dense core stays heavy and low */
-  v+=windAt(p,hy)*mix(1.,0.3+1.5*thn,uThinW)+vec3(0.,uLift*mix(1.,uLift>0.?1.8*thn:0.25+1.6*(1.-thn),uThinL)+uWispL*thn*thn,0.);
+  v+=windAt(p,hy)*mix(1.,0.8+0.7*thn,uThinW)+vec3(0.,uLift*mix(1.,uLift>0.?1.8*thn:0.25+1.6*(1.-thn),uThinL)+uWispL*thn*thn,0.);
   if(uNF>0){ vec3 acc=vec3(0.); float ws=0., damp=0.;              // influencers: wind paths and lift carry the air along them; calm holds it still
     for(int i=0;i<min(uNF,48);i++){ if(int(uFK[i]+0.5)==5){ float w5=srcBox(i,p,uGround>0?hy:p.y-uFA[i].y,true); if(w5>0.){ float an=uFB[i].x; acc+=vec3(sin(an),0.,-cos(an))*uFT[i]*w5; ws+=w5; } continue; }   // a fog source pushes its fog out, the way it faces
       vec3 a=uFA[i].xyz, ab=int(uFK[i]+0.5)==4?vec3(0.):uFB[i].xyz-a; float r=uFA[i].w; float hh=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-6),0.,1.); float dd=length(p-a-ab*hh);
@@ -640,7 +642,7 @@ void main(){ vec3 u=vU(), p=u2p(u); vec3 v=vel(p,u,uD);
     float hol=1.; if(uGround>0){ float R=uBurn.y; float av=(terrH(p.xz+vec2(R,0.))+terrH(p.xz-vec2(R,0.))+terrH(p.xz+vec2(0.,R))+terrH(p.xz-vec2(0.,R)))*0.25; hol=clamp(exp((terrH(p.xz)-av)/max(uHgt*0.35,0.5)*uBurn.z),0.25,4.); }   /* the ground in a hollow stays cold longest: fog lingers there and clears first from the rises */
     d*=exp(-uBurn.x*(0.12+2.2*(1.-smoothstep(0.3,0.75,nn)))*(0.4+1.6*thinOf(d))*hol*uDt); }   /* burning off: the sun opens holes where the fog is thinnest, and the deck breaks into separate puffs that shrink from their edges */
   if(uCohere>0.&&d>0.004){ vec3 o3=1./uDims; float a=(textureLod(uD,u+vec3(o3.x,0,0),0.).r+textureLod(uD,u-vec3(o3.x,0,0),0.).r+textureLod(uD,u+vec3(0,o3.y,0),0.).r+textureLod(uD,u-vec3(0,o3.y,0),0.).r+textureLod(uD,u+vec3(0,0,o3.z),0.).r+textureLod(uD,u-vec3(0,0,o3.z),0.).r)/6.;
-    d=clamp(d+uCohere*0.22*(d-a)*smoothstep(0.02,0.25,max(d,a)),0.,1.); d=mix(d,max(d,a*0.98),uCohere*0.5*smoothstep(0.15,0.5,a)); }   /* holds together: the front stays thick instead of smearing thin as it travels */
+    d=clamp(d+uCohere*0.3*(d-a)*smoothstep(0.02,0.25,max(d,a)),0.,1.); }   /* holds together: undoes the grid's smearing so the front stays a thick, defined edge. It only sharpens what the air carried there: it never grows fog ahead of the front */
   if(uFeedR>0.){ float sf=dot(p.xz,uFeedP.xy)-uFeedP.z; float m=1.-smoothstep(0.,uFeedP.w,sf); if(m>0.){ float fd=textureLod(uFeed,u,0.).r;   // new fog keeps arriving from upwind: the start shape's upwind part is topped up
       float nz=textureLod(uNT,(p-uWind*uSimT)/max(uFeedP.w*0.8,1e-3)+uCurlOff,0.).r; m*=0.45+0.9*smoothstep(0.25,0.75,nz);   // it arrives in uneven pulses that ride the wind, not as a wall
       float inj=clamp(m*uFeedR*uDt,0.,1.); d=mix(d,max(d,fd),inj); } }   /* the rest fields carry on as the air does, so arriving fog streams its detail with the wind */   // a rest field starts over (its weight is zero right now, so nothing pops)
@@ -691,7 +693,7 @@ const DENS_GLSL=TERR_GLSL+BODY_GLSL+`
 uniform sampler3D uD, uR, uRB, uND, uCurlT; uniform vec3 uBMin, uBSize, uVoxU; uniform int uEmit; uniform float uLife, uTailF, uSrcF;
 uniform vec2 uRW; uniform float uHH, uBTop, uProf, uDGain, uCurlK; uniform int uHug;   // rest weights · design height, billows toward the top, core-to-edge profile, detail gain
 uniform int uDM; uniform float uDMs, uDMe, uDMa, uDT, uDLp; uniform vec3 uDMd;
-uniform float uBrkM; uniform float uFine, uFineN; uniform vec4 uFx; uniform vec4 uComb;   // small-vs-large balance of the detail octaves (and its normaliser) · an added fine layer: amount, size, kind (0 billows, 1 wisps, 2 grain)          // how the detail itself moves: kind, speed (m/s), small-vs-large exponent, strength, time (s), loop length (s), direction
+uniform float uBrkM, uBrkBk; uniform float uFine, uFineN; uniform vec4 uFx; uniform vec4 uComb;   // small-vs-large balance of the detail octaves (and its normaliser) · an added fine layer: amount, size, kind (0 billows, 1 wisps, 2 grain)          // how the detail itself moves: kind, speed (m/s), small-vs-large exponent, strength, time (s), loop length (s), direction
 float ageFade(float a){ float f=1.-smoothstep(uLife*(1.-uTailF),uLife,a); if(uSrcF>0.) f*=smoothstep(0.,uLife*uSrcF,a); return f; }
 uniform float uSigma, uTh, uW, uAmt, uBillow, uCurl, uDet, uBreak, uBreakS, uFadeT, uFadeB, uEdgeF; uniform int uOct, uFloorOn, uLk2; uniform vec3 uSeedV;
 uniform vec4 uLa[3], uLb[3]; uniform vec3 uLkOn;   // painted looks (up to 3): billow, amount, edge width, breakup · curl, detail size, sigma ratio, -
@@ -728,7 +730,10 @@ float fxVar(vec3 q){ float L=uFx.y; float wk=smoothstep(0.6,1.6,L*0.3/gFoot); if
   for(int k=0;k<2;k++){ float Lk=L*(k==0?1.:0.45); vec3 qq=q-dmOff(q,Lk,8.+float(k)); vec4 dn=textureLod(uND,qq/Lk+vec3(0.53+0.21*float(k),0.17,0.91),max(lod+float(k)*1.15,0.)); float kw=k==0?0.62:0.38;
     v+=(kd==0?(dn.r*0.625+dn.g*0.25+dn.b*0.125)-0.56:kd==1?(1.-abs(dn.a*2.-1.))-0.55:(dn.g-0.5)*0.8)*kw; }
   return v*wk; }
-float brkN(vec3 rc){ vec3 o=dmOff(rc,uBreakS,7.); vec3 q=combQ(rc-o,gComb*0.6); return textureLod(uNT,q/uBreakS,0.).r*0.7+textureLod(uNT,q/(uBreakS*0.45),0.).a*0.3; }
+/* the breakup: pockets and clumps about the Pocket size across, from noise that never visibly repeats (one tile spans four pockets, a second rotated layer and a slow warp hide its seams) */
+float brkRaw(vec3 q){ vec3 a=q/(uBreakS*4.); a+=(textureLod(uNT,a*0.29+vec3(0.21,0.53,0.87),0.).gba-0.5)*0.55;
+  vec3 b=mat3(0.80,0.36,-0.48,-0.60,0.48,-0.64,0.,0.80,0.60)*a*2.13+vec3(0.37,0.11,0.73); return uBrkM+((textureLod(uNT,a,0.).r*0.65+textureLod(uNT,b,0.).r*0.35)-uBrkM)*1.35; }
+float brkN(vec3 rc){ vec3 o=dmOff(rc,uBreakS,7.); return brkRaw(combQ(rc-o,gComb*0.6)); }
 float densGrid(vec3 p0){ float dm; vec3 p=bodyP(p0,dm); vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.;
   vec4 dg=textureLod(uD,u,0.); vec3 w=uLk2==1?lookW(dg):vec3(0.); return uSigma*(1.-w.x-w.y-w.z+w.x*uLb[0].z+w.y*uLb[1].z+w.z*uLb[2].z)*transferG(dg.r*dm); }
 float gridRaw(vec3 p0){ float dm; vec3 p=bodyP(p0,dm); vec3 u=(p-uBMin)/uBSize; if(any(lessThan(u,vec3(0.)))||any(greaterThan(u,vec3(1.)))) return 0.; return textureLod(uD,u,0.).r*dm; }   /* the coarse fog, one lookup: where the march need not go */
@@ -748,6 +753,7 @@ float dens(vec3 p0,int lvl){
   float wA=uRW.x, wB=uRW.y, wN=1./max(sqrt(wA*wA+wB*wB),1e-3);   // two rest fields, cross-faded: one is always fresh, so the detail never smears
   if(uEmit==1){ d*=ageFade(rcs.a/max(textureLod(uD,u,0.).r,1e-3)); if(d<0.008) return 0.; }            // fade the tail of the plume, and right at the source
   if(terrOn()&&p.y<terrH(p.xz)) return 0.;
+  cBreak=max(cBreak-uBrkBk*uBreak*wb,0.);   /* in a simulation the breakup is part of the fog itself (taken in at frame 1), so the pockets drift, stretch and close with the air instead of being drawn on top */
   if(cBreak>0.){ float nb=uBrkM+((wA>0.001?(brkN(rA)-uBrkM)*wA:0.)+(wB>0.001?(brkN(rB)-uBrkM)*wB:0.))*wN; d*=smoothstep(cBreak*0.75-0.18,cBreak*0.75+0.1,nb); }
   float f0=d-uTh; if(f0+cAmt*0.5<=0.) return 0.;
   float f=f0, inner=1.;
@@ -880,6 +886,12 @@ void main(){
 }`;
 
 /* first point along a ray where the fog gets solid — where a brush lands */
+/* frame 1 of a simulation: the breakup the view draws is taken into the fog itself, exactly as it looks, so from then on the pockets are carried by the air */
+const FS_BRKBAKE=HEAD+DENS_GLSL+`uniform vec3 uDims; uniform float uZ; out vec4 o;
+void main(){ vec3 u=vec3(gl_FragCoord.xy/uDims.xy,uZ); vec3 p=uBMin+u*uBSize; vec4 dg=textureLod(uD,u,0.); o=dg; if(uBreak<=0.||dg.r<=0.) return;
+  vec3 w=uLk2==1?lookW(dg):vec3(0.); float wb=1.-w.x-w.y-w.z; vec4 rcs=textureLod(uR,u,0.), rbs=textureLod(uRB,u,0.); vec3 rA=p+rcs.xyz+uSeedV, rB=p+rbs.xyz+uSeedV; gComb=uComb.w*3.*(1.-clamp(rbs.a,0.,1.));
+  float wA=uRW.x, wB=uRW.y, wN=1./max(sqrt(wA*wA+wB*wB),1e-3); float cBreak=uBreak*wb;
+  float nb=uBrkM+((wA>0.001?(brkN(rA)-uBrkM)*wA:0.)+(wB>0.001?(brkN(rB)-uBrkM)*wB:0.))*wN; o=dg*smoothstep(cBreak*0.75-0.18,cBreak*0.75+0.1,nb); }`;
 const FS_PICK=HEAD+DENS_GLSL+`uniform vec3 uCam, uRd; out vec4 o;
 vec2 box(vec3 ro,vec3 rd,vec3 a,vec3 b){ vec3 ir=1./rd; vec3 t0=(a-ro)*ir, t1=(b-ro)*ir; vec3 mn=min(t0,t1), mx=max(t0,t1); return vec2(max(max(mn.x,mn.y),mn.z),min(min(mx.x,mx.y),mx.z)); }
 uniform vec3 uRB0, uRB1;
@@ -1525,7 +1537,10 @@ function animDom(rec){ if(!simBody(rec)) return [rec.dom[0].slice(),rec.dom[1].s
 /* start the animation over: frame 1 is the shape, exactly, then simulate to the time asked for */
 function animReset(ctx,rec,target){ const ar=ARec(rec); if(snapLoad(ctx,ar)===false){ ctx.phase='shape'; AFIT.on=false; return; }   /* no frame 1 kept (a layer or workspace switched mid-way): back to the shape */ const sp=simParams(ctx,ar); const tg=Math.max(0,target||0);
   const still=!simBody(rec), rk=SNAP.sim&&SNAP.sim.rclk||0.37;
-  ctx.sim={step:0,steps:!still&&tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:still?tg:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:riseOf(rec.anim)/Math.max(realTimeK(ar),1e-4),spreadK:sp.spreadK*(0.3+0.7*clamp(rec.anim.spill||0,0,1.5)),emit:sp.emit,checked:false,holdT:rec.anim.hold?0:1e30,forming:false,shaped:true,rclk:rk,still}; ctx.phase='anim'; if(!still){ feedKeep(ctx,ar); moverPreroll(ctx,ar); } }   /* gentle motion and Still: frame 1 stays as it is and the time just moves; the look moves by itself */   // rise is real metres per second
+  ctx.sim={step:0,steps:!still&&tg>0?Math.ceil(tg/sp.dt-1e-6):0,dt:sp.dt,h:sp.dt,t:still?tg:0,target:tg,T:sp.T,Tfull:sp.Tfull,U:sp.U,wind:sp.wind,lift:riseOf(rec.anim)/Math.max(realTimeK(ar),1e-4),spreadK:sp.spreadK*(0.3+0.7*clamp(rec.anim.spill||0,0,1.5)),emit:sp.emit,checked:false,holdT:rec.anim.hold?0:1e30,forming:false,shaped:true,rclk:rk,still}; ctx.phase='anim'; ctx.brkBaked=false; if(!still){ brkBake(ctx,ar); feedKeep(ctx,ar); moverPreroll(ctx,ar); } }   /* gentle motion and Still: frame 1 stays as it is and the time just moves; the look moves by itself */   // rise is real metres per second
+/* frame 1 of a simulation: the breakup goes into the fog itself, exactly as drawn, so the air carries the pockets from then on */
+function brkBake(ctx,rec){ ctx.brkBaked=false; if(!(rec.det&&rec.det.brk>0)||!ctx.dims) return; if(!PR.brkbake) mkProg('brkbake',FS_BRKBAKE); const pr=use('brkbake'); densUniforms(pr,ctx,rec,true); u1f(pr,'uBrkBk',0);
+  volPass(pr,[ctx.den[1]],ctx.dims); copyVol(ctx.den[1],ctx.den[0],ctx.dims); ctx.brkBaked=true; dirty.light=true; }
 /* the box changed around fog that is already simulated: resample it into the new box instead of simulating again */
 function rebox(ctx,rec,oldDom,noBase){ if(!ctx.dims) return; const od=oldDom, olo=od[0], osz=[0,1,2].map(i=>od[1][i]-od[0][i]); const d=recDims(rec,ctx.N);
   const mk=(f)=>f==='rc'?tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT):f==='den'?tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT):tex3D(...d,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT);
@@ -1604,7 +1619,7 @@ function emitFadeU(pr,ctx,rec){ const EP=ctx.sim.emit; u1i(pr,'uEmit',EP?1:0); u
 /* two rest fields: each starts over in turn (when its weight is zero) and the two cross-fade, so the detail rides with the fog but is never stretched into streaks.
    The clock runs in eddy turnovers, so faster churn refreshes sooner; high curl lets the flow pull the detail into threads first */
 function restPer(rec){ return 1.5/(0.15+2.2*Math.pow(1-(rec.det.curl??0.5),2))*(1+1.5*clamp(rec.sim.lam||0,0,1)); }   /* smooth, laminar flow keeps its detail longer, so it draws out into long streaks along the flow */
-function restW(ctx,rec){ const ph=((ctx.sim&&ctx.sim.rclk||0)/restPer(rec))%1, fw=0.22; const a=clamp((0.5-Math.abs(ph-0.5))/fw,0,1), sa=a*a*(3-2*a); return [sa,1-sa]; }
+function restW(ctx,rec){ const ph=((ctx.sim&&ctx.sim.rclk||0)/restPer(rec))%1, fw=0.5;   /* the two rest fields cross-fade all the time, never in a quick swap, so the detail changes steadily instead of jumping */ const a=clamp((0.5-Math.abs(ph-0.5))/fw,0,1), sa=a*a*(3-2*a); return [sa,1-sa]; }
 function simStep(ctx,rec,h){
   ctx.sim.h=h||Math.max(Math.min(ctx.sim.dt,ctx.sim.target-ctx.sim.t),ctx.sim.dt*1e-3);   // the last step lands exactly on the target
   movStep(ctx,rec,ctx.sim.h);
@@ -1634,7 +1649,7 @@ function looksU(rec){ const a=new Float32Array(12), b=new Float32Array(12), on=[
 function densUniforms(pr,ctx,rec,final){ const tf=transfer(rec); u1f(pr,'uEdgeF',rec.den.fall??0.06); const L2=looksU(rec); u1i(pr,'uLk2',L2.on); gl.uniform4fv(U(pr,'uLa[0]'),L2.a); gl.uniform4fv(U(pr,'uLb[0]'),L2.b); u3v(pr,'uLkOn',L2.onv); gl.uniform3fv(U(pr,'uLkC[0]'),L2.col);
   bind3(pr,0,'uD',ctx.den[0]); bind3(pr,1,'uR',ctx.rc[0]); bind3(pr,2,'uNT',T.noise); bind3(pr,3,'uND',T.detail);
   u3v(pr,'uBMin',domLo(rec)); u3v(pr,'uBSize',domSize(rec)); u3v(pr,'uVoxU',ctx.dims.map(v=>1/v)); u1f(pr,'uSigma',sigmaOf(rec)); u1f(pr,'uTh',tf.th); u1f(pr,'uW',tf.w); u1f(pr,'uAmt',tf.amt);
-  u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uCurl',rec.det.curl??rec.sim.turb); const dk=detK(rec); u1f(pr,'uDet',rec.det.size*dk); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBreakS',rec.det.brkSize*dk); { const c=combOf(rec), wd=((rec.anim&&rec.anim.windDir)??rec.sim.windDir??70)*D2R; u4v(pr,'uComb',[Math.sin(wd),0,-Math.cos(wd),c]); } fineU(pr,rec); u1f(pr,'uBrkM',BRK_M); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
+  u1f(pr,'uBillow',rec.det.billow); u1f(pr,'uCurl',rec.det.curl??rec.sim.turb); const dk=detK(rec); u1f(pr,'uDet',rec.det.size*dk); u1f(pr,'uBreak',rec.det.brk); u1f(pr,'uBrkBk',ctx&&ctx.phase==='anim'&&ctx.brkBaked?1:0); u1f(pr,'uBreakS',rec.det.brkSize*dk); { const c=combOf(rec), wd=((rec.anim&&rec.anim.windDir)??rec.sim.windDir??70)*D2R; u4v(pr,'uComb',[Math.sin(wd),0,-Math.cos(wd),c]); } fineU(pr,rec); u1f(pr,'uBrkM',BRK_M); u1f(pr,'uFadeT',rec.den.fadeT); u1f(pr,'uFadeB',rec.den.fadeB);
   u1i(pr,'uOct',Math.min(final?6:4,LODS[lodOf(rec)].oct)); u1i(pr,'uFloorOn',hasGround(rec)?1:0); terrU(pr,rec); emitFadeU(pr,ctx,rec); const R=mulberry(rec.seed+3); u3v(pr,'uSeedV',[R()*97,R()*97,R()*97]);
   bind3(pr,5,'uRB',ctx.rb[0]); bind3(pr,10,'uCurlT',T.curl); const w=restW(ctx,rec); u2f(pr,'uRW',w[0],w[1]); detU(pr,rec); bodyU(pr,ctx,rec); dmU(pr,ctx,rec); u3v(pr,'uRB0',rbox(ctx,rec)[0]); u3v(pr,'uRB1',rbox(ctx,rec)[1]); }
 function camBasis(c){ const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch); const off=[cp*Math.sin(c.yaw)*c.dist,sp*c.dist,cp*Math.cos(c.yaw)*c.dist]; const pos=add(c.tgt,off); const f=norm(mul(off,-1)); const r=norm(cross(f,[0,1,0])), u=cross(r,f); return {pos,f,r,u,tanY:c.tanY}; }
@@ -1706,7 +1721,7 @@ async function buildNoise(){
     for(let z=0;z<N;z++){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,tex,0,z); u1f(pr,'uZ',(z+0.5)/N); fullscreen(); if(z%16===15){ showLoader('Building the noise volumes',p0+p1*z/N); await yieldUI(); } } }
   // measure the curl field so turbulence speeds come out in metres
   gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.curl,0,17); const a=new Float32Array(64*64*4); gl.readPixels(0,0,64,64,gl.RGBA,gl.FLOAT,a); let s=0; for(let i=0;i<64*64;i++) s+=a[i*4]**2+a[i*4+1]**2+a[i*4+2]**2; CURL_RMS=Math.sqrt(s/(64*64))||1;
-  { let sr=0,sa=0,n=0; const b=new Uint8Array(128*128*4); for(const z of [3,29,61,97,120]){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.noise,0,z); gl.readPixels(0,0,128,128,gl.RGBA,gl.UNSIGNED_BYTE,b); for(let i=0;i<128*128;i+=3){ sr+=b[i*4]; sa+=b[i*4+3]; n++; } } BRK_M=n?(0.7*sr+0.3*sa)/n/255:0.5; }   /* the breakup noise's own mean: the two rest fields cross-fade around it, so holes never swell and shrink with the fade */
+  { let sr=0,sa=0,n=0; const b=new Uint8Array(128*128*4); for(const z of [3,29,61,97,120]){ gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,T.noise,0,z); gl.readPixels(0,0,128,128,gl.RGBA,gl.UNSIGNED_BYTE,b); for(let i=0;i<128*128;i+=3){ sr+=b[i*4]; sa+=b[i*4+3]; n++; } } BRK_M=n?sr/n/255:0.5; }   /* the breakup noise's own mean: the two rest fields cross-fade around it, so holes never swell and shrink with the fade */
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   for(const t of [T.noise,T.detail]){ gl.bindTexture(gl.TEXTURE_3D,t); gl.generateMipmap(gl.TEXTURE_3D); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); } }
 /* =====================================================================
