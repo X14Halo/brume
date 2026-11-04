@@ -4534,7 +4534,9 @@ const FS_PADV=PH+`uniform sampler3D uQ; out vec4 o; void main(){ ivec3 I=outI();
 /* MacCormack correction of the advected velocity (sharper than a plain backtrace, limited by its neighbours so it never overshoots) */
 const FS_PADVMC=PH+`uniform sampler3D uQ, uH, uHB; out vec4 o; void main(){ ivec3 I=outI(); vec4 r=vec4(0.); vec3 n=uCD+1.; ivec3 M=ivec3(n+0.5)-1;
   vec4 q=texelFetch(uQ,I,0), h=texelFetch(uH,I,0), hb=texelFetch(uHB,I,0);
-  for(int c=0;c<3;c++){ vec3 g=vec3(I)+0.5; g[c]=float(I[c]); vec3 v=velG(uVel,g); vec3 gm=g-0.5*uDtR*v/uHv; v=velG(uVel,gm); vec3 gb=clamp(g-uDtR*v/uHv,vec3(0.),uCD);
+  for(int c=0;c<3;c++){ vec3 g=vec3(I)+0.5; g[c]=float(I[c]); vec3 v0=velG(uVel,g); vec3 gm=g-0.5*uDtR*v0/uHv; vec3 v=velG(uVel,gm); vec3 gu=g-uDtR*v/uHv, gb=clamp(gu,vec3(0.),uCD);
+    vec3 vf=velG(uVel,g+0.5*uDtR*v0/uHv); vec3 gf=g+uDtR*vf/uHv;
+    if(any(lessThan(gu,vec3(0.)))||any(greaterThan(gu,uCD))||any(lessThan(gf,vec3(0.)))||any(greaterThan(gf,uCD))||solidC(ivec3(floor(gu)))||solidC(ivec3(floor(gf)))){ r[c]=h[c]; continue; }   /* where a trajectory leaves the box or meets a wall, the plain backtrace (the standard safeguard): at a side the wind comes in through, the correction would keep pushing the face's own value away from the air inside, and nothing in the clamp below stops it */
     vec3 off=vec3(0.); off[c]=0.5; vec3 tc=gb+off-0.5; ivec3 i0=ivec3(floor(tc)); float mn=1e9, mx=-1e9;
     for(int k=0;k<8;k++){ ivec3 cc=clamp(i0+ivec3(k&1,(k>>1)&1,(k>>2)&1),ivec3(0),M); float s=texelFetch(uQ,cc,0)[c]; mn=min(mn,s); mx=max(mx,s); }
     r[c]=clamp(h[c]+0.5*(q[c]-hb[c]),mn,mx); } o=r; }`;
@@ -4542,9 +4544,9 @@ const FS_PADVMC=PH+`uniform sampler3D uQ, uH, uHB; out vec4 o; void main(){ ivec
 const FS_PCURL=PH+`out vec4 o; void main(){ ivec3 I=outI(); vec3 g=vec3(I)+0.5; vec3 ex=vec3(1,0,0), ey=vec3(0,1,0), ez=vec3(0,0,1);
   vec3 dx=(velG(uVel,g+ex)-velG(uVel,g-ex))/(2.*uHv.x), dy=(velG(uVel,g+ey)-velG(uVel,g-ey))/(2.*uHv.y), dz=(velG(uVel,g+ez)-velG(uVel,g-ez))/(2.*uHv.z);
   vec3 w=vec3(dy.z-dz.y,dz.x-dx.z,dx.y-dy.x); o=vec4(w,length(w)); }`;
-const FS_PVCF=PH+`uniform sampler3D uW; out vec4 o; void main(){ ivec3 I=outI(); ivec3 D=ivec3(uCD+0.5)-1; vec4 w=texelFetch(uW,I,0);
+const FS_PVCF=PH+`uniform sampler3D uW; uniform float uURef; out vec4 o; void main(){ ivec3 I=outI(); ivec3 D=ivec3(uCD+0.5)-1; vec4 w=texelFetch(uW,I,0);
   vec3 n=vec3(texelFetch(uW,min(I+ivec3(1,0,0),D),0).w-texelFetch(uW,max(I-ivec3(1,0,0),ivec3(0)),0).w,texelFetch(uW,min(I+ivec3(0,1,0),D),0).w-texelFetch(uW,max(I-ivec3(0,1,0),ivec3(0)),0).w,texelFetch(uW,min(I+ivec3(0,0,1),D),0).w-texelFetch(uW,max(I-ivec3(0,0,1),ivec3(0)),0).w)/(2.*uHv);
-  float nl=length(n); o=nl>1e-6?vec4(cross(n/nl,w.xyz)*w.w*min(uHv.x,min(uHv.y,uHv.z))*min(1.,0.5/max(w.w*uDtR,1e-6)),0.):vec4(0.); }`;   /* eps h |w| (N x w): an acceleration in m/s2, so its push per step is a share of the eddy's own speed times the step's Courant number, whatever the voxel size */
+  float nl=length(n), h=min(uHv.x,min(uHv.y,uHv.z)); o=nl>1e-6?vec4(cross(n/nl,w.xyz)*min(uURef,0.3*h/max(uDtR,1e-4)),0.):vec4(0.); }`;   /* eps U (N x w): linear in the spin, with the wind speed as its scale, so each step it gives an eddy back a share eps x (Courant number) of what the grid took, never more; an earlier form grew with the spin squared and ran away on fine grids */
 /* the forces on the faces: buoyancy from the moist air's temperature, swirl keeping, the ground's drag, your air paths and fog sources, and the wind arriving at the edges of the box */
 const FS_PFORCE=PH+`uniform sampler3D uTh, uVF; uniform float uVCon; out vec4 o;
 float bC(ivec3 c){ if(outC(c)||solidC(c)) return 0.; vec3 p=gP(vec3(c)+0.5); return 9.81*thvA(textureLod(uTh,(p-uLo)/uSize,0.).xy,p.y)/uAmb.x; }
@@ -4552,7 +4554,8 @@ void main(){ ivec3 I=outI(); vec4 u0=texelFetch(uVel,I,0), r=vec4(0.); ivec3 D=i
   for(int c=0;c<3;c++){ if(c!=0&&I.x>=D.x||c!=1&&I.y>=D.y||c!=2&&I.z>=D.z) continue; ivec3 B=I; B[c]-=1; if(solidC(I)||solidC(B)) continue;
     vec3 g=vec3(I)+0.5; g[c]=float(I[c]); vec3 p=gP(g); float gh=uGround>0?terrH(p.xz):uAmb.y; float hy=p.y-gh; float uc=u0[c];
     if(c==1) uc+=0.5*(bC(I)+bC(B))*uDtR;                                                                            // buoyancy
-    if(uVCon>0.){ vec4 fa=outC(I)?vec4(0.):texelFetch(uVF,I,0), fb=outC(B)?vec4(0.):texelFetch(uVF,B,0); uc+=uVCon*0.5*(fa[c]+fb[c])*uDtR; }
+    vec3 e=min(g,uCD-g); float de=min(min(e.x,e.z),e.y+(uBotC==1?1e3:0.)); de=min(de,uCD.y-g.y); float s=1.-smoothstep(0.,4.,de);   // the edges of the box (below: where the wind comes in)
+    if(uVCon>0.){ vec4 fa=outC(I)?vec4(0.):texelFetch(uVF,I,0), fb=outC(B)?vec4(0.):texelFetch(uVF,B,0); uc+=uVCon*(1.-s)*0.5*(fa[c]+fb[c])*uDtR; }   // no swirl keeping in the edge band, where the wind is being laid on
     if(c!=1){ ivec3 Ia=I-ivec3(0,1,0), Ba=B-ivec3(0,1,0); if(solidC(Ia)||solidC(Ba)){ float z0=max(uAmb3.w,0.001), zc=0.5*uHv.y; float Cd=pow(0.4/log((zc+z0)/z0),2.);   // the ground's drag on the air just above it (log law)
         float sp=length(velG(uVel,g)); uc*=max(0.,1.-Cd*sp/uHv.y*uDtR); } }
     vec3 acc=vec3(0.); float ws=0., damp=0.;                                                                      // air paths, swirls, calm and the fog sources' push
@@ -4565,8 +4568,7 @@ void main(){ ivec3 I=outI(); vec4 u0=texelFetch(uVel,I,0), r=vec4(0.); ivec3 D=i
       else if(kk==0){ vec3 ax=normalize(ab); acc+=ax*uFB[i].w*w; ws+=w; if(uFT[i]!=0.){ vec3 rv=p-a-ax*dot(p-a,ax); float rl=length(rv); if(rl>1e-4) acc+=cross(ax,rv/rl)*uFT[i]*w*smoothstep(0.,rr*0.35,rl); } } }
     if(ws>0.){ float tg=acc[c]/max(ws,1.); uc+=(tg-uc)*clamp(min(ws,1.)*uDtR/1.5,0.,1.); } if(damp>0.) uc*=1.-clamp(damp*uDtR,0.,0.97);
     if(uNMB>0){ vec3 vf=velG(uVel,g); vf[c]=uc; uc=movVel(p,vf)[c]; }   // characters, vehicles and keyed spheres push the air and are pushed around
-    vec3 e=min(g,uCD-g); float de=min(min(e.x,e.z),e.y+(uBotC==1?1e3:0.)); de=min(de,uCD.y-g.y);                  // the edges of the box: the wind comes in with its gusts and leaves freely
-    float s=1.-smoothstep(0.,4.,de); vec3 W=windA(p,hy); uc+=(W[c]-uc)*clamp(s*uDtR/2.+(c==1?0.:uDtR/45.),0.,1.);
+    vec3 W=windA(p,hy); uc+=(W[c]-uc)*clamp(s*uDtR/2.+(c==1?0.:uDtR/45.),0.,1.);                                    // the edges of the box: the wind comes in with its gusts and leaves freely
     r[c]=uc; } o=r; }`;
 /* the divergence of the flow, per cell */
 const FS_PDIV=PH+`out vec4 o; void main(){ ivec3 I=outI(); if(solidC(I)){ o=vec4(0.); return; } vec4 u=texelFetch(uVel,I,0);
@@ -4586,12 +4588,15 @@ const FS_PREST=HEAD+VOX_GLSL+`uniform sampler3D uR, uSF; uniform vec3 uFD; out v
   for(int k=0;k<8;k++){ ivec3 c=I*2+ivec3(k&1,(k>>1)&1,(k>>2)&1); if(any(greaterThanEqual(c,ivec3(uFD+0.5)))||texelFetch(uSF,c,0).r>0.5) continue; s+=texelFetch(uR,c,0).r; n+=1.; } o=vec4(n>0.?s/n:0.,0.,0.,1.); }`;
 const FS_PPROL=MG_GLSL+`uniform sampler3D uC; uniform vec3 uCDc; out vec4 o; void main(){ ivec3 I=oI(); float p=pA(I); if(sC(I)){ o=vec4(0.); return; }
   vec3 gc=(vec3(I)+0.5)*0.5-0.5; ivec3 i0=ivec3(floor(gc)); vec3 f=gc-vec3(i0); ivec3 mx=ivec3(uCDc+0.5)-1; float s=0.;
-  for(int k=0;k<8;k++){ ivec3 o3=ivec3(k&1,(k>>1)&1,(k>>2)&1); ivec3 c=clamp(i0+o3,ivec3(0),mx); vec3 w=mix(1.-f,f,vec3(o3)); s+=w.x*w.y*w.z*texelFetch(uC,c,0).r; } o=vec4(p+s,0.,0.,1.); }`;
+  for(int k=0;k<8;k++){ ivec3 o3=ivec3(k&1,(k>>1)&1,(k>>2)&1); ivec3 c0=i0+o3, c=clamp(c0,ivec3(0),mx); vec3 w=mix(1.-f,f,vec3(o3)); float sg=1.;
+    for(int a=0;a<3;a++) if(c0[a]!=c[a]&&!(a==1&&c0.y<0&&uBotC==1)) sg=-sg;   /* past an open face the correction mirrors to minus itself (zero at the face, as the solve has it); past the ground it mirrors as is */
+    s+=w.x*w.y*w.z*sg*texelFetch(uC,c,0).r; } o=vec4(p+s,0.,0.,1.); }`;
 /* take the pressure's gradient off the faces: the flow is now divergence free. The second output is the reflection used by advection-reflection */
 const FS_PSUB=PH+`uniform sampler3D uP; layout(location=0) out vec4 o; layout(location=1) out vec4 o2; void main(){ ivec3 I=outI(); vec4 u=texelFetch(uVel,I,0), r=vec4(0.); ivec3 D=ivec3(uCD+0.5);
-  for(int c=0;c<3;c++){ if(c!=0&&I.x>=D.x||c!=1&&I.y>=D.y||c!=2&&I.z>=D.z) continue; ivec3 B=I; B[c]-=1; if(solidC(I)||solidC(B)) continue;
-    float pa=outC(I)?0.:texelFetch(uP,I,0).r, pb=outC(B)?0.:texelFetch(uP,B,0).r; if(outC(I)) pa=-pb; if(outC(B)) pb=-pa; r[c]=u[c]-(pa-pb)/uHv[c]; }   /* zero pressure at the open face: the ghost cell mirrors */
-  o=r; o2=2.*r-u; }`;
+  vec4 ui=u; for(int c=0;c<3;c++){ ivec3 J=I; for(int a=0;a<3;a++) if(a!=c&&J[a]>=D[a]) J[a]=D[a]-1;   /* the slots past the far sides hold the air just inside (as the near sides do, by clamping): the open sides are slip-free there instead of a still layer the flow shears against */
+    ivec3 B=J; B[c]-=1; if(solidC(J)||solidC(B)) continue; float uc=J==I?u[c]:texelFetch(uVel,J,0)[c]; ui[c]=uc;
+    float pa=outC(J)?0.:texelFetch(uP,J,0).r, pb=outC(B)?0.:texelFetch(uP,B,0).r; if(outC(J)) pa=-pb; if(outC(B)) pb=-pa; r[c]=uc-(pa-pb)/uHv[c]; }   /* zero pressure at the open face: the ghost cell mirrors */
+  o=r; o2=2.*r-ui; }`;
 /* the fog and the air it is in, carried by the flow: first a plain backtrace (also the rest fields for the drawn detail) ... */
 const FS_PSA=PH+`uniform sampler3D uD, uTh, uR, uRB; uniform vec2 uRst; layout(location=0) out vec4 oD; layout(location=1) out vec4 oT; layout(location=2) out vec4 oR; layout(location=3) out vec4 oB;
 void main(){ ivec3 I=outI(); vec3 gs=vec3(I)+0.5, p=sP(gs); vec3 v=velP(uVel,p); vec3 pm=p-0.5*uDtR*v; vec3 v2=velP(uVel,pm); vec3 pb=clamp(p-uDtR*v2,uLo,uLo+uSize); vec3 ub=(pb-uLo)/uSize;
@@ -4675,10 +4680,10 @@ function mgCycle(ctx,rec,l,zero){ const ph=ctx.ph, L=ph.L[l], last=l===ph.L.leng
 /* make a face field divergence free; with two targets, also write the reflection 2*projected - input */
 function physProject(ctx,rec,dt,src,dst,refl,cycles){ const ph=ctx.ph;
   let pr=use('pDiv'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uVel',src); volPass(pr,[ph.div],ph.cd);
-  for(let c=0;c<(cycles||2);c++) mgCycle(ctx,rec,0,false);
+  for(let c=0;c<(cycles||2);c++) mgCycle(ctx,rec,0,c===0);   /* each step solves from zero: the velocity is already projected, so this step's pressure is only what this step's advection and forces need. Starting from the last step's pressure re-applied its correction on faces that had kept it (a side the wind comes in through), and the face swung further each step */
   pr=use('pSub'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uVel',src); bind3(pr,1,'uP',ph.L[0].p[0]); volPass(pr,refl?[dst,refl]:[dst],ph.dv); }
 function physForce(ctx,rec,dt,src,dst){ const ph=ctx.ph, vc=phv(rec,'vc');
-  if(vc>0){ let pr=use('pCurl'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uVel',src); volPass(pr,[ph.vc[0]],ph.cd); pr=use('pVcf'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uW',ph.vc[0]); volPass(pr,[ph.vc[1]],ph.cd); }
+  if(vc>0){ let pr=use('pCurl'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uVel',src); volPass(pr,[ph.vc[0]],ph.cd); pr=use('pVcf'); physUniforms(pr,ctx,rec,dt); u1f(pr,'uURef',Math.max((rec.anim&&rec.anim.wind)||0,1)); bind3(pr,0,'uW',ph.vc[0]); volPass(pr,[ph.vc[1]],ph.cd); }
   const pr=use('pForce'); physUniforms(pr,ctx,rec,dt); bind3(pr,0,'uVel',src); bind3(pr,1,'uTh',ph.th[0]); bind3(pr,2,'uVF',ph.vc[1]); u1f(pr,'uVCon',vc); volPass(pr,[dst],ph.dv); }
 function physInit(ctx,rec){ physProgs(); const ph=physAlloc(ctx,rec); ph.t=0;
   let pr=use('pSol'); physUniforms(pr,ctx,rec,0); volPass(pr,[ph.L[0].sol],ph.cd);
